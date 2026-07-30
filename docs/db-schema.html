@@ -1,0 +1,650 @@
+<title>WHS After Mate — DB 스키마</title>
+<style>
+  @font-face {
+    font-family: "UI Mono";
+    src: local("SFMono-Regular"), local("Consolas"), local("Menlo");
+  }
+
+  :root {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+    --mermaid-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+      --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+      --border: #263029; --border-strong: #34423B;
+      --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+      --get: #7FB3E0; --get-soft: #16232E;
+      --post: #4FD1B3; --post-soft: #163029;
+      --patch: #E0C070; --patch-soft: #2E2814;
+      --error: #E08A8A; --error-soft: #2E1B1B;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --mermaid-bg: #161F1B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+    --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+    --border: #263029; --border-strong: #34423B;
+    --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+    --get: #7FB3E0; --get-soft: #16232E;
+    --post: #4FD1B3; --post-soft: #163029;
+    --patch: #E0C070; --patch-soft: #2E2814;
+    --error: #E08A8A; --error-soft: #2E1B1B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --mermaid-bg: #161F1B;
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22,33,30,.04), 0 4px 14px rgba(22,33,30,.05);
+    --mermaid-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  code, .mono, .path, td.mono, th.mono {
+    font-family: "UI Mono", ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: var(--accent-text); }
+
+  .shell {
+    max-width: 1180px; margin: 0 auto; padding: 40px 28px 100px;
+    display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: start;
+  }
+  header.masthead {
+    grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .eyebrow {
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); font-weight: 600;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .subtitle { margin: 0; color: var(--text-muted); font-size: 14.5px; max-width: 68ch; }
+
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .badge {
+    font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid transparent;
+  }
+  .badge.outline { background: transparent; border-color: var(--border-strong); color: var(--text-muted); }
+
+  nav.toc {
+    position: sticky; top: 28px; display: flex; flex-direction: column; gap: 2px; align-self: start;
+  }
+  nav.toc .toc-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint); margin-bottom: 8px; font-weight: 600;
+  }
+  nav.toc a {
+    text-decoration: none; color: var(--text-muted); font-size: 13.5px;
+    padding: 6px 10px; border-radius: 6px;
+  }
+  nav.toc a:hover { color: var(--text); background: var(--bg-sunken); }
+
+  main { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
+  section { scroll-margin-top: 24px; }
+  section > h2 { font-size: 21px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  section > h2 .tag {
+    font-size: 12px; font-weight: 600; color: var(--accent-text);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 5px;
+  }
+  section > .desc { color: var(--text-muted); font-size: 14px; margin: 6px 0 20px; max-width: 76ch; }
+  section > .desc strong { color: var(--text); }
+
+  .table-wrap {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-raised); box-shadow: var(--shadow);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13.5px; }
+  thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--bg-sunken); font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-sunken); }
+
+  .pk { color: var(--accent-text); font-weight: 700; font-size: 11px; }
+  .fk { color: var(--get); font-weight: 700; font-size: 11px; }
+  .constraint {
+    display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px;
+    border-radius: 4px; background: var(--patch-soft); color: var(--patch); margin-left: 4px;
+  }
+
+  .table-card {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .table-card + .table-card { margin-top: 16px; }
+  .table-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border); background: var(--bg-sunken); flex-wrap: wrap;
+  }
+  .table-head .name { font-size: 15px; font-weight: 700; font-family: "UI Mono", ui-monospace, monospace; }
+  .table-head .owner {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border-strong); color: var(--text-muted);
+  }
+  .table-head .owner.supabase { color: var(--get); border-color: var(--get-soft); background: var(--get-soft); }
+  .table-head .note { color: var(--text-muted); font-size: 12.5px; margin-left: auto; }
+  .table-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+  .diagram-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .diagram-toolbar button {
+    font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .diagram-toolbar button:hover { background: var(--bg-sunken); }
+  .diagram-toolbar button:active { transform: translateY(1px); }
+  .diagram-toolbar .zoom-level { font-size: 12.5px; color: var(--text-muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .diagram-toolbar .hint { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+
+  .diagram-frame {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--mermaid-bg);
+    box-shadow: var(--shadow); padding: 0; overflow: auto; height: min(70vh, 640px);
+    cursor: grab; position: relative;
+  }
+  .diagram-frame.grabbing { cursor: grabbing; user-select: none; }
+  .diagram-inner { display: inline-block; padding: 28px; transform-origin: 0 0; }
+  @media (prefers-reduced-motion: no-preference) { .diagram-inner { transition: transform 0.15s ease-out; } }
+  .diagram-frame .mermaid svg { min-width: 700px; }
+
+  .note-card {
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--accent-soft);
+    color: var(--accent-text); padding: 14px 16px; font-size: 13.5px;
+  }
+  .note-card b { color: inherit; }
+
+  .decision-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .decision-card {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg-raised);
+    box-shadow: var(--shadow); padding: 14px 16px;
+  }
+  .decision-card h3 { margin: 0 0 6px; font-size: 14px; }
+  .decision-card p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 12px;
+    padding-top: 18px; color: var(--text-faint); font-size: 12.5px;
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; padding: 24px 16px 80px; }
+    nav.toc { position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    nav.toc .toc-title { display: none; }
+    nav.toc a { white-space: nowrap; padding: 5px 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
+    <h1>DB 스키마</h1>
+    <p class="subtitle"><code>api-spec.md</code> v0.4 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다.</p>
+    <div class="badges">
+      <span class="badge">v0.2</span>
+      <span class="badge outline">PostgreSQL · Supabase</span>
+      <span class="badge outline">클리닉 EMR 동기화 구조</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-title">목차</div>
+    <a href="#erd">ERD</a>
+    <a href="#auth">인증 (Supabase 관리)</a>
+    <a href="#emr">클리닉 EMR 연동</a>
+    <a href="#tables">테이블 정의</a>
+    <a href="#decisions">설계 결정</a>
+  </nav>
+
+  <main>
+    <section id="erd">
+      <h2>ERD</h2>
+      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. <span class="mono">phone_verifications</span>는 가입 전 단계라 계정과 연결되지 않는 독립 테이블이다.</p>
+
+      <div class="diagram-toolbar">
+        <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
+        <span class="zoom-level" id="zoomLevel">100%</span>
+        <button type="button" id="zoomInBtn" aria-label="확대">+</button>
+        <button type="button" id="zoomResetBtn">원본 크기</button>
+        <span class="hint">드래그해서 이동 · Ctrl+휠로 확대·축소</span>
+      </div>
+      <div class="diagram-frame" id="diagramFrame">
+        <div class="diagram-inner" id="diagramInner">
+<pre class="mermaid">
+%%{init: {"themeVariables": {"fontSize": "16px"}}}%%
+erDiagram
+  AUTH_USERS ||--o| PROFILES : "1:1"
+  AUTH_USERS ||--o| MEDICAL_PROFILES : "1:1 (EMR sync)"
+  AUTH_USERS ||--o{ CARE_RECORDS : "1:N (EMR sync)"
+  AUTH_USERS ||--o{ MEMBERSHIPS : "1:N"
+  AUTH_USERS ||--o{ QUESTIONS : "1:N"
+  AUTH_USERS ||--o{ MEDICAL_DATA_ACCESS_LOG : "1:N"
+  CARE_RECORDS ||--o{ AFTERCARE_GUIDES : "1:N"
+  CARE_RECORDS ||--o{ QUESTIONS : "0:N"
+
+  AUTH_USERS {
+    uuid id PK
+    text email
+    text encrypted_password
+  }
+  MEDICAL_PROFILES {
+    uuid user_id PK "FK -> auth.users"
+    text external_patient_id
+    text_array allergies
+    text_array chronic_conditions
+    text doctor_general_comment
+    text source_system
+    timestamptz synced_at
+  }
+  MEDICAL_DATA_ACCESS_LOG {
+    uuid id PK
+    uuid patient_user_id FK
+    text accessed_by
+    text_array accessed_fields
+    text request_context
+    timestamptz accessed_at
+  }
+  PROFILES {
+    uuid user_id PK "FK -> auth.users"
+    text name
+    text phone
+    timestamptz phone_verified_at
+    text_array interest_goals
+    bool push_enabled
+    bool aftercare_reminder
+    bool membership_expiry_alert
+  }
+  CARE_RECORDS {
+    uuid id PK
+    uuid user_id FK
+    text care_name
+    date care_date
+    text part_of_body
+    text brand
+    text store
+    text practitioner
+    text_array basic_aftercare_guide
+    text doctor_comment
+    text external_record_id
+    timestamptz synced_at
+  }
+  MEMBERSHIPS {
+    uuid id PK
+    uuid user_id FK
+    text product_name
+    int total_count
+    int used_count
+    int remaining_count
+    date expires_at
+    date last_used_at
+    text_array available_care_names
+  }
+  AFTERCARE_GUIDES {
+    uuid id PK
+    uuid user_id FK
+    uuid care_record_id FK
+    int days_elapsed
+    text elapsed_range
+    text_array must_avoid
+    text_array basic_care
+    timestamptz generated_at
+    date generated_date
+    timestamptz cache_expires_at
+  }
+  QUESTIONS {
+    uuid id PK
+    uuid user_id FK
+    uuid care_record_id FK
+    text category
+    text question
+    text status
+    text answer
+    bool expert_contact_required
+  }
+  PHONE_VERIFICATIONS {
+    uuid id PK
+    text phone
+    text code_hash
+    timestamptz expires_at
+    int attempts
+    timestamptz verified_at
+  }
+</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>인증 (Supabase 관리) <span class="tag">직접 구현 안 함</span></h2>
+      <p class="desc">이메일/비밀번호 계정, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 전부 Supabase Auth가 처리한다. 우리 스키마는 <span class="mono">auth.users.id</span>를 FK로 참조만 한다. 전화번호 인증(SMS OTP)은 Supabase의 전화 인증 기능을 쓰지 않고, 회원가입 이전 단계를 위한 별도 테이블(<span class="mono">phone_verifications</span>)로 직접 구현한다 — 국내 SMS 업체(예: Solapi, 알리고) 연동이 Supabase 기본 지원 목록에 없기 때문.</p>
+      <div class="note-card">
+        <b>가입 흐름</b>: <span class="mono">POST /auth/signup/verify-phone/request</span> → 우리 서버가 국내 SMS API 호출 → <span class="mono">phone_verifications</span>에 코드 해시 저장 → <span class="mono">/confirm</span>으로 검증 → <span class="mono">phoneVerifiedToken</span>(짧은 서명 토큰) 발급 → <span class="mono">POST /auth/signup</span> 호출 시 이 토큰을 검증한 뒤 <span class="mono">supabase.auth.signUp()</span>으로 계정 생성 → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> 행 insert.
+      </div>
+    </section>
+
+    <section id="emr">
+      <h2>클리닉 EMR 연동 <span class="tag">구조적 전제</span></h2>
+      <p class="desc">이 서비스는 <b>클리닉(AAC)의 의료 데이터베이스(EMR)에 이미 존재하는 환자 기록</b>을 바탕으로 환자 본인에게 사후관리를 제공한다 — 환자가 자기 진료기록을 열람하는 patient-portal과 같은 구조다. <span class="mono">care_records</span>의 시술 이력, 알러지 정보, 의사 코멘트는 우리 앱이 만드는 원본 데이터가 아니라 <b>클리닉 EMR에서 동기화(sync)해온 사본</b>이다.</p>
+      <div class="note-card">
+        <b>원본(source of truth)</b>은 클리닉 EMR(별도 시스템, 이 저장소 범위 밖)이고, 우리 DB는 필요한 필드만 읽기 전용으로 동기화해 patient-facing 앱과 LLM 컨텍스트에 쓴다. MVP는 실제 연동 대신 가상 데이터를 직접 시드하지만, <span class="mono">external_*_id</span> / <span class="mono">synced_at</span> / <span class="mono">source_system</span> 필드를 미리 넣어둬서 나중에 실제 배치 동기화(ETL)로 교체할 수 있게 한다. 알러지·의사 코멘트는 <span class="mono">GET /aftercare/daily-guide</span>, <span class="mono">POST /aftercare/questions</span>의 LLM 컨텍스트에 반드시 포함해 "알러지 있는 성분을 권하는" 실수를 막는다.
+      </div>
+    </section>
+
+    <section id="tables">
+      <h2>테이블 정의</h2>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.profiles</span>
+          <span class="owner">1:1 auth.users</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="pk">PK</span> <span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>Supabase 계정과 1:1</td></tr>
+                <tr><td class="mono">name</td><td class="mono">text</td><td>not null</td><td>이름</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>인증된 전화번호</td></tr>
+                <tr><td class="mono">phone_verified_at</td><td class="mono">timestamptz</td><td>—</td><td>전화번호 인증 완료 시각</td></tr>
+                <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
+                <tr><td class="mono">push_enabled</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
+                <tr><td class="mono">aftercare_reminder</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
+                <tr><td class="mono">membership_expiry_alert</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
+                <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET/PATCH /profile</span>, <span class="mono">PUT /profile/interests</span>, <span class="mono">GET/PATCH /notifications/settings</span> 모두 이 한 테이블로 처리 (알림 설정을 별도 테이블로 분리하지 않음 — 1:1이라 조인 이득이 없음)</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.phone_verifications</span>
+          <span class="owner">독립 테이블</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span> default gen_random_uuid()</td><td>—</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">text</td><td>not null</td><td>인증 요청한 번호</td></tr>
+                <tr><td class="mono">code_hash</td><td class="mono">text</td><td>not null</td><td>OTP 코드는 평문 저장 금지, 해시만 저장</td></tr>
+                <tr><td class="mono">expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>코드 유효기간 (예: 3분)</td></tr>
+                <tr><td class="mono">attempts</td><td class="mono">int</td><td>default 0</td><td>오입력 횟수, 초과 시 429</td></tr>
+                <tr><td class="mono">verified_at</td><td class="mono">timestamptz</td><td>—</td><td>확인 성공 시각</td></tr>
+                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (phone, created_at desc) — 재요청 주기 제한용</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.care_records</span>
+          <span class="owner supabase">EMR 동기화</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null</td><td>관리명</td></tr>
+                <tr><td class="mono">care_date</td><td class="mono">date</td><td>not null</td><td>관리일</td></tr>
+                <tr><td class="mono">part_of_body / brand / store / practitioner</td><td class="mono">text</td><td>—</td><td>부위 · 브랜드 · 매장 · 담당자</td></tr>
+                <tr><td class="mono">basic_aftercare_guide</td><td class="mono">text[]</td><td>default '{}'</td><td>기본 사후관리 안내</td></tr>
+                <tr><td class="mono">doctor_comment</td><td class="mono">text</td><td>—</td><td>해당 시술 건에 대한 의사 코멘트 (EMR 원본), LLM 컨텍스트에 포함</td></tr>
+                <tr><td class="mono">external_record_id</td><td class="mono">text</td><td>unique (nullable 허용)</td><td>클리닉 EMR 원본 레코드 ID</td></tr>
+                <tr><td class="mono">source_system</td><td class="mono">text</td><td>default 'aac_emr'</td><td>어느 EMR에서 왔는지</td></tr>
+                <tr><td class="mono">synced_at</td><td class="mono">timestamptz</td><td>—</td><td>마지막 동기화 시각</td></tr>
+                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, care_date desc)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET /care-records</span>(필터), <span class="mono">GET /care-records/{id}</span>. 캘린더(<span class="mono">GET /care-records/calendar</span>)는 별도 테이블 없이 <span class="mono">SELECT care_date, COUNT(*) ... GROUP BY care_date</span> 집계로 처리</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.medical_profiles</span>
+          <span class="owner supabase">EMR 동기화 · 민감정보</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="pk">PK</span> <span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">external_patient_id</td><td class="mono">text</td><td>unique</td><td>클리닉 EMR의 환자 ID (환자 단위 동기화 키)</td></tr>
+                <tr><td class="mono">allergies</td><td class="mono">text[]</td><td>default '{}'</td><td>알러지 성분 — LLM 답변 생성 전 필수 참조</td></tr>
+                <tr><td class="mono">chronic_conditions</td><td class="mono">text[]</td><td>default '{}'</td><td>기저 질환</td></tr>
+                <tr><td class="mono">doctor_general_comment</td><td class="mono">text</td><td>—</td><td>시술 건별이 아닌 환자 전반에 대한 의사 코멘트</td></tr>
+                <tr><td class="mono">source_system / synced_at</td><td class="mono">text / timestamptz</td><td>—</td><td>EMR 동기화 메타데이터</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">profiles</span>(앱 계정 데이터)와 분리한 이유: 이 테이블은 EMR에서 읽어온 데이터라 접근 권한·감사 로그를 다르게 관리하기 위함</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.medical_data_access_log</span>
+          <span class="owner">감사 로그</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">patient_user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>누구의 정보가 조회됐는지</td></tr>
+                <tr><td class="mono">accessed_by</td><td class="mono">text</td><td>not null</td><td>patient_self / llm_system / admin</td></tr>
+                <tr><td class="mono">accessed_fields</td><td class="mono">text[]</td><td>not null</td><td>예: ['allergies'], ['doctor_comment']</td></tr>
+                <tr><td class="mono">request_context</td><td class="mono">text</td><td>—</td><td>예: GET /aftercare/daily-guide</td></tr>
+                <tr><td class="mono">accessed_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (patient_user_id, accessed_at desc)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">알러지·의사 코멘트는 민감정보라 "누가/언제/왜" 봤는지 기록. LLM이 컨텍스트로 읽을 때도 <span class="mono">accessed_by: 'llm_system'</span>으로 한 행 남김</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.memberships</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">product_name</td><td class="mono">text</td><td>not null</td><td>상품명</td></tr>
+                <tr><td class="mono">total_count / used_count</td><td class="mono">int</td><td>not null, default 0</td><td>총/사용 횟수</td></tr>
+                <tr><td class="mono">remaining_count</td><td class="mono">int</td><td><span class="constraint">GENERATED</span> total_count - used_count</td><td>계산 컬럼, 직접 갱신 불필요</td></tr>
+                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>유효기간 · 최근 사용일</td></tr>
+                <tr><td class="mono">available_care_names</td><td class="mono">text[]</td><td>default '{}'</td><td>이용 가능 관리 목록</td></tr>
+                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, expires_at)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.aftercare_guides</span>
+          <span class="owner">LLM 캐시</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span></td><td>—</td></tr>
+                <tr><td class="mono">care_record_id</td><td class="mono">uuid</td><td><span class="fk">FK→care_records(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">days_elapsed / elapsed_range</td><td class="mono">int / text</td><td>—</td><td>경과일 · 구간</td></tr>
+                <tr><td class="mono">must_avoid / basic_care</td><td class="mono">text[]</td><td>default '{}'</td><td>LLM 생성 내용</td></tr>
+                <tr><td class="mono">generated_at</td><td class="mono">timestamptz</td><td>not null, default now()</td><td>LLM 생성 시각</td></tr>
+                <tr><td class="mono">generated_date</td><td class="mono">date</td><td><span class="constraint">GENERATED</span> (generated_at at Asia/Seoul)::date</td><td>캐시 키의 일부</td></tr>
+                <tr><td class="mono">cache_expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>자정 만료</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (care_record_id, generated_date)</td><td>"1일 1회 LLM 생성" 규칙을 DB 제약으로 강제</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.questions</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">care_record_id</td><td class="mono">uuid</td><td><span class="fk">FK→care_records(id)</span> <span class="constraint">SET NULL</span>, nullable</td><td>관리 이력 삭제돼도 질문 이력은 남김</td></tr>
+                <tr><td class="mono">category</td><td class="mono">text</td><td>not null</td><td>질문 카테고리</td></tr>
+                <tr><td class="mono">question / answer</td><td class="mono">text</td><td>—</td><td>—</td></tr>
+                <tr><td class="mono">status</td><td class="mono">text</td><td><span class="constraint">CHECK</span> in (answered, out_of_scope, expert_required)</td><td>—</td></tr>
+                <tr><td class="mono">expert_contact_required</td><td class="mono">boolean</td><td>default false</td><td>—</td></tr>
+                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, created_at desc)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <h2>설계 결정</h2>
+      <div class="decision-grid">
+        <div class="decision-card">
+          <h3>추천(Recommendation)은 테이블 없음</h3>
+          <p>규칙 기반이라 매 요청 시 <span class="mono">care_records</span>+<span class="mono">memberships</span>+<span class="mono">profiles.interest_goals</span>로 즉석 계산. <span class="mono">recommendationId</span>는 응답 시점에 생성해 상세조회 라우팅에만 쓴다.</p>
+        </div>
+        <div class="decision-card">
+          <h3>refresh token 테이블 없음</h3>
+          <p>Supabase Auth가 내부적으로 관리. <span class="mono">POST /auth/refresh</span>·<span class="mono">/logout</span>은 Supabase SDK 호출로 대체.</p>
+        </div>
+        <div class="decision-card">
+          <h3>알림 설정은 profiles 컬럼</h3>
+          <p>사용자당 1행이라 별도 테이블로 정규화할 이득이 없음. 항목이 늘어나 구조화가 필요해지면 그때 분리.</p>
+        </div>
+        <div class="decision-card">
+          <h3>캘린더는 집계 쿼리</h3>
+          <p><span class="mono">care_records</span>를 월 단위로 <span class="mono">GROUP BY care_date</span>. 별도 마커 테이블 유지 비용 없음.</p>
+        </div>
+        <div class="decision-card">
+          <h3>1일 1회 LLM 생성은 DB 제약으로</h3>
+          <p><span class="mono">aftercare_guides</span>의 <span class="mono">(care_record_id, generated_date)</span> UNIQUE로 중복 생성을 애플리케이션 로직이 아니라 DB가 막는다.</p>
+        </div>
+        <div class="decision-card">
+          <h3>전화 인증은 Supabase 기능 미사용</h3>
+          <p>국내 SMS 업체 연동을 위해 <span class="mono">phone_verifications</span>를 직접 구현. Supabase의 phone-as-login 기능과는 별개.</p>
+        </div>
+        <div class="decision-card">
+          <h3>알러지·의사코멘트는 별도 테이블</h3>
+          <p><span class="mono">medical_profiles</span>로 <span class="mono">profiles</span>와 분리 — EMR 동기화 대상이라 접근 권한·감사 로그를 다르게 관리.</p>
+        </div>
+        <div class="decision-card">
+          <h3>의료정보 접근은 감사 로그 필수</h3>
+          <p><span class="mono">medical_data_access_log</span>로 알러지·의사 코멘트를 "누가/언제/왜" 봤는지 기록 (LLM 참조 포함).</p>
+        </div>
+        <div class="decision-card">
+          <h3>실서비스 전환 시 법적 검토 필요</h3>
+          <p>클리닉 EMR과의 실제 연동은 개인정보 제3자 제공/위탁 동의, 의료법 관련 규정 검토가 필요. MVP는 가상 데이터 시드로 우회.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 기준 · db-schema v0.2 · 2026-07-30</footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var frame = document.getElementById("diagramFrame");
+  var inner = document.getElementById("diagramInner");
+  var zoomLevel = document.getElementById("zoomLevel");
+  var scale = 1;
+  var MIN_SCALE = 0.4;
+  var MAX_SCALE = 2.5;
+
+  function applyScale() {
+    inner.style.transform = "scale(" + scale + ")";
+    zoomLevel.textContent = Math.round(scale * 100) + "%";
+  }
+  function setScale(next) {
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next));
+    applyScale();
+  }
+
+  document.getElementById("zoomInBtn").addEventListener("click", function () { setScale(scale + 0.15); });
+  document.getElementById("zoomOutBtn").addEventListener("click", function () { setScale(scale - 0.15); });
+  document.getElementById("zoomResetBtn").addEventListener("click", function () {
+    setScale(1);
+    frame.scrollTo({ left: 0, top: 0 });
+  });
+
+  frame.addEventListener("wheel", function (e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setScale(scale + (e.deltaY < 0 ? 0.1 : -0.1));
+  }, { passive: false });
+
+  var isDragging = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+  frame.addEventListener("pointerdown", function (e) {
+    isDragging = true;
+    frame.classList.add("grabbing");
+    startX = e.clientX; startY = e.clientY;
+    startScrollLeft = frame.scrollLeft; startScrollTop = frame.scrollTop;
+    frame.setPointerCapture(e.pointerId);
+  });
+  frame.addEventListener("pointermove", function (e) {
+    if (!isDragging) return;
+    frame.scrollLeft = startScrollLeft - (e.clientX - startX);
+    frame.scrollTop = startScrollTop - (e.clientY - startY);
+  });
+  frame.addEventListener("pointerup", function () { isDragging = false; frame.classList.remove("grabbing"); });
+  frame.addEventListener("pointerleave", function () { isDragging = false; frame.classList.remove("grabbing"); });
+})();
+</script>

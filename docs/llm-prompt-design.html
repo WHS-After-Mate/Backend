@@ -1,0 +1,433 @@
+<title>WHS After Mate — LLM 프롬프트 설계</title>
+<style>
+  @font-face {
+    font-family: "UI Mono";
+    src: local("SFMono-Regular"), local("Consolas"), local("Menlo");
+  }
+
+  :root {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+    --mermaid-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+      --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+      --border: #263029; --border-strong: #34423B;
+      --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+      --get: #7FB3E0; --get-soft: #16232E;
+      --post: #4FD1B3; --post-soft: #163029;
+      --patch: #E0C070; --patch-soft: #2E2814;
+      --error: #E08A8A; --error-soft: #2E1B1B;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --mermaid-bg: #161F1B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+    --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+    --border: #263029; --border-strong: #34423B;
+    --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+    --get: #7FB3E0; --get-soft: #16232E;
+    --post: #4FD1B3; --post-soft: #163029;
+    --patch: #E0C070; --patch-soft: #2E2814;
+    --error: #E08A8A; --error-soft: #2E1B1B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --mermaid-bg: #161F1B;
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22,33,30,.04), 0 4px 14px rgba(22,33,30,.05);
+    --mermaid-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  code, .mono, td.mono, th.mono {
+    font-family: "UI Mono", ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: var(--accent-text); }
+
+  .shell {
+    max-width: 1080px; margin: 0 auto; padding: 40px 28px 100px;
+    display: grid; grid-template-columns: 210px 1fr; gap: 40px; align-items: start;
+  }
+  header.masthead {
+    grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .eyebrow {
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); font-weight: 600;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .subtitle { margin: 0; color: var(--text-muted); font-size: 14.5px; max-width: 70ch; }
+
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .badge {
+    font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid transparent;
+  }
+  .badge.outline { background: transparent; border-color: var(--border-strong); color: var(--text-muted); }
+
+  nav.toc { position: sticky; top: 28px; display: flex; flex-direction: column; gap: 2px; align-self: start; }
+  nav.toc .toc-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint); margin-bottom: 8px; font-weight: 600;
+  }
+  nav.toc a { text-decoration: none; color: var(--text-muted); font-size: 13.5px; padding: 6px 10px; border-radius: 6px; }
+  nav.toc a:hover { color: var(--text); background: var(--bg-sunken); }
+
+  main { display: flex; flex-direction: column; gap: 52px; min-width: 0; }
+  section { scroll-margin-top: 24px; }
+  section > h2 { font-size: 21px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  section > h2 .tag {
+    font-size: 12px; font-weight: 600; color: var(--accent-text);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 5px;
+  }
+  section > .desc { color: var(--text-muted); font-size: 14px; margin: 6px 0 20px; max-width: 76ch; }
+  section > .desc strong { color: var(--text); }
+
+  .table-wrap {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-raised); box-shadow: var(--shadow);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 420px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13.5px; }
+  thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--bg-sunken); font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-sunken); }
+
+  .principle-list { display: flex; flex-direction: column; gap: 10px; padding: 0; margin: 0; list-style: none; }
+  .principle-list li {
+    display: flex; gap: 12px; padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--bg-raised); box-shadow: var(--shadow); font-size: 13.5px;
+  }
+  .principle-list .num {
+    flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent-text); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+
+  .diagram-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .diagram-toolbar button {
+    font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .diagram-toolbar button:hover { background: var(--bg-sunken); }
+  .diagram-toolbar button:active { transform: translateY(1px); }
+  .diagram-toolbar .zoom-level { font-size: 12.5px; color: var(--text-muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .diagram-toolbar .hint { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+  .diagram-frame {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--mermaid-bg);
+    box-shadow: var(--shadow); overflow: auto; height: min(60vh, 460px); cursor: grab; position: relative;
+  }
+  .diagram-frame.grabbing { cursor: grabbing; user-select: none; }
+  .diagram-inner { display: inline-block; padding: 28px; transform-origin: 0 0; }
+  @media (prefers-reduced-motion: no-preference) { .diagram-inner { transition: transform 0.15s ease-out; } }
+  .diagram-frame .mermaid svg { min-width: 620px; }
+
+  .endpoint-card {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .endpoint-card + .endpoint-card { margin-top: 16px; }
+  .endpoint-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border); background: var(--bg-sunken); flex-wrap: wrap;
+  }
+  .endpoint-head .path { font-size: 14px; font-weight: 700; font-family: "UI Mono", ui-monospace, monospace; }
+  .endpoint-head .note { color: var(--text-muted); font-size: 12.5px; margin-left: auto; }
+  .endpoint-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .block-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-faint); font-weight: 600; margin-bottom: 6px;
+  }
+
+  pre.code-block {
+    margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--bg-sunken);
+    border: 1px solid var(--border); font-size: 12.8px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+  }
+
+  .status-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .status-chip {
+    font-family: "UI Mono", ui-monospace, monospace; font-size: 11.5px; padding: 3px 8px;
+    border-radius: 5px; border: 1px solid var(--border-strong); color: var(--text-muted);
+  }
+  .status-chip.err { color: var(--error); border-color: var(--error-soft); background: var(--error-soft); }
+  .status-chip.ok { color: var(--post); border-color: var(--post-soft); background: var(--post-soft); }
+  .status-chip.llm { color: var(--accent-text); border-color: var(--accent-soft); background: var(--accent-soft); }
+
+  .open-q { display: flex; flex-direction: column; gap: 10px; padding-left: 20px; }
+  .open-q li { margin: 0; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 12px;
+    padding-top: 18px; color: var(--text-faint); font-size: 12.5px;
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; padding: 24px 16px 80px; }
+    nav.toc { position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    nav.toc .toc-title { display: none; }
+    nav.toc a { white-space: nowrap; padding: 5px 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
+    <h1>LLM 프롬프트 설계</h1>
+    <p class="subtitle">LLM은 <code>GET /aftercare/daily-guide</code>와 <code>POST /aftercare/questions</code> 딱 두 곳에서만 호출된다. 카테고리 검증과 위험 신호 감지는 LLM 호출 전 규칙 기반으로 처리해, LLM은 "이미 안전하다고 확인된 요청"만 받는다.</p>
+    <div class="badges">
+      <span class="badge">v0.1</span>
+      <span class="badge outline">2개 호출 지점</span>
+      <span class="badge outline">구조화 출력 강제</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-title">목차</div>
+    <a href="#principles">공통 원칙</a>
+    <a href="#pipeline">파이프라인</a>
+    <a href="#guide">1. 일차별 가이드</a>
+    <a href="#qa">2. 챗봇 Q&amp;A</a>
+    <a href="#versioning">버전 관리</a>
+    <a href="#open">미확정 사항</a>
+  </nav>
+
+  <main>
+    <section id="principles">
+      <h2>공통 원칙</h2>
+      <ul class="principle-list">
+        <li><span class="num">1</span>근거는 오직 두 가지 — 검수된 관리 가이드(RAG 소스)와 환자 컨텍스트(관리 이력·경과일·알러지·의사 코멘트). 이 밖의 지식으로 답하지 않는다.</li>
+        <li><span class="num">2</span>의료적 진단·처방 금지 — 질환명 진단, 회복 완료 판정, 약물 처방, 응급 상태 단독 판단을 생성하지 않는다.</li>
+        <li><span class="num">3</span>위험 신호·범위 밖 카테고리는 LLM에 도달하기 전에 규칙 엔진이 먼저 걸러낸다.</li>
+        <li><span class="num">4</span>구조화된 출력 강제 — 두 엔드포인트 모두 고정 JSON 스키마로만 응답받는다(모델의 JSON 모드/함수 호출 사용).</li>
+        <li><span class="num">5</span>알러지·의사 코멘트는 항상 컨텍스트에 포함 — <span class="mono">medical_data_access_log</span>에 <span class="mono">accessed_by: 'llm_system'</span>으로 접근 기록.</li>
+      </ul>
+    </section>
+
+    <section id="pipeline">
+      <h2>파이프라인 <span class="tag">두 엔드포인트 공통</span></h2>
+      <p class="desc">규칙 필터 → 컨텍스트 조립 → LLM 호출 → 출력 검증 → 저장/응답, 다섯 단계는 두 엔드포인트가 동일하게 따른다.</p>
+      <div class="diagram-toolbar">
+        <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
+        <span class="zoom-level" id="zoomLevel">100%</span>
+        <button type="button" id="zoomInBtn" aria-label="확대">+</button>
+        <button type="button" id="zoomResetBtn">원본 크기</button>
+        <span class="hint">드래그해서 이동 · Ctrl+휠로 확대·축소</span>
+      </div>
+      <div class="diagram-frame" id="diagramFrame">
+        <div class="diagram-inner" id="diagramInner">
+<pre class="mermaid">
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 55}, "themeVariables": {"fontSize": "16px"}}}%%
+flowchart TD
+  A["① 규칙 기반 사전 필터<br/>카테고리 검증 · 위험 신호 감지"] -->|통과| B["② 컨텍스트 조립<br/>care_records + medical_profiles + 검수된 가이드"]
+  A -.->|차단| X1["즉시 반환<br/>422 / expert_required<br/>(LLM 미호출)"]
+  B --> C["③ LLM 호출<br/>system prompt + context + 출력 스키마"]
+  C --> D["④ 출력 검증<br/>금지어 필터 · 스키마 검증"]
+  D -->|통과| E["⑤ 저장 / 응답<br/>aftercare_guides upsert 또는 questions insert"]
+  D -.->|실패| X2["재시도 1회 → 계속 실패 시 503"]
+
+  classDef block fill:#E3F0EC,stroke:#0F6E5C,color:#16211E;
+  classDef stop fill:#F5E9E8,stroke:#A83C3C,color:#16211E;
+  class A,B,C,D,E block;
+  class X1,X2 stop;
+</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="guide">
+      <h2>1. <span class="mono">GET /aftercare/daily-guide</span> <span class="tag">하루 1회 캐시</span></h2>
+      <p class="desc">캐시 미스일 때만 호출된다(<span class="mono">care_record_id</span> + 오늘 날짜 조합이 <span class="mono">aftercare_guides</span>에 없을 때). <span class="mono">elapsed_range</span>(예: "3-7")는 LLM이 정하는 게 아니라 규칙(구간 lookup)으로 먼저 결정 — LLM은 그 구간의 검수된 가이드를 환자 상황에 맞게 자연어로 풀어 쓰는 역할만 한다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">컨텍스트 주입 필드</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>출처</th><th>용도</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">care_name / care_date / days_elapsed</td><td class="mono">care_records</td><td>언제 무슨 시술을 받았는지</td></tr>
+                <tr><td class="mono">part_of_body / brand</td><td class="mono">care_records</td><td>시술 부위 맥락</td></tr>
+                <tr><td class="mono">doctor_comment</td><td class="mono">care_records</td><td>해당 시술 건 의사 코멘트</td></tr>
+                <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">medical_profiles</td><td>특정 성분·행동 회피 근거</td></tr>
+                <tr><td class="mono">doctor_general_comment</td><td class="mono">medical_profiles</td><td>환자 전반 의사 코멘트</td></tr>
+                <tr><td class="mono">검수된 가이드 원문</td><td>내부 레퍼런스 문서</td><td>답변의 유일한 사실 근거</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <div class="block-label">System Prompt (초안)</div>
+            <pre class="code-block">당신은 AAC 웰니스 클리닉의 사후관리 안내 도우미입니다.
+아래 "검수된 가이드"와 "환자 정보"만을 근거로, 해당 환자의 경과일에 맞는
+사후관리 주의사항을 안내하세요.
+
+규칙:
+- 검수된 가이드에 없는 내용을 지어내지 마세요.
+- 질환을 진단하거나, 회복 완료를 판정하거나, 약물을 처방하지 마세요.
+- 환자의 알러지/기저질환에 해당하는 성분·행동이 검수된 가이드에 포함되어
+  있다면, 반드시 회피 항목으로 강조하세요.
+- 반드시 아래 JSON 스키마로만 응답하세요. 다른 텍스트를 추가하지 마세요.</pre>
+          </div>
+
+          <div>
+            <div class="block-label">출력 스키마</div>
+            <pre class="code-block">{
+  "mustAvoid": ["string"],
+  "basicCare": ["string"],
+  "nextCheckDate": "YYYY-MM-DD | null"
+}</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">aftercare_guides.must_avoid</span> / <span class="mono">basic_care</span> / <span class="mono">next_check_date</span>에 저장, <span class="mono">generated_by='llm'</span></p>
+          </div>
+
+          <div class="status-row"><span class="status-chip err">503 GUIDE_GENERATION_FAILED → 검수된 가이드 원문 그대로 폴백</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="qa">
+      <h2>2. <span class="mono">POST /aftercare/questions</span> <span class="tag">매 요청 호출</span></h2>
+      <p class="desc">질문이 매번 다르므로 캐싱 없음.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">사전 규칙 필터</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>조건</th><th>처리</th></tr></thead>
+              <tbody>
+                <tr><td><span class="mono">category</span>가 지원 6종 밖 (세안·샤워/화장·렌즈/운동·사우나/음주·흡연/화장품·성분/증상)</td><td><span class="status-chip err">422 UNSUPPORTED_CATEGORY</span>, LLM 미호출</td></tr>
+                <tr><td>위험 신호 키워드 포함 (통증 증가, 출혈, 시야 이상, 고열, 호흡곤란 등)</td><td><span class="status-chip err">status: expert_required</span>, LLM 미호출</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <div class="block-label">System Prompt (초안)</div>
+            <pre class="code-block">당신은 AAC 웰니스 클리닉의 사후관리 Q&A 도우미입니다.
+아래 카테고리 범위 안에서만 답변하세요: 세안·샤워, 화장·렌즈, 운동·사우나,
+음주·흡연, 화장품·성분, 증상.
+
+규칙:
+- 답변은 "검수된 가이드"와 "환자 정보"에서만 근거를 찾으세요.
+- 근거가 부족하거나 이 서비스 범위를 벗어난 질문이면 status를
+  "out_of_scope"로 반환하고 answer는 비워두세요.
+- 질환 진단, 회복 완료 판정, 약물 처방에 해당하는 답을 만들지 마세요.
+- 환자의 알러지/기저질환과 관련된 질문이면 반드시 그 정보를 반영해 답하세요.
+- 반드시 아래 JSON 스키마로만 응답하세요.</pre>
+          </div>
+
+          <div>
+            <div class="block-label">출력 스키마</div>
+            <pre class="code-block">{
+  "status": "answered | out_of_scope",
+  "answer": "string | null"
+}</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="mono">expert_required</span>는 이미 규칙 단계에서 결정되어 LLM에 도달하지 않는다 — LLM은 <span class="mono">answered</span>/<span class="mono">out_of_scope</span> 둘 중 하나만 선택. 서버가 <span class="mono">answeredBy: "llm"</span>, <span class="mono">basedOn</span>을 붙여 최종 반환</p>
+          </div>
+
+          <div class="status-row"><span class="status-chip err">503 ANSWER_GENERATION_FAILED → 재시도 안내 문구 반환 (질문마다 달라 고정 폴백 어려움)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="versioning">
+      <h2>버전 관리 <span class="tag">추후 확장</span></h2>
+      <p class="desc">현재 <span class="mono">generated_by</span> / <span class="mono">answered_by</span>는 <span class="mono">'llm'</span> 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 <span class="mono">prompt_version</span>, <span class="mono">model_name</span> 컬럼을 <span class="mono">aftercare_guides</span>/<span class="mono">questions</span>에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).</p>
+    </section>
+
+    <section id="open">
+      <h2>미확정 사항 <span class="tag">기획/전문가 검토 필요</span></h2>
+      <ul class="open-q">
+        <li>실제 사용할 LLM 모델 선택</li>
+        <li>검수된 관리 가이드(RAG 소스) 문서를 어떤 형식·어디에 저장할지 (DB 테이블 vs 정적 파일) — 아직 스키마에 없음</li>
+        <li>위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)</li>
+        <li>출력 검증(금지어 필터) 실패 시 재시도 vs 즉시 폴백 정책</li>
+      </ul>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 · db-schema v0.2 기준 · 2026-07-30</footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var frame = document.getElementById("diagramFrame");
+  var inner = document.getElementById("diagramInner");
+  var zoomLevel = document.getElementById("zoomLevel");
+  var scale = 1;
+  var MIN_SCALE = 0.4;
+  var MAX_SCALE = 2.5;
+
+  function applyScale() {
+    inner.style.transform = "scale(" + scale + ")";
+    zoomLevel.textContent = Math.round(scale * 100) + "%";
+  }
+  function setScale(next) {
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next));
+    applyScale();
+  }
+
+  document.getElementById("zoomInBtn").addEventListener("click", function () { setScale(scale + 0.15); });
+  document.getElementById("zoomOutBtn").addEventListener("click", function () { setScale(scale - 0.15); });
+  document.getElementById("zoomResetBtn").addEventListener("click", function () {
+    setScale(1);
+    frame.scrollTo({ left: 0, top: 0 });
+  });
+
+  frame.addEventListener("wheel", function (e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setScale(scale + (e.deltaY < 0 ? 0.1 : -0.1));
+  }, { passive: false });
+
+  var isDragging = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+  frame.addEventListener("pointerdown", function (e) {
+    isDragging = true;
+    frame.classList.add("grabbing");
+    startX = e.clientX; startY = e.clientY;
+    startScrollLeft = frame.scrollLeft; startScrollTop = frame.scrollTop;
+    frame.setPointerCapture(e.pointerId);
+  });
+  frame.addEventListener("pointermove", function (e) {
+    if (!isDragging) return;
+    frame.scrollLeft = startScrollLeft - (e.clientX - startX);
+    frame.scrollTop = startScrollTop - (e.clientY - startY);
+  });
+  frame.addEventListener("pointerup", function () { isDragging = false; frame.classList.remove("grabbing"); });
+  frame.addEventListener("pointerleave", function () { isDragging = false; frame.classList.remove("grabbing"); });
+})();
+</script>

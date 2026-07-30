@@ -1,0 +1,438 @@
+<title>WHS After Mate — API 유저플로우</title>
+<style>
+  @font-face {
+    font-family: "UI Mono";
+    src: local("SFMono-Regular"), local("Consolas"), local("Menlo");
+  }
+
+  :root {
+    --bg: #F4F6F5;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EBEFED;
+    --text: #16211E;
+    --text-muted: #55635F;
+    --text-faint: #8B978F;
+    --border: #DCE3DF;
+    --border-strong: #C3CDC8;
+    --accent: #0F6E5C;
+    --accent-soft: #E3F0EC;
+    --accent-text: #0B5245;
+    --get: #2B6CA8;
+    --get-soft: #E5EEF6;
+    --post: #0F6E5C;
+    --post-soft: #E3F0EC;
+    --patch: #8A6D1F;
+    --patch-soft: #F3EDDD;
+    --error: #A83C3C;
+    --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+    --mermaid-bg: #ffffff;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+      --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+      --border: #263029; --border-strong: #34423B;
+      --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+      --get: #7FB3E0; --get-soft: #16232E;
+      --post: #4FD1B3; --post-soft: #163029;
+      --patch: #E0C070; --patch-soft: #2E2814;
+      --error: #E08A8A; --error-soft: #2E1B1B;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --mermaid-bg: #161F1B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+    --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+    --border: #263029; --border-strong: #34423B;
+    --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+    --get: #7FB3E0; --get-soft: #16232E;
+    --post: #4FD1B3; --post-soft: #163029;
+    --patch: #E0C070; --patch-soft: #2E2814;
+    --error: #E08A8A; --error-soft: #2E1B1B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --mermaid-bg: #161F1B;
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22,33,30,.04), 0 4px 14px rgba(22,33,30,.05);
+    --mermaid-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, .mono, td.mono, th.mono {
+    font-family: "UI Mono", ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 28px 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  header.masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .eyebrow {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent-text); font-weight: 600;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .subtitle { margin: 0; color: var(--text-muted); font-size: 14.5px; max-width: 68ch; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .sw-get { background: var(--get-soft); border: 1px solid var(--get); }
+  .sw-post { background: var(--post-soft); border: 1px solid var(--post); }
+  .sw-patch { background: var(--patch-soft); border: 1px solid var(--patch); }
+
+  section > h2 { font-size: 20px; margin: 0 0 4px; }
+  section > .desc { color: var(--text-muted); font-size: 14px; margin: 6px 0 20px; max-width: 74ch; }
+
+  .diagram-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .diagram-toolbar button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .diagram-toolbar button:hover { background: var(--bg-sunken); }
+  .diagram-toolbar button:active { transform: translateY(1px); }
+  .diagram-toolbar .zoom-level {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    min-width: 44px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .diagram-toolbar .hint {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-left: auto;
+  }
+
+  .diagram-frame {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--mermaid-bg);
+    box-shadow: var(--shadow);
+    padding: 0;
+    overflow: auto;
+    height: min(75vh, 720px);
+    cursor: grab;
+    position: relative;
+  }
+  .diagram-frame.grabbing { cursor: grabbing; user-select: none; }
+  .diagram-inner {
+    display: inline-block;
+    padding: 28px;
+    transform-origin: 0 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .diagram-inner { transition: transform 0.15s ease-out; }
+  }
+  .diagram-frame .mermaid svg { min-width: 900px; }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13.5px; }
+  thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--bg-sunken); font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-sunken); }
+  td.step-no { color: var(--text-faint); font-weight: 600; width: 40px; }
+
+  .method {
+    display: inline-block;
+    font-family: "UI Mono", ui-monospace, monospace;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em;
+    padding: 2px 8px; border-radius: 5px;
+  }
+  .method.get { color: var(--get); background: var(--get-soft); }
+  .method.post { color: var(--post); background: var(--post-soft); }
+  .method.patch { color: var(--patch); background: var(--patch-soft); }
+  .method.put { color: var(--patch); background: var(--patch-soft); }
+
+  .note-card {
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    padding: 14px 16px;
+    font-size: 13.5px;
+  }
+  .note-card b { color: inherit; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 18px;
+    color: var(--text-faint);
+    font-size: 12.5px;
+  }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
+    <h1>API 유저플로우</h1>
+    <p class="subtitle">유저플로우 "사후관리 Q&amp;A AI 일차별 업데이트"(v2)의 화면 흐름에, <code>api-spec.md</code>에 정의된 실제 API 호출을 매핑한 다이어그램. 어느 화면에서 어떤 엔드포인트가 호출되는지 순서대로 확인한다.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch sw-get"></span>GET (조회)</span>
+      <span class="item"><span class="swatch sw-post"></span>POST (생성/실행)</span>
+      <span class="item"><span class="swatch sw-patch"></span>PATCH / PUT (수정)</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>흐름 다이어그램</h2>
+    <p class="desc">5개 화면 섹션(인증 → 홈 → 사후관리 Q&amp;A → My Care → 설정) 순서를 그대로 따른다. 실선은 화면 이동, 점선은 조건 분기(LLM 응답 상태)를 의미한다.</p>
+    <div class="diagram-toolbar">
+      <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
+      <span class="zoom-level" id="zoomLevel">100%</span>
+      <button type="button" id="zoomInBtn" aria-label="확대">+</button>
+      <button type="button" id="zoomResetBtn">원본 크기</button>
+      <span class="hint">드래그해서 이동 · Ctrl+휠로 확대·축소</span>
+    </div>
+    <div class="diagram-frame" id="diagramFrame">
+      <div class="diagram-inner" id="diagramInner">
+<pre class="mermaid">
+%%{init: {"flowchart": {"nodeSpacing": 45, "rankSpacing": 65, "curve": "basis"}, "themeVariables": {"fontSize": "17px"}}}%%
+flowchart TD
+  START(["앱 시작"])
+
+  subgraph SEC1["① 인증 / 온보딩"]
+    LOGIN["로그인 화면<br/><b>POST /auth/login</b>"]
+    PHONEVERIFY["전화번호 인증<br/><b>POST /auth/signup/verify-phone/*</b>"]
+    SIGNUP["회원가입<br/><b>POST /auth/signup</b>"]
+  end
+
+  subgraph SEC2["② 홈 대시보드"]
+    HOME["홈 진입<br/><b>GET /home/summary</b>"]
+    AFTERCARD["사후관리 카드 클릭<br/>(summary 응답 미리보기)"]
+    ASKAI["AI에게 물어보기 버튼"]
+    RECCARD["다음 관리 추천 카드<br/>(summary 응답 재사용)"]
+    RECDETAIL["추천 상세 보기<br/><b>GET /recommendations/next-care/:id</b>"]
+  end
+
+  subgraph SEC3["③ 사후관리 Q&amp;A"]
+    DAILYGUIDE["AI 사후관리 가이드<br/>(시술 경과 일차별 사후관리)<br/><b>GET /aftercare/daily-guide</b>"]
+    CHATENTRY["챗봇 Q&amp;A 진입<br/><b>GET /aftercare/question-categories</b>"]
+    ASKQ["질문 입력<br/><b>POST /aftercare/questions</b>"]
+    ANSWER["AI 답변 확인"]
+    EXPERT["전문가 문의 안내"]
+  end
+
+  subgraph SEC4["④ My Care"]
+    MYCARE["My Care 진입<br/>(캘린더 / 이력 / 이용권)"]
+    CALENDAR["캘린더 보기<br/><b>GET /care-records/calendar</b>"]
+    CALENDARDAY["날짜 클릭 → 시술 내역<br/><b>GET /care-records?dateFrom=dateTo</b>"]
+    CARELIST["이력 목록<br/><b>GET /care-records</b>"]
+    CAREFILTER["이력 필터 적용<br/><b>GET /care-records?date,part,brand</b>"]
+    CAREDETAIL["관리 상세<br/><b>GET /care-records/:id</b>"]
+    MEMLIST["이용권 목록<br/><b>GET /memberships</b>"]
+    MEMDETAIL["이용권 상세<br/><b>GET /memberships/:id</b>"]
+  end
+
+  subgraph SEC5["⑤ 설정 / 프로필"]
+    SETTINGS["설정 진입"]
+    PROFILE["프로필 화면<br/><b>GET /profile</b>"]
+    INTERESTS["관심 목표 설정<br/><b>PUT /profile/interests</b>"]
+    NOTIF["알림 설정<br/><b>GET /notifications/settings</b>"]
+    NOTIFUPDATE["알림 온/오프<br/><b>PATCH /notifications/settings</b>"]
+    LOGOUT["로그아웃<br/><b>POST /auth/logout</b>"]
+  end
+
+  START -->|기존 회원| LOGIN
+  START -->|신규 회원| PHONEVERIFY --> SIGNUP
+  SIGNUP -->|가입 완료| HOME
+  LOGIN -->|로그인 성공| HOME
+  HOME --> AFTERCARD --> DAILYGUIDE
+  HOME --> ASKAI --> CHATENTRY
+  HOME --> RECCARD --> RECDETAIL
+  HOME --> MYCARE
+  HOME --> SETTINGS
+
+  DAILYGUIDE -->|더 궁금한 점?| CHATENTRY
+  CHATENTRY --> ASKQ
+  ASKQ -.->|status: answered| ANSWER
+  ASKQ -.->|status: out_of_scope / expert_required| EXPERT
+
+  MYCARE --> CALENDAR --> CALENDARDAY --> CAREDETAIL
+  MYCARE --> CARELIST
+  CARELIST -.->|필터 적용| CAREFILTER
+  CARELIST --> CAREDETAIL
+  MYCARE --> MEMLIST --> MEMDETAIL
+
+  CAREDETAIL -->|AI 사후관리 가이드 버튼| DAILYGUIDE
+
+  SETTINGS --> PROFILE --> INTERESTS
+  SETTINGS --> NOTIF --> NOTIFUPDATE
+  SETTINGS --> LOGOUT
+
+  classDef get fill:#E5EEF6,stroke:#2B6CA8,color:#16211E;
+  classDef post fill:#E3F0EC,stroke:#0F6E5C,color:#16211E;
+  classDef patch fill:#F3EDDD,stroke:#8A6D1F,color:#16211E;
+  classDef plain fill:#ffffff,stroke:#C3CDC8,color:#16211E;
+
+  class HOME,RECDETAIL,DAILYGUIDE,CHATENTRY,CALENDAR,CALENDARDAY,CARELIST,CAREFILTER,CAREDETAIL,MEMLIST,MEMDETAIL,PROFILE,NOTIF get;
+  class LOGIN,ASKQ,LOGOUT,PHONEVERIFY,SIGNUP post;
+  class INTERESTS,NOTIFUPDATE patch;
+  class AFTERCARD,ASKAI,RECCARD,ANSWER,EXPERT,MYCARE,SETTINGS,START plain;
+</pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>단계별 표</h2>
+    <p class="desc">다이어그램과 동일한 순서를 표로 정리한 버전. 분기 조건과 비고를 함께 확인할 수 있다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>화면 / 액션</th><th>API 호출</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td class="step-no">0a</td><td>전화번호 인증 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/request</span>, <span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/confirm</span></td><td>SMS 코드 발송 → 확인, phoneVerifiedToken 발급</td></tr>
+          <tr><td class="step-no">0b</td><td>회원가입 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup</span></td><td>이메일/비밀번호 + 인증된 전화번호</td></tr>
+          <tr><td class="step-no">1</td><td>로그인 화면 (기존 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/login</span></td><td>이메일/비밀번호, accessToken+refreshToken 발급</td></tr>
+          <tr><td class="step-no">2</td><td>홈 진입</td><td><span class="method get">GET</span> <span class="mono">/home/summary</span></td><td>사후관리 카드·이용권 요약·추천을 한 번에 로드</td></tr>
+          <tr><td class="step-no">3</td><td>사후관리 카드 클릭 → AI 사후관리 가이드</td><td><span class="method get">GET</span> <span class="mono">/aftercare/daily-guide</span></td><td>시술 경과 일차별 사후관리. 1일 1회 LLM 생성, 자정까지 캐시</td></tr>
+          <tr><td class="step-no">4</td><td>챗봇 Q&amp;A 진입</td><td><span class="method get">GET</span> <span class="mono">/aftercare/question-categories</span></td><td>진입 경로 2곳: ① 가이드 페이지의 "더 궁금한 점?" ② 홈 화면의 "AI에게 물어보기" 버튼</td></tr>
+          <tr><td class="step-no">5</td><td>질문 입력 → 답변</td><td><span class="method post">POST</span> <span class="mono">/aftercare/questions</span></td><td>status: answered / out_of_scope / expert_required 로 분기</td></tr>
+          <tr><td class="step-no">6</td><td>추천 상세 보기</td><td><span class="method get">GET</span> <span class="mono">/recommendations/next-care/:id</span></td><td>홈 카드에서 진입 시에만 호출</td></tr>
+          <tr><td class="step-no">7</td><td>My Care 캘린더 보기</td><td><span class="method get">GET</span> <span class="mono">/care-records/calendar</span></td><td>월별 시술 날짜 마커 표시</td></tr>
+          <tr><td class="step-no">8</td><td>캘린더 날짜 클릭 → 시술 내역</td><td><span class="method get">GET</span> <span class="mono">/care-records?dateFrom=dateTo</span></td><td>클릭한 날짜로 조회, 기존 필터 쿼리 재사용</td></tr>
+          <tr><td class="step-no">9</td><td>이력 목록</td><td><span class="method get">GET</span> <span class="mono">/care-records</span></td><td>필터 시 dateFrom/dateTo/partOfBody/brand 쿼리 추가</td></tr>
+          <tr><td class="step-no">10</td><td>관리 상세</td><td><span class="method get">GET</span> <span class="mono">/care-records/:id</span></td><td>캘린더·이력 두 경로 모두 이 화면으로 도착. 기본 사후관리 안내 포함</td></tr>
+          <tr><td class="step-no">11</td><td>관리 상세 → AI 사후관리 가이드</td><td><span class="method get">GET</span> <span class="mono">/aftercare/daily-guide?careRecordId=:id</span></td><td>상세 화면의 "AI 사후관리 가이드" 버튼, 3번 항목과 동일 화면</td></tr>
+          <tr><td class="step-no">12</td><td>이용권 목록 → 상세</td><td><span class="method get">GET</span> <span class="mono">/memberships</span>, <span class="method get">GET</span> <span class="mono">/memberships/:id</span></td><td>잔여 횟수는 목록 응답에 포함</td></tr>
+          <tr><td class="step-no">13</td><td>프로필 화면</td><td><span class="method get">GET</span> <span class="mono">/profile</span></td><td>—</td></tr>
+          <tr><td class="step-no">14</td><td>관심 목표 설정</td><td><span class="method put">PUT</span> <span class="mono">/profile/interests</span></td><td>추천 API의 <span class="mono">basis: goal</span> 입력값으로 사용됨</td></tr>
+          <tr><td class="step-no">15</td><td>알림 설정 조회 → 변경</td><td><span class="method get">GET</span> / <span class="method patch">PATCH</span> <span class="mono">/notifications/settings</span></td><td>변경 필드만 전달</td></tr>
+          <tr><td class="step-no">16</td><td>로그아웃</td><td><span class="method post">POST</span> <span class="mono">/auth/logout</span></td><td>서버 측 refreshToken 무효화</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>공통 처리 (다이어그램 밖)</h2>
+    <div class="note-card">
+      모든 API 호출 공통: accessToken 만료로 <b>401 UNAUTHORIZED</b> 수신 시 <span class="mono">POST /auth/refresh</span>로 재발급 후 원 요청 재시도. refresh마저 실패하면 로컬 세션을 지우고 로그인 화면으로 이동한다.
+    </div>
+  </section>
+
+  <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 기준 · 2026-07-30</footer>
+</div>
+
+<script>
+(function () {
+  var frame = document.getElementById("diagramFrame");
+  var inner = document.getElementById("diagramInner");
+  var zoomLevel = document.getElementById("zoomLevel");
+  var scale = 1;
+  var MIN_SCALE = 0.4;
+  var MAX_SCALE = 2.5;
+
+  function applyScale() {
+    inner.style.transform = "scale(" + scale + ")";
+    zoomLevel.textContent = Math.round(scale * 100) + "%";
+  }
+
+  function setScale(next) {
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next));
+    applyScale();
+  }
+
+  document.getElementById("zoomInBtn").addEventListener("click", function () {
+    setScale(scale + 0.15);
+  });
+  document.getElementById("zoomOutBtn").addEventListener("click", function () {
+    setScale(scale - 0.15);
+  });
+  document.getElementById("zoomResetBtn").addEventListener("click", function () {
+    setScale(1);
+    frame.scrollTo({ left: 0, top: 0 });
+  });
+
+  frame.addEventListener("wheel", function (e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setScale(scale + (e.deltaY < 0 ? 0.1 : -0.1));
+  }, { passive: false });
+
+  var isDragging = false;
+  var startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
+
+  frame.addEventListener("pointerdown", function (e) {
+    isDragging = true;
+    frame.classList.add("grabbing");
+    startX = e.clientX;
+    startY = e.clientY;
+    startScrollLeft = frame.scrollLeft;
+    startScrollTop = frame.scrollTop;
+    frame.setPointerCapture(e.pointerId);
+  });
+  frame.addEventListener("pointermove", function (e) {
+    if (!isDragging) return;
+    frame.scrollLeft = startScrollLeft - (e.clientX - startX);
+    frame.scrollTop = startScrollTop - (e.clientY - startY);
+  });
+  frame.addEventListener("pointerup", function (e) {
+    isDragging = false;
+    frame.classList.remove("grabbing");
+  });
+  frame.addEventListener("pointerleave", function () {
+    isDragging = false;
+    frame.classList.remove("grabbing");
+  });
+})();
+</script>

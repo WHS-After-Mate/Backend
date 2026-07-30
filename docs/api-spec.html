@@ -1,0 +1,1100 @@
+<title>WHS After Mate — API 명세서</title>
+<style>
+  @font-face {
+    font-family: "UI Mono";
+    src: local("SFMono-Regular"), local("Consolas"), local("Menlo");
+  }
+
+  :root {
+    --bg: #F4F6F5;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EBEFED;
+    --text: #16211E;
+    --text-muted: #55635F;
+    --text-faint: #8B978F;
+    --border: #DCE3DF;
+    --border-strong: #C3CDC8;
+    --accent: #0F6E5C;
+    --accent-soft: #E3F0EC;
+    --accent-text: #0B5245;
+    --get: #2B6CA8;
+    --get-soft: #E5EEF6;
+    --post: #0F6E5C;
+    --post-soft: #E3F0EC;
+    --patch: #8A6D1F;
+    --patch-soft: #F3EDDD;
+    --error: #A83C3C;
+    --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613;
+      --bg-raised: #161F1B;
+      --bg-sunken: #0C110F;
+      --text: #E7EEEA;
+      --text-muted: #9DACA5;
+      --text-faint: #6C7A73;
+      --border: #263029;
+      --border-strong: #34423B;
+      --accent: #4FD1B3;
+      --accent-soft: #163029;
+      --accent-text: #7FE0C8;
+      --get: #7FB3E0;
+      --get-soft: #16232E;
+      --post: #4FD1B3;
+      --post-soft: #163029;
+      --patch: #E0C070;
+      --patch-soft: #2E2814;
+      --error: #E08A8A;
+      --error-soft: #2E1B1B;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101613;
+    --bg-raised: #161F1B;
+    --bg-sunken: #0C110F;
+    --text: #E7EEEA;
+    --text-muted: #9DACA5;
+    --text-faint: #6C7A73;
+    --border: #263029;
+    --border-strong: #34423B;
+    --accent: #4FD1B3;
+    --accent-soft: #163029;
+    --accent-text: #7FE0C8;
+    --get: #7FB3E0;
+    --get-soft: #16232E;
+    --post: #4FD1B3;
+    --post-soft: #163029;
+    --patch: #E0C070;
+    --patch-soft: #2E2814;
+    --error: #E08A8A;
+    --error-soft: #2E1B1B;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F6F5;
+    --bg-raised: #FFFFFF;
+    --bg-sunken: #EBEFED;
+    --text: #16211E;
+    --text-muted: #55635F;
+    --text-faint: #8B978F;
+    --border: #DCE3DF;
+    --border-strong: #C3CDC8;
+    --accent: #0F6E5C;
+    --accent-soft: #E3F0EC;
+    --accent-text: #0B5245;
+    --get: #2B6CA8;
+    --get-soft: #E5EEF6;
+    --post: #0F6E5C;
+    --post-soft: #E3F0EC;
+    --patch: #8A6D1F;
+    --patch-soft: #F3EDDD;
+    --error: #A83C3C;
+    --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, .mono, .path, td.mono, th.mono {
+    font-family: "UI Mono", ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  a { color: var(--accent-text); }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 28px 100px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+
+  header.masthead {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .eyebrow .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14.5px;
+    max-width: 66ch;
+  }
+
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .badge {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border: 1px solid transparent;
+  }
+  .badge.outline {
+    background: transparent;
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+  }
+
+  .infobar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .infobar .cell {
+    background: var(--bg-raised);
+    padding: 12px 16px;
+  }
+  .infobar .k {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    margin-bottom: 4px;
+  }
+  .infobar .v {
+    font-size: 13.5px;
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-self: start;
+  }
+  nav.toc .toc-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-faint);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  nav.toc a {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover {
+    color: var(--text);
+    background: var(--bg-sunken);
+  }
+
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    min-width: 0;
+  }
+
+  section { scroll-margin-top: 24px; }
+
+  section > h2 {
+    font-size: 21px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  section > h2 .req-id {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+  section > .desc {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 6px 0 20px;
+    max-width: 74ch;
+  }
+  section > .desc strong { color: var(--text); }
+  section > .note {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: -12px 0 20px;
+    max-width: 74ch;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 480px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    font-size: 13.5px;
+  }
+  thead th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    background: var(--bg-sunken);
+    font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-sunken); }
+
+  .method {
+    display: inline-block;
+    font-family: "UI Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+  .method.get { color: var(--get); background: var(--get-soft); }
+  .method.post { color: var(--post); background: var(--post-soft); }
+  .method.patch { color: var(--patch); background: var(--patch-soft); }
+  .method.put { color: var(--patch); background: var(--patch-soft); }
+
+  .field-required { color: var(--error); font-size: 11px; font-weight: 600; }
+  .field-optional { color: var(--text-faint); font-size: 11px; }
+
+  .endpoint-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .endpoint-card + .endpoint-card { margin-top: 16px; }
+  .endpoint-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-sunken);
+    flex-wrap: wrap;
+  }
+  .endpoint-head .path { font-size: 14px; font-weight: 600; }
+  .endpoint-head .note { color: var(--text-muted); font-size: 12.5px; margin-left: auto; }
+  .endpoint-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .block-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  details.example { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-sunken); }
+  details.example summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    list-style: none;
+  }
+  details.example summary::-webkit-details-marker { display: none; }
+  details.example summary::before { content: "▸ "; color: var(--text-faint); }
+  details.example[open] summary::before { content: "▾ "; }
+  details.example pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-raised);
+    color: var(--text);
+  }
+
+  .status-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .status-chip {
+    font-family: "UI Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border-strong);
+    color: var(--text-muted);
+  }
+  .status-chip.err { color: var(--error); border-color: var(--error-soft); background: var(--error-soft); }
+  .status-chip.ok { color: var(--post); border-color: var(--post-soft); background: var(--post-soft); }
+  .status-chip.llm { color: var(--accent-text); border-color: var(--accent-soft); background: var(--accent-soft); }
+
+  .open-q { display: flex; flex-direction: column; gap: 10px; }
+  .open-q li { margin: 0 0 6px; }
+
+  .flow-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin: 4px 0 24px;
+  }
+  .flow-strip .step {
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-raised);
+  }
+  .flow-strip .arrow { color: var(--text-faint); }
+
+  footer {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 18px;
+    color: var(--text-faint);
+    font-size: 12.5px;
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; padding: 24px 16px 80px; }
+    nav.toc {
+      position: static;
+      flex-direction: row;
+      overflow-x: auto;
+      gap: 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    nav.toc .toc-title { display: none; }
+    nav.toc a { white-space: nowrap; padding: 5px 10px; }
+    .infobar { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+  }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
+    <h1>API 명세서</h1>
+    <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다.</p>
+    <div class="badges">
+      <span class="badge">v0.4</span>
+      <span class="badge outline">전화번호 인증 회원가입</span>
+      <span class="badge outline">LLM 일차별 사후관리</span>
+      <span class="badge outline">API 유저플로우 기준 재정렬</span>
+    </div>
+    <div class="infobar">
+      <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
+      <div class="cell"><div class="k">인증</div><div class="v mono">Authorization: Bearer {accessToken}</div></div>
+      <div class="cell"><div class="k">포맷</div><div class="v">JSON · 날짜 YYYY-MM-DD · 일시 ISO 8601</div></div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-title">목차</div>
+    <a href="#overview">엔드포인트 전체 요약</a>
+    <a href="#auth">1. 인증/온보딩</a>
+    <a href="#home">2. 홈 (추천 포함)</a>
+    <a href="#aftercare">3. 사후관리 Q&amp;A</a>
+    <a href="#care">4. My Care</a>
+    <a href="#settings">5. 설정/프로필</a>
+    <a href="#models">데이터 모델</a>
+    <a href="#errors">공통 에러 코드</a>
+    <a href="#open">미확정 사항</a>
+  </nav>
+
+  <main>
+
+    <section id="overview">
+      <h2>엔드포인트 전체 요약</h2>
+      <p class="desc">API 유저플로우 다이어그램의 화면 순서를 그대로 따른다: 인증/온보딩 → 홈(사후관리 카드 포함) → 사후관리 Q&amp;A → My Care(캘린더/이력/이용권) → 설정/프로필.</p>
+      <div class="flow-strip">
+        <span class="step">인증/온보딩</span><span class="arrow">→</span>
+        <span class="step">홈 대시보드</span><span class="arrow">→</span>
+        <span class="step">사후관리 Q&amp;A</span><span class="arrow">→</span>
+        <span class="step">My Care</span><span class="arrow">→</span>
+        <span class="step">설정/프로필</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>설명</th><th>연관 요구사항</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup/verify-phone/request</td><td>회원가입 SMS 인증코드 발송</td><td>—</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup/verify-phone/confirm</td><td>인증코드 확인</td><td>—</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup</td><td>회원가입 (이메일/비밀번호)</td><td>—</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>로그인 (이메일/비밀번호)</td><td>—</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/refresh</td><td>accessToken 재발급</td><td>—</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/logout</td><td>로그아웃</td><td>—</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/home/summary</td><td>홈 요약(최근 관리·주의사항·이용권·추천)</td><td>R-USXPEM, R-QGENNK</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care</td><td>다음 관리 추천 후보 + 이유</td><td>R-QGENNK</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care/{id}</td><td>추천 상세 보기</td><td>R-QGENNK</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/aftercare/daily-guide</td><td><span class="status-chip llm" style="margin-right:6px;">LLM</span>경과일별 일차 주의사항(매일 갱신)</td><td>R-USXPEM</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/aftercare/question-categories</td><td>지원 질문 카테고리 목록</td><td>R-USXPEM</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/aftercare/questions</td><td><span class="status-chip llm" style="margin-right:6px;">LLM</span>질문 등록 및 답변 조회</td><td>R-USXPEM</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/aftercare/questions</td><td>내 질문 이력</td><td>R-USXPEM</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/care-records/calendar</td><td>캘린더 월별 시술 날짜 마커</td><td>R-DCDOJF</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/care-records</td><td>관리 이력 목록(필터 지원)</td><td>R-DCDOJF</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/care-records/{id}</td><td>관리 상세 + 기본 사후관리 안내</td><td>R-DCDOJF</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/memberships</td><td>보유 이용권 목록</td><td>R-DCDOJF</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/memberships/{id}</td><td>이용권 상세</td><td>R-DCDOJF</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/profile</td><td>프로필 조회</td><td>—</td></tr>
+            <tr><td><span class="method patch">PATCH</span></td><td class="mono">/profile</td><td>프로필 수정</td><td>—</td></tr>
+            <tr><td><span class="method put">PUT</span></td><td class="mono">/profile/interests</td><td>관심 목표 설정</td><td>R-QGENNK</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/notifications/settings</td><td>알림 설정 조회</td><td>—</td></tr>
+            <tr><td><span class="method patch">PATCH</span></td><td class="mono">/notifications/settings</td><td>알림 온/오프 설정</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>1. 인증 / 온보딩</h2>
+      <p class="desc">회원가입은 <b>전화번호 SMS 인증 → 이메일/비밀번호 가입</b> 순서로 진행한다. 로그인은 이후 이메일/비밀번호만 사용한다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/signup/verify-phone/request</span>
+          <span class="note">회원가입 본인확인 SMS 발송</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">phone</td><td class="mono">string</td><td>휴대폰 번호</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">{ "verificationId", "expiresIn": 180 }</span></p>
+          <div class="status-row">
+            <span class="status-chip err">400 INVALID_PHONE_FORMAT</span>
+            <span class="status-chip err">429 TOO_MANY_REQUESTS (재요청 주기 제한)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/signup/verify-phone/confirm</span>
+          <span class="note">인증코드 확인 → 검증 토큰 발급</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">verificationId</td><td class="mono">string</td><td>발송 응답에서 받은 ID</td></tr>
+                <tr><td class="mono">code</td><td class="mono">string</td><td>SMS로 받은 6자리 코드</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">{ "phoneVerifiedToken", "expiresIn": 600 }</span> — 이 토큰을 회원가입 요청에 함께 전달</p>
+          <div class="status-row">
+            <span class="status-chip err">400 INVALID_CODE</span>
+            <span class="status-chip err">410 CODE_EXPIRED</span>
+            <span class="status-chip err">429 TOO_MANY_ATTEMPTS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/signup</span>
+          <span class="note">이메일/비밀번호 회원가입 · 인증된 전화번호 필요</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">email</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>계정 이메일</td></tr>
+                <tr><td class="mono">password</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>비밀번호</td></tr>
+                <tr><td class="mono">name</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>이름</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>인증된 전화번호</td></tr>
+                <tr><td class="mono">phoneVerifiedToken</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>confirm 응답에서 받은 토큰</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">POST /auth/login</span>과 동일 스키마</p>
+          <div class="status-row">
+            <span class="status-chip err">409 EMAIL_ALREADY_EXISTS</span>
+            <span class="status-chip err">400 PHONE_NOT_VERIFIED (토큰 누락/만료/phone 불일치)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/login</span>
+          <span class="note">이메일/비밀번호 로그인</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Request Body</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">email</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>계정 이메일</td></tr>
+                  <tr><td class="mono">password</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>비밀번호</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">Response 200</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">accessToken</td><td class="mono">string</td><td>JWT, 짧은 만료</td></tr>
+                  <tr><td class="mono">refreshToken</td><td class="mono">string</td><td>JWT, 재발급용</td></tr>
+                  <tr><td class="mono">expiresIn</td><td class="mono">number</td><td>accessToken 만료(초)</td></tr>
+                  <tr><td class="mono">user.id / name / role</td><td class="mono">string</td><td>사용자 정보 (role: customer/expert/admin)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="status-row"><span class="status-chip err">401 INVALID_CREDENTIALS</span></div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/refresh</span>
+          <span class="note">accessToken 재발급</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="status-row"><span class="status-chip err">401 INVALID_REFRESH_TOKEN</span></div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/logout</span>
+          <span class="note">설정 화면 로그아웃 액션 · refreshToken 무효화</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="status-row"><span class="status-chip">204 No Content</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="home">
+      <h2>2. 홈 <span class="req-id">R-USXPEM · R-QGENNK</span></h2>
+      <p class="desc">홈 진입 시 1회 호출. 최근 관리 요약, 경과일 주의사항 카드, 이용권 요약, 다음 관리 추천을 한 번에 반환한다.</p>
+      <p class="note">홈에는 <b>사후관리 카드</b>(클릭 → 3절 AI 사후관리 가이드로 이동)와 <b>"AI에게 물어보기" 버튼</b>(클릭 → 3절 챗봇으로 바로 이동)이 있다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/home/summary</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Response 200 필드</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">latestCare</td><td class="mono">object | null</td><td>최근 관리 요약. 이력 없는 신규 고객은 null</td></tr>
+                  <tr><td class="mono">latestCare.daysElapsed</td><td class="mono">number</td><td>관리일로부터 경과일</td></tr>
+                  <tr><td class="mono">aftercareCard.cautions</td><td class="mono">string[]</td><td>경과 구간 대표 주의사항 (LLM 생성)</td></tr>
+                  <tr><td class="mono">aftercareCard.generatedAt</td><td class="mono">datetime</td><td>당일 LLM 생성/갱신 시각</td></tr>
+                  <tr><td class="mono">membershipSummary.nearestExpiry</td><td class="mono">object</td><td>가장 임박한 이용권</td></tr>
+                  <tr><td class="mono">recommendation.reasons</td><td class="mono">string[]</td><td>다음 관리 추천 이유</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="status-row"><span class="status-chip err">403 NO_ACTIVE_CUSTOMER_PROFILE</span></div>
+          <details class="example">
+            <summary>예시 JSON</summary>
+            <pre>{
+  "latestCare": {
+    "careRecordId": "C-2001",
+    "careName": "브라이트닝 필링",
+    "careDate": "2026-07-25",
+    "daysElapsed": 5,
+    "partOfBody": "얼굴"
+  },
+  "aftercareCard": {
+    "guideId": "G-31",
+    "elapsedRange": "3-7",
+    "cautions": ["직사광선 노출 자제", "각질 제거 제품 사용 금지"],
+    "nextCheckDate": "2026-08-01",
+    "generatedAt": "2026-07-30T00:05:00Z"
+  },
+  "membershipSummary": {
+    "totalMemberships": 2,
+    "nearestExpiry": { "membershipId": "M-501", "expiresAt": "2026-09-30", "remainingCount": 3 }
+  },
+  "recommendation": {
+    "recommendationId": "R-9001",
+    "careName": "수분 재생 관리",
+    "reasons": ["최근 관리 후 4주 경과", "관심 목표: 수분 개선"]
+  }
+}</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/recommendations/next-care</span>
+          <span class="note">규칙 기반 추천 후보 1개 + 이유 · 홈의 추천 카드</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">reasons</td><td class="mono">string[]</td><td>추천 이유 2~3개</td></tr>
+                <tr><td class="mono">basis</td><td class="mono">string[]</td><td>적용 근거: latestCare / membership / goal</td></tr>
+                <tr><td class="mono">disclaimer</td><td class="mono">string</td><td>의료 진단 아님 고지</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip err">204 NO_RECOMMENDATION_AVAILABLE</span></div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 <span class="mono">GET /home/summary</span>의 <span class="mono">recommendation</span> 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/recommendations/next-care/{recommendationId}</span>
+          <span class="note">추천 카드 → 추천 상세 보기</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13.5px; color:var(--text-muted);"><span class="mono">GET /recommendations/next-care</span> 응답과 동일 스키마 + <span class="mono">detailDescription</span> 상세 설명 문단</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="aftercare">
+      <h2>3. 사후관리 안내 및 Q&amp;A <span class="req-id">R-USXPEM → F-GBZTGO, F-ULCIXA</span> <span class="status-chip llm">LLM 기반</span></h2>
+      <p class="desc">일차별 주의사항과 Q&amp;A 답변은 모두 <strong>LLM이 생성</strong>한다. 최근 관리명·관리일·경과일·검수된 관리 가이드를 컨텍스트로 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.</p>
+      <p class="note">진입 경로: 홈의 "사후관리 카드" 클릭 시 <span class="mono">careRecordId</span>가 지정된 채로 AI 사후관리 가이드에 진입한다. 챗봇은 ① 가이드 페이지의 "더 궁금한 점?" ② 홈의 "AI에게 물어보기" 버튼, 두 경로로 진입할 수 있다. My Care 관리 상세 화면의 "AI 사후관리 가이드" 버튼도 동일한 가이드 화면으로 연결된다(4절 참고).</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/aftercare/daily-guide</span>
+          <span class="note">1일 1회 LLM 생성 · 자정까지 캐시</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Query</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>파라미터</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>optional. 생략 시 최근 관리 기준. 홈/My Care 상세에서 진입 시 전달됨</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">daysElapsed / elapsedRange</td><td class="mono">number / string</td><td>경과일 및 구간</td></tr>
+                <tr><td class="mono">mustAvoid</td><td class="mono">string[]</td><td>피해야 할 행동</td></tr>
+                <tr><td class="mono">basicCare</td><td class="mono">string[]</td><td>기본 사후관리 방법</td></tr>
+                <tr><td class="mono">generatedAt</td><td class="mono">datetime</td><td>LLM 생성/갱신 시각</td></tr>
+                <tr><td class="mono">generatedBy</td><td class="mono">string</td><td>고정값 "llm"</td></tr>
+                <tr><td class="mono">cacheExpiresAt</td><td class="mono">datetime</td><td>캐시 만료(자정)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row">
+            <span class="status-chip err">404 GUIDE_NOT_AVAILABLE</span>
+            <span class="status-chip err">503 GUIDE_GENERATION_FAILED (폴백: 검수된 기본 문구)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/aftercare/question-categories</span>
+          <span class="note">챗봇 진입 시 최초 호출</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13.5px; color:var(--text-muted);">고정값: 세안·샤워, 화장·렌즈, 운동·사우나, 음주·흡연, 화장품·성분, 증상</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/aftercare/questions</span>
+          <span class="note">동기 응답 · 최근 관리·경과일·검수 가이드 컨텍스트</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Response 상태값</div>
+            <div class="status-row">
+              <span class="status-chip ok">answered (LLM 생성)</span>
+              <span class="status-chip">out_of_scope</span>
+              <span class="status-chip err">expert_required (위험 신호 · 규칙 기반 사전 차단)</span>
+              <span class="status-chip err">422 UNSUPPORTED_CATEGORY</span>
+              <span class="status-chip err">503 ANSWER_GENERATION_FAILED</span>
+            </div>
+          </div>
+          <details class="example">
+            <summary>예시 JSON — 정상 답변</summary>
+            <pre>{
+  "questionId": "Q-7001",
+  "status": "answered",
+  "answer": "브라이트닝 필링 후 경과일 5일차 기준, 자극에 민감한 상태이므로 사우나는 관리 후 7일 이후를 권장합니다.",
+  "answeredBy": "llm",
+  "basedOn": { "careRecordId": "C-2001", "daysElapsed": 5, "guideId": "G-31" }
+}</pre>
+          </details>
+          <details class="example">
+            <summary>예시 JSON — 범위 밖 질문</summary>
+            <pre>{
+  "questionId": "Q-7002",
+  "status": "out_of_scope",
+  "message": "해당 질문은 앱에서 제공하는 정보 범위를 벗어나 전문가 상담이 필요합니다.",
+  "expertContactRequired": true
+}</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/aftercare/questions</span>
+          <span class="note">내 질문 이력, 최신순</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 현재 유저플로우에는 이 화면으로 가는 명시적 진입점이 없다 (향후 챗봇 내 "지난 질문 보기" 등으로 연결 예정).</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="care">
+      <h2>4. My Care — 관리 이력 및 이용권 <span class="req-id">R-DCDOJF</span></h2>
+      <p class="desc">My Care는 <b>캘린더 / 이력 / 이용권</b> 3개 진입점을 가진다. 캘린더에서 날짜를 클릭하거나 이력 목록에서 항목을 클릭해도 동일한 관리 상세 화면(<span class="mono">GET /care-records/{id}</span>)으로 연결된다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/care-records/calendar</span>
+          <span class="note">캘린더 화면 월별 마커</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Query</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>파라미터</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">month</td><td class="mono">string (YYYY-MM)</td><td><span class="field-required">required</span></td><td>조회할 월</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">Response 200 필드</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">dates[].date</td><td class="mono">date</td><td>시술 이력이 있는 날짜</td></tr>
+                  <tr><td class="mono">dates[].count</td><td class="mono">number</td><td>해당 날짜 시술 건수</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">날짜 클릭 후 "시술 내역" 목록은 별도 엔드포인트 없이 <span class="mono">GET /care-records?dateFrom={date}&amp;dateTo={date}</span>를 재사용한다.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/care-records</span>
+          <span class="note">최신순 목록 · 이력 탭 + 캘린더 날짜별 조회 공통 사용</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Query</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>파라미터</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">page / size</td><td class="mono">number</td><td>기본값 1 / 20</td></tr>
+                  <tr><td class="mono">dateFrom / dateTo</td><td class="mono">date</td><td>관리일 필터 · 이력 화면의 "이력 필터 적용" 기능이 이 쿼리를 채워서 호출</td></tr>
+                  <tr><td class="mono">partOfBody / brand</td><td class="mono">string</td><td>부위 / 브랜드 필터</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">Response 200 필드 (items[])</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>관리 이력 ID</td></tr>
+                  <tr><td class="mono">careName</td><td class="mono">string</td><td>관리명</td></tr>
+                  <tr><td class="mono">careDate</td><td class="mono">date</td><td>관리일</td></tr>
+                  <tr><td class="mono">partOfBody</td><td class="mono">string</td><td>부위</td></tr>
+                  <tr><td class="mono">brand / store</td><td class="mono">string</td><td>이용 브랜드 · 매장</td></tr>
+                  <tr><td class="mono">practitioner</td><td class="mono">string</td><td>담당자</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/care-records/{careRecordId}</span>
+          <span class="note">상세 + 기본 사후관리 안내 · 캘린더/이력 공통 도착 화면</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">상세 화면의 "AI 사후관리 가이드" 버튼 → <span class="mono">GET /aftercare/daily-guide?careRecordId={careRecordId}</span> (3절 참고)</p>
+          <div class="status-row"><span class="status-chip err">404 CARE_RECORD_NOT_FOUND</span></div>
+          <details class="example">
+            <summary>예시 JSON</summary>
+            <pre>{
+  "careRecordId": "C-2001",
+  "careName": "브라이트닝 필링",
+  "careDate": "2026-07-25",
+  "partOfBody": "얼굴",
+  "brand": "AAC 청담",
+  "store": "AAC 청담점",
+  "practitioner": "김OO 원장",
+  "basicAftercareGuide": ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"]
+}</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/memberships</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">membershipId</td><td class="mono">string</td><td>이용권 ID</td></tr>
+                <tr><td class="mono">productName</td><td class="mono">string</td><td>상품명</td></tr>
+                <tr><td class="mono">totalCount / usedCount / remainingCount</td><td class="mono">number</td><td>총/사용/잔여 횟수</td></tr>
+                <tr><td class="mono">expiresAt</td><td class="mono">date</td><td>유효기간</td></tr>
+                <tr><td class="mono">lastUsedAt</td><td class="mono">date</td><td>최근 사용일</td></tr>
+                <tr><td class="mono">availableCareNames</td><td class="mono">string[]</td><td>이용 가능 관리 목록</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/memberships/{membershipId}</span>
+          <span class="note">응답 스키마는 목록 항목과 동일</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="status-row"><span class="status-chip err">404 MEMBERSHIP_NOT_FOUND</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings">
+      <h2>5. 설정 / 프로필</h2>
+      <p class="desc">관심 목표는 여기서 설정하며, 다음 관리 추천(<span class="mono">basis: goal</span>)의 입력값으로 쓰인다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/profile</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">name / email</td><td class="mono">string</td><td>기본 정보</td></tr>
+                <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td>관심 목표</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method patch">PATCH</span><span class="path mono">/profile</span>
+          <span class="note">기본 정보 수정</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span><span class="path mono">/profile/interests</span>
+          <span class="note">관심 목표 설정</span>
+        </div>
+        <div class="endpoint-body">
+          <details class="example">
+            <summary>예시 JSON</summary>
+            <pre>{ "goals": ["수분 개선", "탄력 관리"] }</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/notifications/settings</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">pushEnabled</td><td class="mono">boolean</td><td>푸시 전체 on/off</td></tr>
+                <tr><td class="mono">aftercareReminder</td><td class="mono">boolean</td><td>사후관리 알림</td></tr>
+                <tr><td class="mono">membershipExpiryAlert</td><td class="mono">boolean</td><td>이용권 만료 임박 알림</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method patch">PATCH</span><span class="path mono">/notifications/settings</span>
+          <span class="note">변경할 필드만 전달</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="models">
+      <h2>데이터 모델 요약</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>모델</th><th>핵심 필드</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">User</td><td class="mono">id, name, email, phone, phoneVerifiedAt, role(customer/expert/admin)</td></tr>
+            <tr><td class="mono">PhoneVerification</td><td class="mono">id, phone, codeHash, expiresAt, attempts, verifiedAt</td></tr>
+            <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide</td></tr>
+            <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames</td></tr>
+            <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt</td></tr>
+            <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt</td></tr>
+            <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription</td></tr>
+            <tr><td class="mono">Profile</td><td class="mono">userId, name, email, interestGoals[]</td></tr>
+            <tr><td class="mono">NotificationSettings</td><td class="mono">pushEnabled, aftercareReminder, membershipExpiryAlert</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="errors">
+      <h2>공통 에러 코드</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Code</th><th>상황</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">UNAUTHORIZED</td><td>토큰 없음 / 만료</td></tr>
+            <tr><td class="mono">INVALID_REFRESH_TOKEN</td><td>refreshToken 만료 / 무효</td></tr>
+            <tr><td class="mono">INVALID_PHONE_FORMAT</td><td>잘못된 전화번호 형식</td></tr>
+            <tr><td class="mono">INVALID_CODE</td><td>인증코드 불일치</td></tr>
+            <tr><td class="mono">CODE_EXPIRED</td><td>인증코드 만료</td></tr>
+            <tr><td class="mono">TOO_MANY_REQUESTS</td><td>인증코드 재요청 주기 초과</td></tr>
+            <tr><td class="mono">TOO_MANY_ATTEMPTS</td><td>인증코드 오입력 횟수 초과</td></tr>
+            <tr><td class="mono">EMAIL_ALREADY_EXISTS</td><td>이미 가입된 이메일</td></tr>
+            <tr><td class="mono">PHONE_NOT_VERIFIED</td><td>전화번호 인증 미완료 / 토큰 만료</td></tr>
+            <tr><td class="mono">NO_ACTIVE_CUSTOMER_PROFILE</td><td>연결된 고객 프로필 없음</td></tr>
+            <tr><td class="mono">CARE_RECORD_NOT_FOUND</td><td>존재하지 않는 관리 이력</td></tr>
+            <tr><td class="mono">MEMBERSHIP_NOT_FOUND</td><td>존재하지 않는 이용권</td></tr>
+            <tr><td class="mono">GUIDE_NOT_AVAILABLE</td><td>미지원 관리 유형 / 경과일</td></tr>
+            <tr><td class="mono">GUIDE_GENERATION_FAILED</td><td>LLM 일차별 가이드 생성 실패</td></tr>
+            <tr><td class="mono">ANSWER_GENERATION_FAILED</td><td>LLM Q&amp;A 답변 생성 실패</td></tr>
+            <tr><td class="mono">UNSUPPORTED_CATEGORY</td><td>미지원 질문 카테고리</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="open">
+      <h2>미확정 사항 <span class="req-id">기획 확인 필요</span></h2>
+      <ul class="open-q">
+        <li>LLM 생성 실패/타임아웃 시 폴백 문구를 어디까지 준비해둘지 (관리 유형별 기본 가이드 사전 작성 범위)</li>
+        <li>refreshToken 만료 기간 및 재로그인 정책</li>
+        <li>알림 설정 세부 항목이 push / aftercareReminder / membershipExpiryAlert 3종으로 충분한지</li>
+      </ul>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.4 MVP · 2026-07-30 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+  </main>
+</div>

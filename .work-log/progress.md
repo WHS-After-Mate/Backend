@@ -1,0 +1,14 @@
+## 2026-07-30
+- Manyfast "WHS After Mate" 프로젝트 PRD/유저플로우(v2) 확인
+- API 명세서 작성(md+html), v0.1 → v0.4까지 반복 개정
+  - 초기 MVP 스펙(가상 로그인 가정) → 실제 계정 로그인 + LLM 기반 일차별 사후관리로 전환
+  - 사후관리 카드/AI에게 물어보기 버튼 진입 경로, My Care 캘린더/이력/이용권 구조 반영
+  - 전화번호 SMS 인증 회원가입 플로우 추가 (/auth/signup/verify-phone/*, /auth/signup)
+- API 유저플로우 다이어그램(api-user-flow.html) 제작 — mermaid flowchart, 확대/드래그 뷰어 추가
+- API 명세서와 유저플로우 다이어그램 섹션 순서·엔드포인트 일치 검증 및 보정 (recommendations 홈으로 이동 등)
+- DB 선택 논의: PostgreSQL(Supabase) 확정, Firebase/MySQL/MongoDB 대안 비교
+- DB 스키마 작성(db-schema.md+html) — ERD, 테이블별 DDL, 설계 결정/트레이드오프 정리
+- "의료 정보 시스템" 특성 반영: 클리닉 EMR 동기화 구조로 care_records 확장(doctor_comment), medical_profiles(알러지·기저질환), medical_data_access_log(감사로그) 신설
+- db-schema.html mermaid ERD 렌더링 버그 수정 (`PK_FK` → `PK`)
+- LLM 호출 지점 질의응답: daily-guide(하루 1회 캐시)/questions(매 요청) 2곳뿐이며, 카테고리·위험신호는 LLM 호출 전 규칙 기반 차단이라는 점 설명
+- LLM 프롬프트 설계 문서 신규 작성(llm-prompt-design.md+html) — 공통 원칙, 파이프라인 다이어그램, 두 호출 지점별 컨텍스트 주입 필드·시스템 프롬프트 초안·출력 JSON 스키마·실패 폴백 정책, 버전 관리 확장안, 미확정 사항 정리
