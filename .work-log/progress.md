@@ -1,3 +1,13 @@
+## 2026-08-02
+- Android Studio 클라이언트 개발 확정에 맞춰 백엔드 기술 스택 결정: Node.js+Express+TypeScript / Supabase(Postgres+Auth) / Anthropic Claude API / FCM(푸시)
+- `server/` 백엔드 전체 구현 완료 — 인증(전화인증+회원가입+로그인/refresh/logout), 홈/추천, 사후관리 daily-guide·Q&A(Claude 구조화출력+위험신호/카테고리 사전필터+알러지컨텍스트+medical_data_access_log), My Care(캘린더/이력/이용권), 프로필/알림+FCM 디바이스 토큰 신규 엔드포인트
+- DB 마이그레이션 SQL 작성(001 기존 스키마 8종 + 002 신규 `reference_guides`/`device_tokens`), `care_records.care_type` 컬럼 추가
+- 검수 가이드(RAG 소스) 저장 위치 미확정 사항을 `reference_guides` DB 테이블로 확정
+- 데모 시드 스크립트 작성, 빌드/타입체크 통과 확인, docs 3종에 구현 확정 사항 반영, server/README.md 작성
+- Supabase 프로젝트 실제 생성 → `server/.env` 연동(URL 오타 수정 포함), 001·002 마이그레이션 적용 및 10개 테이블 생성 확인
+- Anthropic API 키 발급 적용 후 서버 기동, 로그인→홈→daily-guide→questions(정상답변/out_of_scope/위험신호 3케이스) 엔드투엔드 테스트 전부 통과
+- 버그 발견/수정: Claude 응답에 `</answer>`/`</invoke>` XML 태그 흔적 섞이는 현상 → `sanitizeLlmText.ts` 추가로 해결, 재검증 완료
+
 ## 2026-07-30
 - Manyfast "WHS After Mate" 프로젝트 PRD/유저플로우(v2) 확인
 - API 명세서 작성(md+html), v0.1 → v0.4까지 반복 개정
@@ -12,3 +22,6 @@
 - db-schema.html mermaid ERD 렌더링 버그 수정 (`PK_FK` → `PK`)
 - LLM 호출 지점 질의응답: daily-guide(하루 1회 캐시)/questions(매 요청) 2곳뿐이며, 카테고리·위험신호는 LLM 호출 전 규칙 기반 차단이라는 점 설명
 - LLM 프롬프트 설계 문서 신규 작성(llm-prompt-design.md+html) — 공통 원칙, 파이프라인 다이어그램, 두 호출 지점별 컨텍스트 주입 필드·시스템 프롬프트 초안·출력 JSON 스키마·실패 폴백 정책, 버전 관리 확장안, 미확정 사항 정리
+- GitHub 저장소(WHS-After-Mate/Backend) 연결 — git init, .gitignore(.claude/settings.local.json 제외), 첫 커밋으로 docs/·.work-log/·와이어프레임 이미지 푸시
+- README.md 작성 및 푸시 — 프로젝트 개요, 기술 스택 표, 문서 4종 인덱스, 아키텍처 요약, 미확정 사항
+- git fetch로 origin/main 커밋 해시 비교해 README 반영 여부 확인

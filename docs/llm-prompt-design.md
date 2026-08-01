@@ -134,8 +134,12 @@ daily-guide와 동일 (`care_name`, `days_elapsed`, `doctor_comment`, `allergies
 
 현재는 `generated_by` / `answered_by`가 `'llm'` 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 `prompt_version`, `model_name` 컬럼을 `aftercare_guides`/`questions`에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).
 
+## 구현 시 확정된 사항 (server/ 참고)
+- LLM 모델: Anthropic Claude API (`ANTHROPIC_MODEL` 환경변수로 지정, 기본값 `claude-sonnet-5`)
+- 검수된 가이드(RAG 소스) 저장 위치: DB 테이블 `public.reference_guides`로 확정 (`docs/db-schema.md` 참고)
+- 출력 검증 실패 시 정책: **1회 재시도 → 그래도 실패하면** daily-guide는 `reference_guides` 원문으로 폴백(200), questions는 `503 ANSWER_GENERATION_FAILED` — `server/src/services/aftercare.service.ts`
+- 구조화 출력 강제 방식: Claude tool use(`tool_choice: {type:"tool"}`)로 구현 (`server/src/services/llm/client.ts`)
+
 ## 미확정 사항
-- 실제 사용할 LLM 모델 선택
-- 검수된 관리 가이드(RAG 소스) 문서를 어떤 형식·어디에 저장할지 (DB 테이블 vs 정적 파일) — 아직 스키마에 없음, 별도 설계 필요
-- 위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)
-- 출력 검증(금지어 필터) 실패 시 재시도 vs 즉시 폴백 정책
+- 위험 신호 키워드 목록의 구체적 범위 — `server/src/lib/riskKeywords.ts`에 초안만 작성, 전문가(의료진) 검수 필요
+- 실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요

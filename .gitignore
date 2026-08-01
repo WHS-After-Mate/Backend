@@ -1,1 +1,7 @@
 .claude/settings.local.json
+
+# server
+server/node_modules/
+server/dist/
+server/.env
+server/firebase-service-account.json

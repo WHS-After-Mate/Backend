@@ -374,6 +374,24 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 
 **Request**: 위 응답과 동일한 필드 중 변경할 값만 전달
 
+### POST /notifications/device-token
+Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 뒤 서버에 등록. 앱 시작 시 또는 토큰 갱신(`onNewToken`) 시 호출.
+
+**Request**
+```json
+{ "fcmToken": "d3adbeef...", "platform": "android" }
+```
+**Response 204**
+
+### DELETE /notifications/device-token
+로그아웃 등으로 더 이상 해당 기기에 푸시를 보내지 않아야 할 때 토큰 해제.
+
+**Request**
+```json
+{ "fcmToken": "d3adbeef..." }
+```
+**Response 204**
+
 ---
 
 ## 데이터 모델 요약
@@ -412,6 +430,10 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 | `UNSUPPORTED_CATEGORY` | 미지원 질문 카테고리 |
 
 ## 미확정 사항 (기획팀 확인 필요)
-- LLM 생성 실패/타임아웃 시 폴백 문구를 어디까지 준비해둘지 (관리 유형별 기본 가이드 사전 작성 범위)
-- refreshToken 만료 기간 및 재로그인 정책
+- refreshToken 만료 기간 및 재로그인 정책 (현재 Supabase Auth 기본값 사용)
 - 알림 설정 세부 항목이 push/aftercareReminder/membershipExpiryAlert 3종으로 충분한지
+- FCM 실제 발송 트리거(아침 리마인더 배치 등) 스케줄 — 서버는 발송 함수만 준비된 상태
+
+## 구현 시 확정된 사항 (server/README.md 참고)
+- LLM(daily-guide) 생성 실패 시: 문서상 503이었으나 실제로는 검수된 가이드(`reference_guides`) 원문으로 자동 폴백해 200 응답 (`generatedBy: "reference_guide"`). LLM 없이도 항상 최소 안전한 답을 준다
+- 위 표 5절에 Android FCM 디바이스 토큰 등록/해제 엔드포인트 신규 추가 (`POST`/`DELETE /notifications/device-token`)

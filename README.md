@@ -10,9 +10,14 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
+| 클라이언트 | Android (Android Studio) | 네이티브 Android 앱, REST/JSON으로 서버와 통신 |
+| 서버 | Node.js + Express + TypeScript | `server/` — api-spec.md 절 구성과 1:1 대응하는 라우터 구조 |
 | DB | PostgreSQL (Supabase) | FK/UNIQUE/CHECK 제약과 관계형 조인이 필요한 스키마 구조 |
 | 인증 | Supabase Auth | 이메일/비밀번호 계정·토큰 발급을 위임, 전화번호 SMS 인증만 자체 구현 |
-| LLM | 모델 미확정 | 일차별 사후관리 가이드 생성 + 챗봇 Q&A 답변, 2곳에서만 호출 |
+| LLM | Anthropic Claude API | 일차별 사후관리 가이드 생성 + 챗봇 Q&A 답변, 2곳에서만 호출. 구조화 출력(tool use)으로 JSON 스키마 강제 |
+| 푸시 알림 | Firebase Cloud Messaging (FCM) | Android 클라이언트 특성상 FCM 전제로 설계, 디바이스 토큰 등록 API 포함 |
+
+서버 실행 방법은 [`server/README.md`](server/README.md) 참고.
 
 ## 문서 구조
 
@@ -36,9 +41,20 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 
 현재까지의 작업 이력과 다음 할 일은 [`.work-log/current.md`](.work-log/current.md)에 정리되어 있습니다.
 
+### 구현 현황 (2026-08-02 기준)
+
+문서 설계 단계를 넘어 **백엔드 실제 구현 + Supabase 연동 + 엔드투엔드 테스트까지 완료**했습니다.
+
+- `server/` 디렉토리에 api-spec.md 전 엔드포인트 구현 (인증, 홈/추천, 사후관리 Q&A+LLM, My Care, 프로필/알림)
+- Supabase 프로젝트 실제 생성 → 마이그레이션 적용 → 10개 테이블 생성 확인
+- Anthropic Claude API 연동 확인: `daily-guide`가 알러지·의사 코멘트를 반영해 실제 생성되고, `questions`는 정상 답변/근거 부족 시 `out_of_scope`/위험 신호 시 `expert_required` 3가지 케이스 모두 정상 동작 검증
+- 테스트 중 발견한 버그(Claude 응답에 `</answer>` 등 XML 태그 흔적 섞임)를 `sanitizeLlmText.ts`로 수정
+- 서버 실행 방법은 [`server/README.md`](server/README.md) 참고 — Android Studio 에뮬레이터에서는 `http://10.0.2.2:4000/api/v1`로 접근
+
+다음 단계는 Android Studio 프로젝트에서 이 서버 API를 실제로 연동하는 작업입니다.
+
 ## 미확정 사항
 
-- 실제 사용할 LLM 모델
-- 검수된 관리 가이드(RAG 소스) 문서 저장 형식/위치
-- 위험 신호 키워드 목록 (전문가 검수 필요)
-- refreshToken 만료 정책, 알림 설정 세부 항목 범위
+- 위험 신호 키워드 목록 — `server/src/lib/riskKeywords.ts`에 초안 작성했으나 전문가(의료진) 검수 필요
+- refreshToken 만료 정책 (Supabase Auth 기본값 사용 중, 서비스 정책 확정 필요), 알림 설정 세부 항목 범위
+- FCM 실제 발송 스케줄러(아침 리마인더 등) — 배선만 준비, 트리거 로직은 MVP 범위 밖

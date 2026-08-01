@@ -81,6 +81,7 @@ create table public.care_records (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   care_name text not null,
+  care_type text,
   care_date date not null,
   part_of_body text,
   brand text,
@@ -102,6 +103,7 @@ create unique index idx_care_records_external_id
   where external_record_id is not null;
 ```
 
+- `care_type`: `reference_guides.care_type`과 매칭하는 내부 정규화 키(예: `peeling`, `laser_toning`). `care_name`은 사용자에게 보여주는 표시용 문자열이라 매칭 키로 쓰기 부적절해 별도 컬럼으로 분리. API 응답에는 노출하지 않음 (서버 구현 시 추가)
 - `doctor_comment`: 해당 시술 건에 대한 의사의 코멘트 (EMR 원본). 환자에게 노출할지는 프론트 정책에 따라 다르지만, LLM 컨텍스트에는 항상 포함
 - `external_record_id` / `source_system` / `synced_at`: EMR 원본 레코드 추적용. MVP에선 시드 데이터라 비워두거나 더미값 사용, 실연동 시 이 필드로 중복 동기화 방지
 
@@ -224,6 +226,44 @@ create index idx_questions_user_created
 
 - `care_record_id`는 nullable — 관리 이력이 삭제돼도 질문 이력 자체는 남긴다(`on delete set null`)
 - `status` CHECK 제약으로 `POST /aftercare/questions`의 세 가지 상태값만 허용
+
+### public.reference_guides — 검수된 관리 가이드 (RAG 소스, 서버 구현 시 신규)
+
+```sql
+create table public.reference_guides (
+  id uuid primary key default gen_random_uuid(),
+  care_type text not null,
+  elapsed_range_start int not null,
+  elapsed_range_end int not null,
+  elapsed_range_label text not null,
+  must_avoid text[] not null default '{}',
+  basic_care text[] not null default '{}',
+  next_check_offset_days int,
+  reviewed_by text,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (care_type, elapsed_range_start, elapsed_range_end)
+);
+```
+
+- `llm-prompt-design.md`의 "미확정 사항"이었던 "검수 가이드 저장 형식/위치"를 DB 테이블로 확정. daily-guide/questions 두 LLM 호출 지점 모두 이 테이블을 `care_type`+`days_elapsed` 구간으로 조회해 유일한 사실 근거로 주입
+- 정적 파일이 아닌 테이블로 택한 이유: 관리 유형×경과구간 조합이 적어(수십 건 이내) 운영 중 검수자가 직접 값을 수정하기 쉬움
+
+### public.device_tokens — Android FCM 푸시 토큰 (서버 구현 시 신규)
+
+```sql
+create table public.device_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  fcm_token text not null unique,
+  platform text not null default 'android',
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+```
+
+- Android 클라이언트가 발급받은 FCM 토큰을 `POST /notifications/device-token`으로 등록. 알림 실제 발송(아침 리마인더 등)은 MVP 범위 밖이라 발송 함수만 준비
 
 ---
 
