@@ -27,6 +27,7 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 | [`docs/api-user-flow.html`](docs/api-user-flow.html) | — | 화면 유저플로우에 실제 API 호출을 매핑한 순서도 (mermaid, 확대/드래그 가능) |
 | [`docs/db-schema.md`](docs/db-schema.md) / `.html` | v0.2 | ERD + 테이블별 `CREATE TABLE` DDL, 설계 결정과 트레이드오프 |
 | [`docs/llm-prompt-design.md`](docs/llm-prompt-design.md) / `.html` | v0.1 | LLM 호출 파이프라인, 컨텍스트 주입 필드, 시스템 프롬프트 초안, 출력 스키마 |
+| [`docs/server-code-guide.md`](docs/server-code-guide.md) / `.html` | v0.1 | 위 문서들과 달리 API 계약이 아니라 **`server/src` 코드 자체의 동작**을 설명 (레이어 구조, 요청 파이프라인, LLM 파이프라인 단계별 흐름, 파일별 역할) |
 
 `.html` 파일은 브라우저로 직접 열면 표·다이어그램이 렌더링된 문서로 보입니다 (외부 의존성 없이 단일 파일로 동작). `.md` 파일은 실제 구현 시 복붙할 SQL/JSON을 포함한 원본입니다.
 

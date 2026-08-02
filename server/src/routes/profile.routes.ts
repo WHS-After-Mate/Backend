@@ -3,8 +3,11 @@ import { asyncHandler } from "../lib/asyncHandler";
 import * as profileService from "../services/profile.service";
 import { updateInterestsSchema, updateProfileSchema } from "../validators/profile.validators";
 
+// 5. 설정 / 프로필 (api-spec.md §5)
+
 export const profileRouter = Router();
 
+// 프로필 조회 (이름, 이메일, 관심 목표)
 profileRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -13,6 +16,7 @@ profileRouter.get(
   }),
 );
 
+// 이름 등 기본 정보 수정 — 유저플로우엔 아직 명시적 편집 버튼 액션 노드 없음(추가 예정)
 profileRouter.patch(
   "/",
   asyncHandler(async (req, res) => {
@@ -22,6 +26,7 @@ profileRouter.patch(
   }),
 );
 
+// 관심 목표 설정 — 다음 관리 추천(recommendations, basis: "goal")의 입력값으로 사용됨
 profileRouter.put(
   "/interests",
   asyncHandler(async (req, res) => {

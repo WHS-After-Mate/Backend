@@ -18,6 +18,40 @@
 
 ---
 
+## 엔드포인트 전체 요약 (구현 파일 매핑)
+
+각 API가 실제로 어느 라우트 파일에 구현돼 있는지 정리한 표. 모든 파일은 `server/src/routes/` 아래에 있다 (예: `auth.routes.ts` = `server/src/routes/auth.routes.ts`). 실제 라우팅은 `app.ts`(`/api/v1`) → `routes/index.ts`(예: `/auth`) → 아래 표의 파일(엔드포인트별 나머지 경로) 순으로 3단계에 걸쳐 조립된다 — 자세한 흐름은 `server-code-guide.md` 2절 참고.
+
+| Method | Path | 구현 파일 |
+|---|---|---|
+| POST | `/auth/signup/verify-phone/request` | `auth.routes.ts` |
+| POST | `/auth/signup/verify-phone/confirm` | `auth.routes.ts` |
+| POST | `/auth/signup` | `auth.routes.ts` |
+| POST | `/auth/login` | `auth.routes.ts` |
+| POST | `/auth/refresh` | `auth.routes.ts` |
+| POST | `/auth/logout` | `auth.routes.ts` |
+| GET | `/home/summary` | `home.routes.ts` |
+| GET | `/recommendations/next-care` | `recommendations.routes.ts` |
+| GET | `/recommendations/next-care/{recommendationId}` | `recommendations.routes.ts` |
+| GET | `/aftercare/daily-guide` | `aftercare.routes.ts` |
+| GET | `/aftercare/question-categories` | `aftercare.routes.ts` |
+| POST | `/aftercare/questions` | `aftercare.routes.ts` |
+| GET | `/aftercare/questions` | `aftercare.routes.ts` |
+| GET | `/care-records/calendar` | `careRecords.routes.ts` |
+| GET | `/care-records` | `careRecords.routes.ts` |
+| GET | `/care-records/{careRecordId}` | `careRecords.routes.ts` |
+| GET | `/memberships` | `memberships.routes.ts` |
+| GET | `/memberships/{membershipId}` | `memberships.routes.ts` |
+| GET | `/profile` | `profile.routes.ts` |
+| PATCH | `/profile` | `profile.routes.ts` |
+| PUT | `/profile/interests` | `profile.routes.ts` |
+| GET | `/notifications/settings` | `notifications.routes.ts` |
+| PATCH | `/notifications/settings` | `notifications.routes.ts` |
+| POST | `/notifications/device-token` | `notifications.routes.ts` |
+| DELETE | `/notifications/device-token` | `notifications.routes.ts` |
+
+---
+
 ## 1. 인증 / 온보딩
 
 회원가입은 **전화번호 SMS 인증 → 이메일/비밀번호 가입** 순서로 진행한다. 로그인은 이후 이메일/비밀번호만 사용한다.

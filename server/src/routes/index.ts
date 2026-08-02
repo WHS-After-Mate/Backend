@@ -9,6 +9,9 @@ import { membershipsRouter } from "./memberships.routes";
 import { profileRouter } from "./profile.routes";
 import { notificationsRouter } from "./notifications.routes";
 
+// Router()는 express()와 달리 listen()이 없는 "부착 가능한 라우트 묶음"이다.
+// 이 apiRouter 자체도, 아래에서 조립하는 authRouter/homeRouter 등도 전부 Router() 인스턴스이며,
+// app.ts의 app.use("/api/v1", apiRouter)를 통해 최종적으로 진짜 app 본체에 연결된다.
 export const apiRouter = Router();
 
 // 인증 자체는 토큰이 없는 상태로 호출되므로 requireAuth 이전에 마운트

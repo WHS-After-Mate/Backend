@@ -1,0 +1,496 @@
+<title>WHS After Mate — 서버 코드 설명서</title>
+<style>
+  @font-face {
+    font-family: "UI Mono";
+    src: local("SFMono-Regular"), local("Consolas"), local("Menlo");
+  }
+
+  :root {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22, 33, 30, 0.04), 0 4px 14px rgba(22, 33, 30, 0.05);
+    --mermaid-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+      --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+      --border: #263029; --border-strong: #34423B;
+      --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+      --get: #7FB3E0; --get-soft: #16232E;
+      --post: #4FD1B3; --post-soft: #163029;
+      --patch: #E0C070; --patch-soft: #2E2814;
+      --error: #E08A8A; --error-soft: #2E1B1B;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --mermaid-bg: #161F1B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101613; --bg-raised: #161F1B; --bg-sunken: #0C110F;
+    --text: #E7EEEA; --text-muted: #9DACA5; --text-faint: #6C7A73;
+    --border: #263029; --border-strong: #34423B;
+    --accent: #4FD1B3; --accent-soft: #163029; --accent-text: #7FE0C8;
+    --get: #7FB3E0; --get-soft: #16232E;
+    --post: #4FD1B3; --post-soft: #163029;
+    --patch: #E0C070; --patch-soft: #2E2814;
+    --error: #E08A8A; --error-soft: #2E1B1B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --mermaid-bg: #161F1B;
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F6F5; --bg-raised: #FFFFFF; --bg-sunken: #EBEFED;
+    --text: #16211E; --text-muted: #55635F; --text-faint: #8B978F;
+    --border: #DCE3DF; --border-strong: #C3CDC8;
+    --accent: #0F6E5C; --accent-soft: #E3F0EC; --accent-text: #0B5245;
+    --get: #2B6CA8; --get-soft: #E5EEF6;
+    --post: #0F6E5C; --post-soft: #E3F0EC;
+    --patch: #8A6D1F; --patch-soft: #F3EDDD;
+    --error: #A83C3C; --error-soft: #F5E9E8;
+    --shadow: 0 1px 2px rgba(22,33,30,.04), 0 4px 14px rgba(22,33,30,.05);
+    --mermaid-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  code, .mono, td.mono, th.mono {
+    font-family: "UI Mono", ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: var(--accent-text); }
+
+  .shell {
+    max-width: 1080px; margin: 0 auto; padding: 40px 28px 100px;
+    display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: start;
+  }
+  header.masthead {
+    grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .eyebrow {
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); font-weight: 600;
+  }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .subtitle { margin: 0; color: var(--text-muted); font-size: 14.5px; max-width: 74ch; }
+
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .badge {
+    font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid transparent;
+  }
+  .badge.outline { background: transparent; border-color: var(--border-strong); color: var(--text-muted); }
+
+  nav.toc { position: sticky; top: 28px; display: flex; flex-direction: column; gap: 2px; align-self: start; }
+  nav.toc .toc-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint); margin-bottom: 8px; font-weight: 600;
+  }
+  nav.toc a { text-decoration: none; color: var(--text-muted); font-size: 13.5px; padding: 6px 10px; border-radius: 6px; }
+  nav.toc a:hover { color: var(--text); background: var(--bg-sunken); }
+
+  main { display: flex; flex-direction: column; gap: 52px; min-width: 0; }
+  section { scroll-margin-top: 24px; }
+  section > h2 { font-size: 21px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  section > h2 .tag {
+    font-size: 12px; font-weight: 600; color: var(--accent-text);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 5px;
+  }
+  section > .desc { color: var(--text-muted); font-size: 14px; margin: 6px 0 20px; max-width: 78ch; }
+  section > .desc strong { color: var(--text); }
+  section > .desc code { font-size: 12.8px; }
+
+  .table-wrap {
+    overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-raised); box-shadow: var(--shadow);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 420px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13.5px; }
+  thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--bg-sunken); font-weight: 600;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--bg-sunken); }
+
+  .principle-list { display: flex; flex-direction: column; gap: 10px; padding: 0; margin: 0; list-style: none; }
+  .principle-list li {
+    display: flex; gap: 12px; padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--bg-raised); box-shadow: var(--shadow); font-size: 13.5px;
+  }
+  .principle-list .num {
+    flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent-text); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+
+  .diagram-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .diagram-toolbar button {
+    font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .diagram-toolbar button:hover { background: var(--bg-sunken); }
+  .diagram-toolbar button:active { transform: translateY(1px); }
+  .diagram-toolbar .zoom-level { font-size: 12.5px; color: var(--text-muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .diagram-toolbar .hint { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+  .diagram-frame {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--mermaid-bg);
+    box-shadow: var(--shadow); overflow: auto; height: min(60vh, 460px); cursor: grab; position: relative;
+  }
+  .diagram-frame.grabbing { cursor: grabbing; user-select: none; }
+  .diagram-inner { display: inline-block; padding: 28px; transform-origin: 0 0; }
+  @media (prefers-reduced-motion: no-preference) { .diagram-inner { transition: transform 0.15s ease-out; } }
+  .diagram-frame .mermaid svg { min-width: 620px; }
+
+  .endpoint-card {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .endpoint-card + .endpoint-card { margin-top: 16px; }
+  .endpoint-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+    border-bottom: 1px solid var(--border); background: var(--bg-sunken); flex-wrap: wrap;
+  }
+  .endpoint-head .path { font-size: 14px; font-weight: 700; font-family: "UI Mono", ui-monospace, monospace; }
+  .endpoint-head .note { color: var(--text-muted); font-size: 12.5px; margin-left: auto; }
+  .endpoint-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .block-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-faint); font-weight: 600; margin-bottom: 6px;
+  }
+
+  pre.code-block {
+    margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--bg-sunken);
+    border: 1px solid var(--border); font-size: 12.8px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+  }
+
+  ol.step-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 13.8px; }
+  ol.step-list li::marker { color: var(--accent-text); font-weight: 700; }
+  ol.step-list .file { color: var(--text-faint); font-size: 12.3px; }
+
+  .status-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .status-chip {
+    font-family: "UI Mono", ui-monospace, monospace; font-size: 11.5px; padding: 3px 8px;
+    border-radius: 5px; border: 1px solid var(--border-strong); color: var(--text-muted);
+  }
+  .status-chip.err { color: var(--error); border-color: var(--error-soft); background: var(--error-soft); }
+  .status-chip.ok { color: var(--post); border-color: var(--post-soft); background: var(--post-soft); }
+  .status-chip.llm { color: var(--accent-text); border-color: var(--accent-soft); background: var(--accent-soft); }
+
+  .open-q { display: flex; flex-direction: column; gap: 10px; padding-left: 20px; }
+  .open-q li { margin: 0; }
+
+  footer {
+    grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 12px;
+    padding-top: 18px; color: var(--text-faint); font-size: 12.5px;
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; padding: 24px 16px 80px; }
+    nav.toc { position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    nav.toc .toc-title { display: none; }
+    nav.toc a { white-space: nowrap; padding: 5px 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
+    <h1>서버 코드 설명서</h1>
+    <p class="subtitle"><code>api-spec.md</code>가 "각 엔드포인트를 호출하면 무엇을 주고받는가"를 정의한 계약서라면, 이 문서는 <strong>그 계약을 <code>server/src</code> 코드가 실제로 어떻게 구현하는가</strong>를 설명한다. 파일 경로·함수명 기준으로 작성했으므로 코드와 나란히 두고 보는 것을 전제로 한다.</p>
+    <div class="badges">
+      <span class="badge">v0.1</span>
+      <span class="badge outline">대상 커밋 16c2f5f</span>
+      <span class="badge outline">코드 동작 설명 (API 계약 아님)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-title">목차</div>
+    <a href="#layers">1. 레이어 구조</a>
+    <a href="#pipeline">2. 요청 파이프라인</a>
+    <a href="#auth">3. 인증/온보딩</a>
+    <a href="#home">4. 홈/추천</a>
+    <a href="#llm">5. LLM 파이프라인</a>
+    <a href="#mycare">6. My Care</a>
+    <a href="#profile">7. 프로필/알림</a>
+    <a href="#config">8. 설정/환경</a>
+    <a href="#diffs">9. 문서와 다른 점</a>
+    <a href="#notes">10. 참고 포인트</a>
+  </nav>
+
+  <main>
+    <section id="layers">
+      <h2>1. 레이어 구조와 책임</h2>
+      <p class="desc">핵심 규칙: <strong>routes는 얇게, services는 두껍게.</strong> 라우트 핸들러는 "요청 파싱 → 서비스 호출 → 상태 코드로 응답"만 하고, 실제 판단(캐시 확인, LLM 호출, 정책 검증, DB 쿼리)은 전부 <span class="mono">services/*.ts</span>에 있다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>경로</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">server.ts</td><td>프로세스 진입점 — <span class="mono">app.listen</span></td></tr>
+            <tr><td class="mono">app.ts</td><td>express 인스턴스 조립, 미들웨어 순서 결정</td></tr>
+            <tr><td class="mono">routes/</td><td>URL·HTTP 메서드 ↔ 서비스 함수 연결. 비즈니스 로직 없음</td></tr>
+            <tr><td class="mono">validators/</td><td>zod 스키마 — 요청 바디/쿼리 검증 (routes에서만 호출)</td></tr>
+            <tr><td class="mono">services/</td><td>도메인 로직 + DB(Supabase) 접근. <strong>DB 접근은 반드시 이 레이어를 통해서만</strong></td></tr>
+            <tr><td class="mono">services/llm/</td><td>Claude 프롬프트 정의 + 구조화 출력 호출 클라이언트</td></tr>
+            <tr><td class="mono">middleware/</td><td>인증(<span class="mono">requireAuth</span>), 공통 에러 핸들러</td></tr>
+            <tr><td class="mono">lib/</td><td>상태 없는 순수 유틸 — 에러 정의, 위험신호 키워드, 서명 토큰, OTP, sanitize</td></tr>
+            <tr><td class="mono">config/</td><td>외부 서비스 클라이언트 초기화(Supabase/Anthropic/Firebase) + 환경변수 스키마</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="pipeline">
+      <h2>2. 요청 처리 파이프라인</h2>
+      <p class="desc">모든 요청은 <span class="mono">app.ts</span> → <span class="mono">routes/index.ts</span> → 개별 라우터 순으로 흐른다.</p>
+      <pre class="code-block">app.ts
+ ├─ cors, express.json()
+ ├─ GET /health                         (인증 불필요, 헬스체크)
+ ├─ /api/v1  → routes/index.ts (apiRouter)
+ │    ├─ /auth/*                        ← requireAuth 이전에 마운트 (로그인 전이라 토큰이 없음)
+ │    ├─ requireAuth 미들웨어           ← 이 지점부터 모든 라우트가 인증 필요
+ │    ├─ /home, /recommendations, /aftercare,
+ │    │  /care-records, /memberships, /profile, /notifications
+ ├─ notFoundHandler                     (매칭 라우트 없을 때 404)
+ └─ errorHandler                        (모든 예외의 최종 처리 지점)</pre>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head"><span class="path">공통 장치 3가지</span></div>
+        <div class="endpoint-body">
+          <ol class="step-list">
+            <li><strong>middleware/auth.ts</strong> — <span class="mono">Authorization: Bearer</span> 토큰을 꺼내 <span class="mono">supabaseAnon.auth.getUser(token)</span>으로 검증. 서버가 JWT 시크릿을 직접 들고 있지 않고 Supabase Auth API에 위임한다. 성공 시 <span class="mono">req.userId</span>에 심어 이후 모든 서비스 함수가 이 값으로 <span class="mono">user_id</span> 필터링.</li>
+            <li><strong>lib/asyncHandler.ts</strong> — Express 4는 async 핸들러의 reject를 자동으로 <span class="mono">next()</span>에 넘기지 않는다. 모든 라우트를 이 함수로 감싸 예외가 <span class="mono">errorHandler</span>까지 전달되게 만든다 — 라우트마다 try/catch를 반복하지 않기 위한 장치.</li>
+            <li><strong>middleware/errorHandler.ts</strong> + <strong>lib/errors.ts</strong> — 서비스 레이어는 <span class="mono">throw Errors.xxx()</span> 형태로만 실패를 표현. <span class="mono">ApiError</span>는 api-spec.md의 "공통 에러 코드" 표와 1:1 대응하는 <span class="mono">{status, code, message}</span>를 가지고 있어, 이 클래스의 인스턴스인지만 확인하면 응답 포맷이 정해진다. <span class="mono">ZodError</span>(검증 실패)는 400 <span class="mono">VALIDATION_ERROR</span>로 별도 변환.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>3. 인증 / 온보딩 <span class="tag">routes/auth.routes.ts → services/auth.service.ts</span></h2>
+      <p class="desc">전화번호 인증과 실제 로그인 세션은 <strong>서로 다른 토큰 체계</strong>를 쓴다는 점이 핵심이다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">POST /signup/verify-phone/request</span>
+          <span class="note">requestPhoneVerification</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            <span class="mono">lib/otp.ts</span>의 <span class="mono">isValidKrPhone</span>으로 형식 검증 → 직전 발송 이력(<span class="mono">phone_verifications.created_at</span>)으로 60초 재요청 쿨다운 체크 → 6자리 코드 생성 → 원문은 저장하지 않고 SHA-256 해시만 저장 → <span class="mono">lib/sms.ts</span>로 발송(<span class="mono">SMS_DEV_MODE=true</span>면 콘솔 로그만, 실제 국내 SMS 업체 연동은 TODO).
+          </p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">POST /signup/verify-phone/confirm</span>
+          <span class="note">confirmPhoneVerification</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            이미 인증됨 / 시도 초과(<span class="mono">MAX_ATTEMPTS=5</span>) / 만료(<span class="mono">180초</span>) 순으로 검사 → 해시 불일치 시 <span class="mono">attempts</span>만 +1 → 성공하면 <span class="mono">lib/signedToken.ts</span>의 <span class="mono">signToken</span>으로 <strong>자체 서명 토큰</strong> <span class="mono">phoneVerifiedToken</span> 발급(HMAC-SHA256, <span class="mono">APP_TOKEN_SECRET</span>). 이 시점엔 아직 계정이 없어 Supabase 세션 토큰을 쓸 수 없기 때문.
+          </p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">POST /signup</span>
+          <span class="note">signup</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            <span class="mono">verifyToken</span>으로 서명·만료·전화번호 일치 확인(불일치 시 <span class="mono">PHONE_NOT_VERIFIED</span>) → 동일 전화번호로 이미 가입된 프로필 있으면 차단 → <span class="mono">supabaseAdmin.auth.admin.createUser</span>로 계정 생성 → <span class="mono">profiles</span> insert → <strong>프로필 insert 실패 시 방금 만든 Auth 유저를 롤백</strong>(<span class="mono">deleteUser</span>)해 고아 계정 방지 → 마지막에 내부적으로 <span class="mono">login()</span> 호출해 응답 스키마를 로그인과 통일.
+          </p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">POST /login · /refresh · /logout</span>
+          <span class="note">Supabase Auth 래퍼</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            세 엔드포인트는 자체 로직 없이 <strong>Supabase Auth를 그대로 감싸는 얇은 래퍼</strong>다: <span class="mono">signInWithPassword</span> / <span class="mono">refreshSession</span> / <span class="mono">auth.admin.signOut(..., "global")</span>. accessToken/refreshToken의 발급·만료 정책은 Supabase 설정을 따른다 — refreshToken 만료 정책은 여전히 Supabase 기본값 그대로(미확정 사항).
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="home">
+      <h2>4. 홈 / 추천 <span class="tag">home.service.ts · recommendations.service.ts</span></h2>
+      <div class="endpoint-card">
+        <div class="endpoint-head"><span class="path">getHomeSummary</span></div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            홈 진입 1회 호출을 위해 4가지를 병렬로 모은다 — 최근 관리(<span class="mono">getLatestCareRecord</span>), 오늘자 캐시된 사후관리 가이드(<span class="mono">aftercare_guides</span> 직접 조회, LLM 재호출 없음), 이용권 요약, 다음 관리 추천. <strong>LLM 호출은 여기서 발생하지 않는다</strong> — daily-guide가 이미 만들어 둔 캐시를 재사용하거나, 없으면 <span class="mono">aftercareCard: null</span>.
+          </p>
+        </div>
+      </div>
+      <div class="endpoint-card">
+        <div class="endpoint-head"><span class="path">computeNextCareRecommendation</span></div>
+        <div class="endpoint-body">
+          <p style="margin:0;font-size:13.8px;">
+            이름과 달리 <strong>규칙 기반, LLM 미사용</strong>. 최근 관리 후 경과일이 21일(<span class="mono">MIN_INTERVAL_DAYS</span>) 이상인지, 보유 이용권 중 잔여 횟수 있는 관리명인지, 관심 목표와 이름이 매칭되는지를 순서대로 확인해 <span class="mono">reasons</span>/<span class="mono">basis</span> 배열을 채운다. 추천 대상 없으면 <span class="mono">null</span> → 라우트에서 204. <span class="mono">recommendationId</span>는 DB 저장 없이 <span class="mono">sha1("recommendation:"+userId)</span>로 매번 같은 값을 만드는 <strong>결정론적 해시</strong> — 상세 조회는 재계산 후 id 일치만 확인.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="llm">
+      <h2>5. 사후관리 안내 및 Q&amp;A — LLM 파이프라인 <span class="tag">services/aftercare.service.ts</span></h2>
+      <p class="desc">가장 복잡한 레이어. <span class="mono">llm-prompt-design.md</span>가 정의한 원칙(구조화 출력 강제, 검수 가이드를 근거로만 사용, 의료적 진단 금지)을 실제로 구현한 코드다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">GET /aftercare/daily-guide</span>
+          <span class="note">getOrGenerateDailyGuide</span>
+        </div>
+        <div class="endpoint-body">
+          <pre class="code-block">1. careRecordId 지정 없으면 최근 관리 이력 사용 (getLatestCareRecord)
+2. 오늘(KST) 이미 생성된 캐시가 있으면 그대로 반환 — LLM 재호출 없음 (getCachedGuide)
+3. daysElapsedSince()로 경과일 계산 (KST 자정 기준 날짜 차이)
+4. findReferenceGuide(care_type, daysElapsed)로 "검수된 가이드" 구간을 lookup
+   → 못 찾으면 404 GUIDE_NOT_AVAILABLE (LLM을 아예 호출하지 않음)
+5. getMedicalProfileForLlmContext()로 알러지/기저질환 조회 + medical_data_access_log에 접근 기록
+6. generateViaLlm(): callStructuredLlm으로 Claude 호출 (최대 2회 재시도)
+   → violatesOutputPolicy()(진단/처방 금지어)에 걸리면 결과를 버리고 재시도
+   → 통과하면 sanitizeLlmTextArray()로 XML 태그 흔적 제거 후 반환
+7. LLM 결과가 끝내 없으면 → 검수 가이드 원문을 그대로 사용
+   → generatedBy: "reference_guide" (503 대신 200으로 안전하게 폴백)
+8. 결과를 aftercare_guides에 insert해 캐시화 (unique(care_record_id, generated_date))
+   → 동시 요청으로 insert 충돌 나면 방금 다른 요청이 만든 캐시를 재조회해서 반환</pre>
+          <p style="margin:0;font-size:13.3px;color:var(--text-muted);">핵심은 3·4번 — <strong>경과 구간 판정과 근거 텍스트 선정은 LLM이 아니라 <span class="mono">reference_guides</span> lookup이 먼저 결정</strong>하고, LLM은 그 안에서 문장을 다듬고 개인 정보(알러지 등)를 반영해 강조하는 역할만 한다. LLM이 완전히 실패해도 4번에서 찾아둔 검수 원문이 있어 최소한의 안전한 응답은 항상 보장된다.</p>
+          <div class="status-row">
+            <span class="status-chip err">404 GUIDE_NOT_AVAILABLE</span>
+            <span class="status-chip ok">200 generatedBy: "llm"</span>
+            <span class="status-chip llm">200 generatedBy: "reference_guide" (LLM 실패 폴백)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="path">POST /aftercare/questions</span>
+          <span class="note">submitQuestion</span>
+        </div>
+        <div class="endpoint-body">
+          <pre class="code-block">1. isSupportedCategory() 체크 — 미지원 카테고리는 422 (LLM 호출 전 차단)
+2. containsRiskKeyword(question) 체크 — riskKeywords.ts의 키워드(통증/출혈/호흡곤란 등)에
+   매칭되면 LLM을 아예 호출하지 않고 즉시 status: "expert_required"로 저장·응답
+3. 위험 신호가 아니면 getMedicalProfileForLlmContext() + findReferenceGuide()로 컨텍스트 조립
+4. callStructuredLlm으로 Claude 호출 (최대 2회 재시도, violatesOutputPolicy 통과 필요)
+   → LLM이 스스로 status: "out_of_scope"를 반환할 수도 있음(근거 부족 판단은 LLM 몫)
+5. 결과를 questions 테이블에 저장 후 status에 따라 응답 형태 분기
+   (answered / out_of_scope / expert_required)
+6. 2회 재시도 후에도 실패하면 503 ANSWER_GENERATION_FAILED
+   (daily-guide와 달리 폴백 문구를 만들기 어려워 문서대로 에러 유지)</pre>
+          <p style="margin:0;font-size:13.3px;color:var(--text-muted);"><span class="mono">containsRiskKeyword</span>(규칙 기반)와 <span class="mono">status: "out_of_scope"</span>(LLM 판단)는 서로 다른 계층의 안전장치다 — 전자는 위험할 수 있는 신체 증상 키워드를 LLM 호출 전에 정규식 수준으로 즉시 차단하고, 후자는 LLM이 컨텍스트를 보고 "이 앱 범위 밖의 질문"이라고 스스로 판단한 경우다.</p>
+          <div class="status-row">
+            <span class="status-chip err">422 UNSUPPORTED_CATEGORY</span>
+            <span class="status-chip err">expert_required (규칙 차단, LLM 미호출)</span>
+            <span class="status-chip llm">out_of_scope (LLM 판단)</span>
+            <span class="status-chip err">503 ANSWER_GENERATION_FAILED</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head"><span class="path">공통 부품</span></div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>파일</th><th>역할</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">llm/client.ts</td><td><span class="mono">callStructuredLlm</span> — Claude Messages API를 <span class="mono">tool_choice: {type:"tool"}</span>로 호출해 자유 텍스트가 아니라 지정한 JSON 스키마로만 응답하도록 강제. 텍스트 파싱/정규식 추출 없음</td></tr>
+                <tr><td class="mono">llm/dailyGuide.prompt.ts<br/>llm/questions.prompt.ts</td><td>시스템 프롬프트 원문, 도구 이름, JSON 스키마, 컨텍스트 조립 함수 정의. 둘 다 "가이드에 없는 내용 지어내지 마라", "진단/처방 금지"를 명시하고 알러지/기저질환 반영을 지시</td></tr>
+                <tr><td class="mono">lib/riskKeywords.ts</td><td><span class="mono">RISK_KEYWORDS</span>(입력 사전 차단)와 <span class="mono">FORBIDDEN_OUTPUT_PATTERNS</span>(<span class="mono">violatesOutputPolicy</span>, LLM 출력 검증)를 분리 관리. 전자는 사용자 질문을, 후자는 LLM 생성 문장을 검사 — 방향이 다름. <strong>둘 다 전문가(의료진) 검수 전 초안</strong></td></tr>
+                <tr><td class="mono">lib/sanitizeLlmText.ts</td><td>Claude가 tool-use 입력 필드에 <span class="mono">&lt;/answer&gt;</span>, <span class="mono">&lt;/invoke&gt;</span> 같은 XML 태그 흔적을 남기는 버그를 엔드투엔드 테스트 중 발견해 추가한 후처리. 사용자에게 노출되는 모든 LLM 텍스트는 응답 직전 반드시 이 함수를 거침</td></tr>
+                <tr><td class="mono">medicalProfile.service.ts</td><td>알러지/기저질환 등 민감정보는 이 함수를 통해서만 조회하도록 강제하고, 조회할 때마다 <span class="mono">medical_data_access_log</span>에 감사 로그를 남김 — 의료 인접 도메인 특성 반영</td></tr>
+                <tr><td class="mono">referenceGuides.service.ts</td><td><span class="mono">care_type</span> + <span class="mono">daysElapsed</span>로 검수 가이드 구간을 찾는 단순 lookup. 현재 시드 데이터는 <span class="mono">peeling</span>/<span class="mono">laser_toning</span> 2종뿐 — 다른 관리 유형은 404(확장 필요)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="mycare">
+      <h2>6. My Care — 관리 이력 / 이용권 <span class="tag">careRecords.service.ts · memberships.service.ts</span></h2>
+      <p class="desc">
+        캘린더(<span class="mono">getCalendarSummary</span>), 목록(<span class="mono">listCareRecords</span>), 상세(<span class="mono">getCareRecordById</span>)가 모두 같은 <span class="mono">care_records</span> 테이블을 다른 방식으로 질의할 뿐이다. 캘린더는 월별로 <span class="mono">care_date</span>만 모아 날짜별 카운트로 집계하고, 목록은 <span class="mono">dateFrom/dateTo/partOfBody/brand</span> 쿼리를 그대로 Supabase 쿼리 빌더에 조건부로 얹는다 — "캘린더 날짜 클릭 = 목록 API를 <span class="mono">dateFrom=dateTo</span>로 재호출"이 실제로 별도 엔드포인트 없이 동일 함수로 처리된다.
+      </p>
+      <p class="desc">
+        <strong><span class="mono">daysElapsedSince</span></strong>는 KST 자정 기준으로 날짜만 비교해 경과일을 계산한다(두 날짜 모두 <span class="mono">setHours(0,0,0,0)</span>으로 맞춘 뒤 뺀다). 이 함수가 <span class="mono">aftercare.service.ts</span>와 <span class="mono">recommendations.service.ts</span> 모두에서 재사용되는 공통 시간 계산 기준점이다.
+      </p>
+    </section>
+
+    <section id="profile">
+      <h2>7. 설정 / 프로필 / 알림 <span class="tag">profile.service.ts · notifications.service.ts</span></h2>
+      <p class="desc">
+        프로필의 이메일은 <span class="mono">profiles</span> 테이블이 아니라 <span class="mono">supabaseAdmin.auth.admin.getUserById</span>로 Supabase Auth 쪽에서 가져온다 — 이메일은 Auth가 진실 소스(source of truth)이고, <span class="mono">profiles</span>는 이름/관심 목표/알림 설정 같은 애플리케이션 고유 데이터만 갖고 있다.
+      </p>
+      <p class="desc">
+        <strong>FCM 디바이스 토큰</strong>(<span class="mono">registerDeviceToken</span>/<span class="mono">unregisterDeviceToken</span>)은 api-spec.md에 없던 Android 전용 확장 엔드포인트의 구현체. <span class="mono">upsert(..., {onConflict:"fcm_token"})</span>을 써서 같은 토큰이 다른 계정으로 재등록되는 경우(기기 공유 로그아웃/로그인)에도 항상 최신 <span class="mono">user_id</span>로 덮어쓴다.
+      </p>
+      <p class="desc">
+        <strong><span class="mono">push.service.ts</span>(<span class="mono">sendPushToUser</span>)</strong>는 실제 푸시를 쏘는 함수는 준비돼 있지만, 정기 호출하는 스케줄러/배치(아침 리마인더 등)는 아직 없다 — <strong>배선만 된 상태</strong>. <span class="mono">config/firebase.ts</span>는 <span class="mono">FCM_ENABLED=false</span>면 Firebase Admin SDK 초기화 자체를 건너뛰어, 서비스 계정 JSON이 없는 해커톤 초기 단계에도 서버가 정상 기동하도록 만들어져 있다.
+      </p>
+    </section>
+
+    <section id="config">
+      <h2>8. 설정 / 환경 <span class="tag">config/*.ts</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>파일</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">config/env.ts</td><td>zod로 모든 환경변수를 파싱·검증, 실패하면 서버 기동 자체를 막는다(설정 오류를 부팅 시점에 즉시 드러냄). <span class="mono">SMS_DEV_MODE</span>/<span class="mono">FCM_ENABLED</span>처럼 실 연동 전 기능은 boolean 플래그로 on/off</td></tr>
+            <tr><td class="mono">config/supabase.ts</td><td><span class="mono">supabaseAdmin</span>(service-role, RLS 우회, 백엔드 전용)과 <span class="mono">supabaseAnon</span>(토큰 검증 등 사용자 컨텍스트 필요 호출용) 분리. supabaseAdmin은 RLS 우회하므로 <strong><span class="mono">user_id</span> 필터링은 항상 애플리케이션 코드가 책임</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="diffs">
+      <h2>9. 코드 기준으로 본 "문서와 다르게 구현된 부분"</h2>
+      <p class="desc">server/README.md의 "api-spec.md 대비 구현 시 추가/확정한 사항"과 동일 내용을 코드 위치 기준으로 재정리.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>항목</th><th>문서(api-spec.md)</th><th>실제 코드</th></tr></thead>
+          <tbody>
+            <tr><td>daily-guide LLM 실패</td><td class="mono">503 GUIDE_GENERATION_FAILED</td><td><span class="mono">getOrGenerateDailyGuide</span> — 검수 가이드로 자동 폴백, 200 응답</td></tr>
+            <tr><td>questions LLM 실패</td><td class="mono">503 ANSWER_GENERATION_FAILED</td><td>동일하게 503 유지 (<span class="mono">submitQuestion</span> 마지막 분기)</td></tr>
+            <tr><td>검수 가이드 저장 위치</td><td>미확정</td><td><span class="mono">reference_guides</span> 테이블</td></tr>
+            <tr><td>FCM 디바이스 토큰</td><td>문서에 없음</td><td><span class="mono">POST/DELETE /notifications/device-token</span> 신규</td></tr>
+            <tr><td class="mono">care_records.care_type</td><td>문서에 없음</td><td>검수 가이드 매칭용 내부 키, Android 응답 DTO에는 노출 안 함</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="notes">
+      <h2>10. 앞으로 코드를 볼 때 참고할 포인트</h2>
+      <ul class="open-q">
+        <li>새 엔드포인트를 추가한다면 <span class="mono">routes/*.routes.ts</span>(얇은 매핑) → <span class="mono">validators/*.ts</span>(zod 스키마) → <span class="mono">services/*.ts</span>(실제 로직)의 3단 구조를 그대로 따르는 것이 기존 코드와 일관된다.</li>
+        <li>LLM 호출 지점은 코드 전체에서 <span class="mono">services/aftercare.service.ts</span> 딱 2곳(<span class="mono">generateViaLlm</span> 내부, <span class="mono">submitQuestion</span> 내부)뿐이다 — 다른 곳에서 Claude를 호출하는 코드는 없다.</li>
+        <li><span class="mono">lib/riskKeywords.ts</span>의 두 목록은 전문가 검수 전 초안이므로, 실제 서비스 오픈 전 반드시 의료진 검토가 필요하다.</li>
+      </ul>
+    </section>
+
+    <footer>WHS After Mate · Backend Reference · api-spec v0.4 / db-schema v0.2 / llm-prompt-design v0.1 기준 · 대상 커밋 16c2f5f · 2026-08-02</footer>
+  </main>
+</div>

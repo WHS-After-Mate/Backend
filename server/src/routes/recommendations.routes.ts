@@ -6,8 +6,14 @@ import {
   getNextCareRecommendationDetail,
 } from "../services/recommendations.service";
 
+// 2. 홈 — 다음 관리 추천 (api-spec.md §2, R-QGENNK)
+// 규칙 기반(최근 관리 경과일 + 보유 이용권 + 관심 목표) 즉석 계산이며 LLM 미사용
+
 export const recommendationsRouter = Router();
 
+// 규칙 기반 추천 후보 1개 + 이유. 홈은 이 엔드포인트를 직접 호출하지 않고
+// GET /home/summary의 recommendation 필드를 재사용 — 새로고침/홈 API 실패 시 폴백용으로 별도 제공
+// 204: 추천 근거 부족(관리 이력 없음 등)
 recommendationsRouter.get(
   "/next-care",
   asyncHandler(async (req, res) => {
@@ -20,6 +26,7 @@ recommendationsRouter.get(
   }),
 );
 
+// 추천 카드 클릭 → 추천 상세 보기 (detailDescription 포함)
 recommendationsRouter.get(
   "/next-care/:recommendationId",
   asyncHandler(async (req, res) => {
