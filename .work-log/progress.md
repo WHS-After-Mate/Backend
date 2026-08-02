@@ -2,7 +2,12 @@
 - `server/src/routes/*.routes.ts` 8개 파일 전체에 요구사항 매핑 주석 추가 — 각 엔드포인트가 `api-spec.md`의 몇 절·어떤 요구사항 ID(R-USXPEM/R-QGENNK/R-DCDOJF/F-GBZTGO/F-ULCIXA)를 구현하는지와 캐싱·폴백·사전 차단 등 동작을 명시, 타입체크 통과 확인
 - 신규 문서 `docs/server-code-guide.md`(+ `.html`) 작성 — api-spec 등 기존 문서가 API 계약을 설명한다면 이 문서는 `server/src` 코드 자체의 동작(레이어 구조/요청 파이프라인/인증 흐름/LLM 파이프라인 단계별 흐름/파일별 역할/문서-코드 차이 표)을 설명. html은 기존 docs 3종과 동일한 디자인 시스템으로 제작
 - 루트 `README.md` 문서 인덱스에 신규 문서 항목 추가
-- (이번 세션 변경사항은 아직 git commit/push 전 — 다음 세션에서 처리 필요)
+- `docs/server-code-guide.html`을 Claude 아티팩트로 신규 발행 (favicon 🧩)
+- 사용자에게 `app.ts`/`routes/index.ts`/`auth.routes.ts` 기반으로 Express 기초(미들웨어 체인, `app.use` 등록순서, 경로 prefix 벗기기, `express()` vs `Router()`, HTTP 메서드 매칭, `async`/`await`) 순차 설명 — 코드 변경 없음
+- `app.ts`/`routes/index.ts`에 `express()`/`Router()` 역할 설명 주석 추가
+- `docs/api-spec.md`에 "엔드포인트 전체 요약 (구현 파일 매핑)" 표 신규 추가, `docs/api-spec.html`의 기존 요약 표에도 "구현 파일" 열 추가 + 누락된 FCM device-token 2개 행 보강 + `.method.delete` CSS 추가
+- 기존 API 명세서 아티팩트를 동일 링크로 재발행해 최신 내용 반영
+- git add/commit/push 완료 — 이번 세션 변경사항 전체를 `WHS-After-Mate/Backend` main에 반영 (`16c2f5f..d900124`)
 
 ## 2026-08-02
 - Android Studio 클라이언트 개발 확정에 맞춰 백엔드 기술 스택 결정: Node.js+Express+TypeScript / Supabase(Postgres+Auth) / Anthropic Claude API / FCM(푸시)

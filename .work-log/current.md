@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-02 14:15
+최종 업데이트: 2026-08-02 22:48
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android)로 개발 예정. 백엔드는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM으로 확정하고 실제 구현·연동까지 완료한 상태.
@@ -35,18 +35,23 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - (이번 세션) `server/src/routes/*.routes.ts` 8개 파일 전체에 요구사항 매핑 주석 추가 — 각 엔드포인트가 `docs/api-spec.md`의 몇 절(§1~§5)·어떤 요구사항 ID(R-USXPEM, R-QGENNK, R-DCDOJF, F-GBZTGO, F-ULCIXA)를 구현하는지, 캐싱 정책·폴백·규칙 기반 사전 차단 등 동작을 명시. 타입체크(`npm run typecheck`) 통과 확인
 - (이번 세션) 신규 문서 `docs/server-code-guide.md` + `.html` 작성 — 기존 3종 문서(api-spec/db-schema/llm-prompt-design)가 API 계약을 설명한다면, 이 문서는 `server/src` **코드 자체의 동작**을 설명(레이어 구조, 요청 파이프라인, 인증 흐름, LLM 파이프라인 daily-guide/questions 단계별 흐름, 파일별 역할, 문서-코드 차이점 표). `.html`은 기존 docs 3종과 동일한 CSS 디자인 시스템(스티키 목차/endpoint-card/status-chip)으로 제작, 태그 균형 검증 완료
 - 루트 `README.md` 문서 인덱스에 `docs/server-code-guide.md`/`.html` 항목 추가
+- `docs/api-spec.md`에 신규 "엔드포인트 전체 요약 (구현 파일 매핑)" 표 추가 — 모든 엔드포인트(FCM device-token 2개 포함, 총 25개)가 어느 라우트 파일에 구현돼 있는지 Method/Path/구현 파일 3열로 정리
+- `docs/api-spec.html`의 기존 `#overview` 요약 표에도 "구현 파일" 열 추가 + 누락돼 있던 FCM device-token 2개 행 보강, `DELETE` 메서드용 `.method.delete` CSS 신규 추가
+- Claude 아티팩트 2건 업데이트: `docs/server-code-guide.html`(신규 발행, favicon 🧩), `docs/api-spec.html`(기존 아티팩트를 동일 링크로 재발행, favicon 📋) — 둘 다 `Artifact: list`로 확인 가능
+- 사용자(백엔드 개발자, Node/Express 실무 경험 적어 기초 학습 중)에게 `app.ts`/`routes/index.ts`/`auth.routes.ts` 코드를 이용해 Express 기초 개념을 순차적으로 설명함: 미들웨어 체인과 `app.use` 등록순서, 경로 prefix가 각 라우터를 거치며 벗겨지는 원리, `express()` vs `Router()` 차이, HTTP 메서드 매칭, `async`/`await`/Promise, `requireAuth`가 없는 경로 인자로 전체 하위 라우트에 적용되는 이유와 목적 — 코드 변경 없는 순수 Q&A였으나 앞으로도 유사한 "코드 왜 이렇게 짰는지" 질문이 이어질 가능성 높음
+- git add/commit/push 완료 — 라우트 주석 8개 파일 + `app.ts` + README + `docs/api-spec.md`/`.html` + 신규 `docs/server-code-guide.md`/`.html`를 `WHS-After-Mate/Backend` main에 반영 (`16c2f5f..d900124`), 작업 트리 클린 상태 확인
 
 ## 현재 작업 중
-- (특별히 진행 중인 미완료 작업 없음 — 이번 세션 변경사항은 아직 커밋 전, git status에 uncommitted 상태로 남아있음)
+- (특별히 진행 중인 미완료 작업 없음 — 이번 세션 변경사항 커밋·푸시까지 완료, git status 클린)
 
 ## 다음 할 일
-- 이번 세션 변경사항(라우트 주석 8개 파일 + README + 신규 docs 2개) git add/commit/push — 아직 미실행
 - Android Studio 프로젝트 시작 (Retrofit 등으로 서버 API 연동) — 다음 세션 후보
 - 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가(의료진) 검수
 - FCM 실제 발송 스케줄러(아침 리마인더 등) — 발송 함수(`push.service.ts`)만 준비된 상태, 트리거 로직 미구현
 - refreshToken 만료 정책, 알림 설정 세부 항목 범위 확정 (여전히 미확정)
-- `docs/api-spec.html`/`db-schema.html`/`llm-prompt-design.html` 3종은 여전히 .md 변경사항과 미동기화 (필요 시 수동 갱신) — `server-code-guide`는 이번에 md+html 함께 작성해 신규 반영됨
+- `docs/db-schema.html`/`llm-prompt-design.html`은 여전히 .md 변경사항과 미동기화 (필요 시 수동 갱신) — `api-spec.html`/`server-code-guide.html`은 이번 세션에 최신화 및 아티팩트 발행까지 완료
 - 검수 가이드(`reference_guides`) 데이터는 현재 데모 시드 2종(peeling/laser_toning)뿐 — 실제 서비스 관리 유형 확장 필요
+- 사용자가 Express/Node 기초를 배우는 중이므로, 다음 세션에서도 코드 설명 요청이 이어질 수 있음 — `server-code-guide.md` 내용을 기반으로 답하면 일관성 유지 용이
 
 ## 주요 파일
 - `server/` — 백엔드 전체 (Node.js+Express+TypeScript)
@@ -56,12 +61,14 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
   - `server/src/services/aftercare.service.ts` — LLM 파이프라인 핵심 로직
   - `server/src/lib/riskKeywords.ts` — 위험 신호 키워드 초안(검수 필요)
   - `server/src/lib/sanitizeLlmText.ts` — LLM 출력 XML 태그 흔적 제거
-  - `server/src/routes/*.routes.ts` — 이번 세션에 요구사항 매핑 주석 추가됨
+  - `server/src/routes/*.routes.ts`, `server/src/app.ts` — 요구사항 매핑 + express()/Router() 역할 주석 추가됨
   - `server/.env` — 로컬 환경변수(git 제외됨), Supabase/Anthropic 키 채워진 상태
-- `README.md` — 프로젝트 개요 및 문서 인덱스 (기술스택 표 + docs 4종 인덱스, 이번 세션에 5번째 문서 추가)
-- `docs/api-spec.md`/`db-schema.md`/`llm-prompt-design.md` — 구현 시 확정된 사항 절 추가됨
-- `docs/server-code-guide.md`/`.html` — (신규, 이번 세션) 코드 동작 설명 문서
-- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치 — `16c2f5f`까지 반영, 이번 세션 변경사항은 아직 미푸시)
+- `README.md` — 프로젝트 개요 및 문서 인덱스 (기술스택 표 + docs 5종 인덱스)
+- `docs/api-spec.md`/`.html` — 엔드포인트 전체 요약 표에 "구현 파일" 열 추가됨 (최신 아티팩트 반영)
+- `docs/db-schema.md`/`llm-prompt-design.md` — 구현 시 확정된 사항 절 추가됨 (html은 구버전)
+- `docs/server-code-guide.md`/`.html` — 코드 동작 설명 문서 (최신 아티팩트 반영)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치 — `d900124`까지 반영·푸시 완료)
+- Claude 아티팩트: API 명세서(https://claude.ai/code/artifact/5462bb46-4020-4af8-ba71-cfb8c62f407e), 서버 코드 설명서(https://claude.ai/code/artifact/65b8c9b6-5e4c-473c-be57-aa4054567667) — 둘 다 이번 세션 변경사항까지 반영된 최신 버전
 
 ## 특이사항 / 결정 사항
 - 클라이언트는 Android Studio(네이티브)로 확정 → 백엔드는 REST/JSON 서버(Node+Express)로 구현, FCM 전제로 알림 설계

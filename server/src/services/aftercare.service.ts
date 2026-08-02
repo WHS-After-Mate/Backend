@@ -136,8 +136,13 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
   });
 
   // LLM 생성 실패 시 검수된 가이드 원문으로 폴백 — LLM 없이도 최소 안전한 답을 보장한다 (llm-prompt-design.md)
+  // 폴백 시에도 이 시술 건의 doctor_comment는 개인화 정보로 남겨둔다 (없으면 검수 가이드 원문만 사용)
   const mustAvoid = llmOutput?.mustAvoid ?? referenceGuide.must_avoid;
-  const basicCare = llmOutput?.basicCare ?? referenceGuide.basic_care;
+  const basicCare = llmOutput
+    ? llmOutput.basicCare
+    : careRecord.doctor_comment
+      ? [...referenceGuide.basic_care, `담당의 코멘트: ${careRecord.doctor_comment}`]
+      : referenceGuide.basic_care;
   const nextCheckDate =
     llmOutput?.nextCheckDate ??
     (referenceGuide.next_check_offset_days
