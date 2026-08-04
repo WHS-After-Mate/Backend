@@ -1,80 +1,56 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-02 22:48
+최종 업데이트: 2026-08-05 00:34
 
 ## 프로젝트 개요
-WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android)로 개발 예정. 백엔드는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM으로 확정하고 실제 구현·연동까지 완료한 상태.
+WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 백엔드는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM으로 확정하고 실제 구현·연동까지 완료한 상태.
 
 ## 완료된 작업
-- (이전 세션) API 명세서(v0.4)/DB 스키마(v0.2)/LLM 프롬프트 설계(v0.1) 문서화, GitHub 저장소(WHS-After-Mate/Backend) 연결, README 작성
-- 백엔드 기술 스택 확정: Node.js+Express+TypeScript / Supabase(Postgres+Auth) / Anthropic Claude API / FCM(Android 푸시)
-- `server/` 디렉토리에 백엔드 전체 구현
-  - 프로젝트 스캐폴딩: package.json, tsconfig, .env.example, 폴더 구조(config/middleware/lib/services/validators/routes)
-  - DB 마이그레이션 SQL 작성(`server/db/migrations/001_init.sql`, `002_reference_guides_and_device_tokens.sql`) — 기존 스키마 8개 테이블 + 신규 `reference_guides`(검수 가이드/RAG 소스, 미확정 사항이었던 저장 위치 확정) + `device_tokens`(FCM) 2개 테이블. `care_records`에 `care_type` 컬럼 추가(검수 가이드 매칭 키)
-  - 공통 인프라: Supabase 클라이언트, `requireAuth` 미들웨어(Bearer 토큰 → Supabase Auth 검증), 공통 에러 포맷(`ApiError`/`Errors`), zod 검증
-  - 인증 라우트: 전화번호 SMS 인증(자체 서명 토큰 `phoneVerifiedToken`) → 회원가입(Supabase Auth admin.createUser) → 로그인/refresh/logout
-  - 홈/추천 라우트: `/home/summary`, `/recommendations/next-care(/{id})` — 추천은 규칙 기반 즉석 계산, recommendationId는 userId 기반 결정론적 해시
-  - 사후관리 Q&A + LLM 연동(Claude): `/aftercare/daily-guide`(캐시+생성), `/aftercare/question-categories`, `/aftercare/questions`
-    - 구조화 출력: Claude tool-use(`tool_choice: {type:"tool"}`)로 JSON 스키마 강제
-    - 규칙 기반 사전 필터: 카테고리 검증, 위험신호 키워드(`riskKeywords.ts`, 전문가 검수 필요한 초안)로 LLM 호출 전 차단
-    - 알러지/기저질환/의사코멘트를 항상 컨텍스트로 주입 + `medical_data_access_log` 접근 기록
-    - daily-guide LLM 실패 시: `reference_guides` 검수 원문으로 자동 폴백(200, `generatedBy: "reference_guide"`)
-    - questions LLM 실패 시: 503 ANSWER_GENERATION_FAILED
-  - My Care 라우트: care-records(캘린더/목록/상세), memberships(목록/상세)
-  - 설정/프로필 라우트 + Android 전용 신규 엔드포인트 `POST/DELETE /notifications/device-token`(FCM 토큰 등록/해제)
-  - 시드 스크립트(`server/db/seed/seed.ts`) — 데모 계정, 관리이력 2건, 이용권 2건, 알러지 정보, 검수 가이드(peeling/laser_toning × 경과구간) 시드
-  - 빌드/타입체크 통과 확인, docs 3종(api-spec.md/db-schema.md/llm-prompt-design.md)에 구현 시 확정된 사항 반영, `server/README.md` 작성
-- Supabase 프로젝트 실제 생성 및 연동 확인
-  - `server/.env` 채움 (SUPABASE_URL 오타 수정: `/rest/v1/` 경로 제거), 001·002 마이그레이션 SQL Editor에서 실행 → 10개 테이블 전부 생성 확인(연결 스크립트로 검증)
-  - Anthropic API 키 발급 및 적용
-- 실제 서버 기동 후 엔드투엔드 테스트
-  - `npm run seed` 성공 (데모 계정 `demo@whsaftermate.app`)
-  - 로그인 → `/home/summary` → `/aftercare/daily-guide`(Claude가 알러지·의사코멘트 반영해 실제 생성, 캐시 저장 확인) → `/aftercare/questions` 3가지 케이스 검증(정상 답변/근거없어 out_of_scope/위험신호 expert_required 즉시차단) 모두 정상 동작 확인
-  - **버그 발견 및 수정**: Claude가 tool-use 응답 텍스트에 `</answer>`, `</invoke>` 같은 XML 태그 흔적을 남기는 현상 발견 → `server/src/lib/sanitizeLlmText.ts` 신규 작성해 daily-guide/questions 두 곳 모두 LLM 텍스트 정제 후 응답하도록 수정, 재검증 완료
-- 루트 `README.md`에 "구현 현황(2026-08-02 기준)" 섹션 추가 (기존 내용 유지, 신규 섹션만 덧붙임) — 실제 구현+Supabase 연동+엔드투엔드 테스트 완료 사실 반영
-- git add/commit/push 완료 — `server/` 전체(58개 파일) + docs 3종 + README + .gitignore 변경사항을 `WHS-After-Mate/Backend` main 브랜치에 반영 (`31a51da..16c2f5f`). `.env`/`node_modules`/`dist`는 `.gitignore`로 정상 제외 확인
-- (이번 세션) `server/src/routes/*.routes.ts` 8개 파일 전체에 요구사항 매핑 주석 추가 — 각 엔드포인트가 `docs/api-spec.md`의 몇 절(§1~§5)·어떤 요구사항 ID(R-USXPEM, R-QGENNK, R-DCDOJF, F-GBZTGO, F-ULCIXA)를 구현하는지, 캐싱 정책·폴백·규칙 기반 사전 차단 등 동작을 명시. 타입체크(`npm run typecheck`) 통과 확인
-- (이번 세션) 신규 문서 `docs/server-code-guide.md` + `.html` 작성 — 기존 3종 문서(api-spec/db-schema/llm-prompt-design)가 API 계약을 설명한다면, 이 문서는 `server/src` **코드 자체의 동작**을 설명(레이어 구조, 요청 파이프라인, 인증 흐름, LLM 파이프라인 daily-guide/questions 단계별 흐름, 파일별 역할, 문서-코드 차이점 표). `.html`은 기존 docs 3종과 동일한 CSS 디자인 시스템(스티키 목차/endpoint-card/status-chip)으로 제작, 태그 균형 검증 완료
-- 루트 `README.md` 문서 인덱스에 `docs/server-code-guide.md`/`.html` 항목 추가
-- `docs/api-spec.md`에 신규 "엔드포인트 전체 요약 (구현 파일 매핑)" 표 추가 — 모든 엔드포인트(FCM device-token 2개 포함, 총 25개)가 어느 라우트 파일에 구현돼 있는지 Method/Path/구현 파일 3열로 정리
-- `docs/api-spec.html`의 기존 `#overview` 요약 표에도 "구현 파일" 열 추가 + 누락돼 있던 FCM device-token 2개 행 보강, `DELETE` 메서드용 `.method.delete` CSS 신규 추가
-- Claude 아티팩트 2건 업데이트: `docs/server-code-guide.html`(신규 발행, favicon 🧩), `docs/api-spec.html`(기존 아티팩트를 동일 링크로 재발행, favicon 📋) — 둘 다 `Artifact: list`로 확인 가능
-- 사용자(백엔드 개발자, Node/Express 실무 경험 적어 기초 학습 중)에게 `app.ts`/`routes/index.ts`/`auth.routes.ts` 코드를 이용해 Express 기초 개념을 순차적으로 설명함: 미들웨어 체인과 `app.use` 등록순서, 경로 prefix가 각 라우터를 거치며 벗겨지는 원리, `express()` vs `Router()` 차이, HTTP 메서드 매칭, `async`/`await`/Promise, `requireAuth`가 없는 경로 인자로 전체 하위 라우트에 적용되는 이유와 목적 — 코드 변경 없는 순수 Q&A였으나 앞으로도 유사한 "코드 왜 이렇게 짰는지" 질문이 이어질 가능성 높음
-- git add/commit/push 완료 — 라우트 주석 8개 파일 + `app.ts` + README + `docs/api-spec.md`/`.html` + 신규 `docs/server-code-guide.md`/`.html`를 `WHS-After-Mate/Backend` main에 반영 (`16c2f5f..d900124`), 작업 트리 클린 상태 확인
+- (이전 세션까지) 백엔드 전체 구현 + Supabase 연동 + 엔드투엔드 테스트 완료, 데모 계정 4명(`demo@`~`demo4@whsaftermate.app`) 시드, GitHub 리포(`WHS-After-Mate/Backend`, private) main에 `3a97609`까지 반영·푸시 완료. GitHub Collaborator 초대는 아직 미발송 상태로 이번 세션 진입
+- (이번 세션) **개념 설명 Q&A 다수** — 사용자가 Express/Node·클라이언트-서버 구조를 배우는 중이라 코드 변경 없이 순차 설명함
+  - "프론트가 내 리포 clone해서 서버만 실행하면 되나 / 구조 바꿀 필요 없나" → 코드 구조 변경 불필요, `app.listen()` host 미지정이라 이미 모든 인터페이스에서 열림, `CORS_ORIGIN=*`라 안드로이드 요청도 허용됨을 코드로 확인해 답변
+  - "같은 컴퓨터에서 진행해야 하나" 오해 정정 — localhost는 각자 컴퓨터 기준이라 프론트/백엔드 각자 자기 컴퓨터에서 로컬 서버를 띄우면 됨 (DB는 Supabase 클라우드 공유라 데이터는 동일하게 보임)
+  - "백엔드 API 만든 게 서버로 돌아가는 구조가 맞냐" → `app.ts`(설계도, `listen()` 없음) vs `server.ts`(`app.listen()`으로 실제 포트 여는 지점) 구조 코드로 확인해 설명, 카카오톡 비유로 클라이언트-서버 개념 정리
+  - "버튼 누르면 요청 보내는 코드는 누가 짜냐" → 프론트(Retrofit) 담당, 서버는 요청 처리만 한다고 역할 분담표로 정리
+  - "코드니까 앱에서 그냥 import해서 백엔드 실행하면 안 되나" → (1) Node.js/TS와 안드로이드 JVM/코틀린은 런타임이 달라 애초에 import 불가 (2) 된다 해도 비밀키 유출/공유데이터 신뢰성/로직 신뢰/업데이트 배포 문제로 클라이언트-서버 분리가 필요하다고 설명
+  - "안드로이드(프론트)는 이 API를 실제로 어떻게 호출하냐" → `GET /home/summary` 예시로 Retrofit interface 선언 → baseUrl 지정 → 버튼 클릭 시 suspend 함수 호출하는 실제 Kotlin 코드 예시 제공
+  - "로컬호스트로 열면 동일 LAN만 연결 가능한 거냐" 오해 정정 — localhost/10.0.2.2는 같은 기기 자신만 가능, LAN의 다른 기기가 붙으려면 서버 컴퓨터의 LAN IP를 써야 함(서버는 이미 모든 인터페이스에 열려있어 코드 수정 불필요, 방화벽 포트 허용만 필요)을 표로 정리
+- (이번 세션) **신규 문서 `docs/frontend-integration-guide.md` 작성** — 프론트(Android) 담당자용 실행 절차 문서: 저장소 clone 위치(별개 폴더), `.env` 설정(비밀값은 별도 채널 전달, 마이그레이션/시드 재실행 금지 경고), `npm run dev` 실행+`/health` 확인, baseUrl 표(에뮬레이터 `10.0.2.2` vs 실기기 LAN IP), `network_security_config.xml`/`AndroidManifest.xml` cleartext 설정 코드, 데모 계정 4개 표, Retrofit 호출 예시 코드, 자주 막히는 지점(Connection refused/cleartext 차단/401/실기기 접속 안됨) 체크리스트
+- **동일 내용의 `.html` 버전(`docs/frontend-integration-guide.html`) 제작** — 기존 docs 3종(api-spec/db-schema/server-code-guide)과 동일한 CSS 디자인 시스템(스티키 목차, endpoint-card, table-wrap, status-chip 등)으로 제작
+- README.md 문서 인덱스 테이블에 `docs/frontend-integration-guide.md`/`.html` 항목 추가
+- Claude 아티팩트로 `docs/frontend-integration-guide.html` 신규 발행 (favicon 📱) — https://claude.ai/code/artifact/d0b80060-4e05-4a4d-9d1c-64296fd7394d
+- **배포 관련 논의**: "`10.0.2.2`가 기본 주소냐, 배포해도 이걸 쓰면 되냐" 질문에 — `10.0.2.2`는 에뮬레이터가 자기 호스트 컴퓨터를 가리키는 로컬 전용 특수 주소이며, Render 배포 시 Render가 발급하는 실제 공인 HTTPS 도메인으로 baseUrl을 교체해야 하고 그 이후엔 에뮬레이터/실기기 구분 없이 같은 주소로 통일되며 `network_security_config`의 cleartext 예외도 필요 없어짐을 설명. 프론트 쪽에 baseUrl을 상수로 분리해두라고 제안
+- 사용자가 "그럼 서버 배포하는 게 더 편할 것 같다"는 의견 제시 → 배포 시 장점(고정 HTTPS 주소로 통일, 로컬 개발 잡음 제거)과 트레이드오프(재배포 필요해 로컬 핫리로드보다 반영 느림, Render 무료 티어 콜드스타트) 설명하며 "지금 배포 진행할지, 로컬로 며칠 더 연동해볼지" 질문 → **사용자가 "그건 내일하자"고 보류 결정** (이번 세션엔 미진행)
+- "주소(baseUrl) 바뀔 때마다 여러 곳에 적어둔 걸 다 바꿔야 하는 거 아니냐"는 질문에 → 하드코딩하면 그렇지만 보통 `object ApiConfig { const val BASE_URL = ... }` 상수 하나로 분리하거나, `build.gradle`의 `buildConfigField`로 debug/release 빌드 타입별 자동 전환하는 방식을 코드 예시로 제안. `frontend-integration-guide.md`에 이 내용을 추가할지 물었으나 아직 반영은 안 함(다음 할 일로 남음)
+- 사용자가 제시한 Retrofit 예시 코드(`interface WhsApi`, `Retrofit.Builder()...build()`, `retrofit.create(WhsApi::class.java)`)를 한 줄씩 설명 요청 → `interface WhsApi`는 "선언만 있고 구현은 없는 명세"(`api-spec.md`에 대응), `Retrofit.Builder()...build()`는 통신 설정을 담은 클라이언트 객체 생성(사용자가 이미 아는 `createClient(SUPABASE_URL, KEY)` 패턴과 동일 역할로 비유), `retrofit.create(WhsApi::class.java)`는 인터페이스의 annotation을 읽어 실제 HTTP 요청을 보내는 구현체를 런타임에 자동 생성해주는 Retrofit 고유 메커니즘("동적 프록시")이라고 설명. **사용자가 "내일 다시 물어볼게"라며 이 주제를 이어가기로 함** — 다음 세션에서 Retrofit/Kotlin 관련 후속 질문 가능성 높음
 
 ## 현재 작업 중
-- (특별히 진행 중인 미완료 작업 없음 — 이번 세션 변경사항 커밋·푸시까지 완료, git status 클린)
+- **Render 배포 여부/시점 결정 보류 중** — 사용자가 "내일 하자"고 명시적으로 미룸. 다음 세션에서 이 논의를 이어가야 함
+- **Retrofit/Kotlin 개념 학습도 "내일 다시 물어볼게"로 보류** — `interface`+`Retrofit.Builder`+`create()` 조합까지 설명한 상태에서 중단, 다음 세션에서 이어질 가능성 높음
+- 이번 세션 변경사항(README.md 수정 + 신규 문서 2개)이 **아직 git commit/push 안 된 상태** (work-log 파일 포함 전부 unstaged)
+- 프론트 담당자 GitHub Collaborator 초대는 여전히 미발송 (이전 세션부터 이어지는 미완료 항목)
 
 ## 다음 할 일
-- Android Studio 프로젝트 시작 (Retrofit 등으로 서버 API 연동) — 다음 세션 후보
+- **Render 배포 여부/시점 결정** — 사용자가 "지금 배포가 더 편할 것 같다"는 의견을 냈으나 내일 다시 논의하기로 함. 배포하기로 하면: Render 프로젝트 생성, `.env` 값을 Render 환경변수로 이전, 배포 후 발급되는 HTTPS 도메인으로 `frontend-integration-guide.md`/`.html`의 baseUrl 섹션 업데이트 필요
+- (다음 세션 후보) Retrofit/baseUrl 관리 방식(상수 분리 vs `buildConfigField`) 후속 질문 대응 — 원하면 `frontend-integration-guide.md`에도 이 내용 추가
+- 이번 세션에 제안했던 baseUrl 상수화(`ApiConfig`/`buildConfigField`) 가이드를 `frontend-integration-guide.md`에 반영할지 결정 (제안만 하고 아직 문서에는 미반영)
+- 이번 세션 변경사항 git add/commit/push (README.md + `docs/frontend-integration-guide.md`/`.html`)
+- 프론트 담당자를 GitHub Collaborator로 초대 (`Settings > Collaborators and teams > Add people`)
+- `.env` 비밀값을 프론트 담당자에게 git 아닌 채널로 전달
 - 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가(의료진) 검수
 - FCM 실제 발송 스케줄러(아침 리마인더 등) — 발송 함수(`push.service.ts`)만 준비된 상태, 트리거 로직 미구현
 - refreshToken 만료 정책, 알림 설정 세부 항목 범위 확정 (여전히 미확정)
-- `docs/db-schema.html`/`llm-prompt-design.html`은 여전히 .md 변경사항과 미동기화 (필요 시 수동 갱신) — `api-spec.html`/`server-code-guide.html`은 이번 세션에 최신화 및 아티팩트 발행까지 완료
-- 검수 가이드(`reference_guides`) 데이터는 현재 데모 시드 2종(peeling/laser_toning)뿐 — 실제 서비스 관리 유형 확장 필요
-- 사용자가 Express/Node 기초를 배우는 중이므로, 다음 세션에서도 코드 설명 요청이 이어질 수 있음 — `server-code-guide.md` 내용을 기반으로 답하면 일관성 유지 용이
+- `docs/db-schema.html`/`llm-prompt-design.html`은 여전히 .md 변경사항과 미동기화
 
 ## 주요 파일
-- `server/` — 백엔드 전체 (Node.js+Express+TypeScript)
-  - `server/README.md` — 서버 실행 방법, 구현 시 확정 사항 정리
-  - `server/db/migrations/001_init.sql`, `002_reference_guides_and_device_tokens.sql` — DB 마이그레이션
-  - `server/db/seed/seed.ts` — 데모 데이터 시드
-  - `server/src/services/aftercare.service.ts` — LLM 파이프라인 핵심 로직
-  - `server/src/lib/riskKeywords.ts` — 위험 신호 키워드 초안(검수 필요)
-  - `server/src/lib/sanitizeLlmText.ts` — LLM 출력 XML 태그 흔적 제거
-  - `server/src/routes/*.routes.ts`, `server/src/app.ts` — 요구사항 매핑 + express()/Router() 역할 주석 추가됨
-  - `server/.env` — 로컬 환경변수(git 제외됨), Supabase/Anthropic 키 채워진 상태
-- `README.md` — 프로젝트 개요 및 문서 인덱스 (기술스택 표 + docs 5종 인덱스)
-- `docs/api-spec.md`/`.html` — 엔드포인트 전체 요약 표에 "구현 파일" 열 추가됨 (최신 아티팩트 반영)
-- `docs/db-schema.md`/`llm-prompt-design.md` — 구현 시 확정된 사항 절 추가됨 (html은 구버전)
-- `docs/server-code-guide.md`/`.html` — 코드 동작 설명 문서 (최신 아티팩트 반영)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치 — `d900124`까지 반영·푸시 완료)
-- Claude 아티팩트: API 명세서(https://claude.ai/code/artifact/5462bb46-4020-4af8-ba71-cfb8c62f407e), 서버 코드 설명서(https://claude.ai/code/artifact/65b8c9b6-5e4c-473c-be57-aa4054567667) — 둘 다 이번 세션 변경사항까지 반영된 최신 버전
+- `server/` — 백엔드 전체 (Node.js+Express+TypeScript), 구조 변경 없음
+- `docs/frontend-integration-guide.md`/`.html` — (신규) 프론트(Android) 담당자용 로컬 실행·연동 가이드, 아직 git 미반영
+- `README.md` — 문서 인덱스에 frontend-integration-guide 항목 추가됨, 아직 git 미반영
+- `docs/api-spec.md`/`.html`, `docs/server-code-guide.md`/`.html` — 기존 문서, 이번 세션엔 내용 변경 없음(참고만 함)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치 — 최신 push는 `3a97609`, 이번 세션 변경분 미반영)
+- Claude 아티팩트: API 명세서, 서버 코드 설명서(이전 세션 발행) + **프론트엔드 연동 가이드**(이번 세션 신규, https://claude.ai/code/artifact/d0b80060-4e05-4a4d-9d1c-64296fd7394d)
 
 ## 특이사항 / 결정 사항
-- 클라이언트는 Android Studio(네이티브)로 확정 → 백엔드는 REST/JSON 서버(Node+Express)로 구현, FCM 전제로 알림 설계
-- LLM 제공자는 Anthropic Claude API로 확정 (Claude Code 사용 환경과의 일관성 + 의료 인접 도메인 안전성 고려)
-- 검수된 관리 가이드(RAG 소스) 저장 위치: 정적 파일이 아닌 DB 테이블(`reference_guides`)로 확정 — 검수자가 운영 중 직접 수정하기 쉬움
-- daily-guide는 LLM 실패해도 항상 200 응답(검수 가이드로 폴백), questions는 폴백 문구를 만들기 어려워 503 유지 — 이전 세션에서 확정한 정책
-- Supabase는 REST API 방식(`@supabase/supabase-js`)만 사용, 직접 Postgres 연결 문자열은 안 씀 → 비밀번호 퍼센트 인코딩 이슈 해당 없음
-- api-spec.md(계약)와 server-code-guide.md(구현 동작) 두 문서를 목적별로 분리 — 코드 주석도 두 문서를 함께 참조하도록 작성
+- 이번 세션은 대부분 **개념 설명(교육) + 신규 문서 작성**이었고 서버 코드(`server/src`) 자체는 변경하지 않음
+- `10.0.2.2`/LAN IP 방식은 "로컬 개발 단계 전용"이며, Render 배포 후에는 공인 HTTPS 도메인 하나로 통일된다는 점을 문서화하지 않고 대화로만 정리함 — 배포 확정되면 `frontend-integration-guide`에도 반영 필요
+- Render 배포 시점: 기존엔 "최종 완료 시점에"로 확정했었으나, 이번 세션에서 사용자가 "지금 하는 게 더 편할 것 같다"며 재고 중 — **아직 재확정 안 됨, 내일 논의 예정**
 - 세션 재시작 시 이 파일이 자동으로 브리핑됨 (글로벌 CLAUDE.md 설정)

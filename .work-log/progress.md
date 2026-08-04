@@ -1,3 +1,38 @@
+## 2026-08-05
+- 세션 대부분 개념 설명(Express 서버 구조, 클라이언트-서버 아키텍처, localhost/LAN/에뮬레이터 주소 차이) Q&A — 코드 변경 없음
+  - `app.ts`(설계도) vs `server.ts`(`app.listen()`으로 실제 실행) 구조, "코드를 앱에서 import해서 못 쓰는 이유"(런타임 차이 + 비밀키/신뢰/배포 문제), 안드로이드가 Retrofit으로 API 호출하는 실제 코드 예시 등 설명
+- 신규 문서 `docs/frontend-integration-guide.md` + `.html` 작성 — 프론트(Android) 담당자가 리포 clone → `.env` 설정 → 서버 실행 → baseUrl(에뮬레이터/실기기) → 데모 계정 → Retrofit 연동까지 따라할 수 있는 절차 문서, 기존 docs와 동일 디자인 시스템으로 `.html` 제작
+- README.md 문서 인덱스에 신규 문서 항목 추가
+- `docs/frontend-integration-guide.html`을 Claude 아티팩트로 신규 발행 (favicon 📱)
+- Render 배포 시점 재논의 — "지금 배포하는 게 더 편할 것 같다"는 사용자 의견에 장단점(고정 HTTPS 주소 vs 재배포 필요/콜드스타트) 설명 → **결정은 내일로 보류**
+- baseUrl 주소 바뀔 때마다 여러 곳 다 고쳐야 하는지 질문 → 상수 분리(`ApiConfig`) / `buildConfigField`로 debug·release 자동 전환하는 방법 코드로 제안
+- 사용자가 짠 Retrofit 예시(`interface WhsApi` / `Retrofit.Builder()` / `retrofit.create()`)를 한 줄씩 설명 — interface는 선언만 있는 명세, Builder는 통신 클라이언트 생성(Supabase `createClient`와 동일 역할로 비유), `create()`는 명세를 실제 구현체로 런타임 자동 생성하는 Retrofit 고유 메커니즘. **"내일 다시 물어볼게"로 보류**
+- 이번 세션 변경사항(README.md + 신규 문서 2개)은 아직 git commit/push 안 됨
+
+## 2026-08-04 (2)
+- GitHub 리포(`WHS-After-Mate/Backend`) private 여부 확인 — `gh` CLI 없어 `curl`로 API 비인증 조회(404) + `git ls-remote`(인증 성공) 대조해 private으로 추정, 사용자가 직접 확인해 private 확정
+- Collaborator 초대 방법 안내(Settings > Collaborators and teams > Add people) — 아직 미발송
+- "Render를 왜 써야 하냐(DB 때문인지)" 질문에 DB(Supabase)는 이미 클라우드에 있고 Render는 Express 서버를 24시간 켜놓기 위한 것이라고 정정 설명
+- "앱인데 서버를 왜 항상 켜놔야 하냐" 질문에 클라이언트-서버 구조가 필요한 이유(공유 의료데이터 DB, LLM API 키 유출 방지, 서버 신뢰 로직) 설명
+- 최종 결정: 최종 완료 전까지 로컬호스트로 개발, 최종 완료 시점에 Render로 배포
+
+## 2026-08-04
+- Android/프론트 담당자 연동 방식 논의(코드 변경 없는 컨설팅 세션)
+- 백엔드 코드를 안드로이드 스튜디오에 "바로 넘겨 쓸 수 있는지" 질문에, server/는 별도 Node 백엔드라 코드 import가 아니라 (1) 접근 가능한 서버 URL (2) API 계약 문서(`docs/api-spec.md`)가 필요하다고 정리
+- 서버 접근 방식(로컬 직접 실행/ngrok/클라우드 배포) 중 "프론트 담당자가 리포 clone해서 로컬로 npm run dev" 방식으로 결정 — `.env` 비밀값은 git 아닌 채널로 전달, 같은 Supabase 프로젝트 키 공유 필요, 마이그레이션/시드는 재실행 불필요
+- 프론트 담당자가 이미 별도 Android Studio 프로젝트로 작업 중임을 확인 → 백엔드 리포는 그 프로젝트와 별개 폴더로 clone해서 서버만 로컬 실행하는 용도로 정리
+- Android Studio 실무 설정(Retrofit/OkHttp, INTERNET 권한, network_security_config cleartext 예외, baseUrl 에뮬레이터/실기기 차이, accessToken Interceptor) 안내
+- "`npm run dev`가 앱 실행이냐" 질문에 오해 정정 — 백엔드 서버만 띄우는 것이며, Play Store/APK 배포엔 클라우드 배포(HTTPS 고정 URL)+서명된 APK/AAB 빌드가 별도로 필요함을 설명. 배포 작업 자체는 사용자가 "나중에 하자"고 보류
+- 다음 액션으로 GitHub 리포 private 여부 확인 및 프론트 담당자 Collaborator 초대가 남음(미실행)
+
+## 2026-08-03
+- 사용자와 EMR 연동 관련 논의: 현재 스키마(`external_record_id`/`source_system`/`synced_at`)는 "동기화된 사본"이라는 표시로는 충분하나 실제 파이프라인엔 부족(환자 매칭 로직/증분 동기화 커서/삭제 반영 정책 없음), 데모 데이터는 100% 가상이며 실제 서비스 전환 시 법적 검토 필요함을 확인
+- 임시 검증 스크립트로 Supabase에 시드 데이터 실제 존재 확인(작업 후 삭제)
+- `server/db/seed/seed.ts`를 가상 고객 1명 → 4명(`PATIENTS` 배열 + `seedPatient()`)으로 리팩터링 — 정상/이용권 만료임박/이용권 소진/신규고객 4가지 시나리오, `npm run seed`로 실제 반영 확인
+- `aftercare.service.ts` 버그 수정 — daily-guide LLM 실패 폴백 시 `doctor_comment`가 사라지던 것을 `basicCare`에 덧붙이도록 수정
+- git add/commit/push 완료 — seed 확장 + 폴백 수정 + work-log를 `WHS-After-Mate/Backend` main에 반영 (`d900124..3a97609`)
+- 사용자에게 `id` vs `user_id`(소유자 매칭), `reference_guides`가 환자와 분리된 공용 테이블인 이유, 폴백 미반영 개인화 문제(위 버그 수정으로 이어짐) 순차 설명
+
 ## 2026-08-02 (2)
 - `server/src/routes/*.routes.ts` 8개 파일 전체에 요구사항 매핑 주석 추가 — 각 엔드포인트가 `api-spec.md`의 몇 절·어떤 요구사항 ID(R-USXPEM/R-QGENNK/R-DCDOJF/F-GBZTGO/F-ULCIXA)를 구현하는지와 캐싱·폴백·사전 차단 등 동작을 명시, 타입체크 통과 확인
 - 신규 문서 `docs/server-code-guide.md`(+ `.html`) 작성 — api-spec 등 기존 문서가 API 계약을 설명한다면 이 문서는 `server/src` 코드 자체의 동작(레이어 구조/요청 파이프라인/인증 흐름/LLM 파이프라인 단계별 흐름/파일별 역할/문서-코드 차이 표)을 설명. html은 기존 docs 3종과 동일한 디자인 시스템으로 제작
