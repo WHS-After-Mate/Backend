@@ -5,20 +5,29 @@ interface NotificationSettingsPatch {
   pushEnabled?: boolean;
   aftercareReminder?: boolean;
   membershipExpiryAlert?: boolean;
+  marketingAlert?: boolean;
 }
 
-function toDto(row: { push_enabled: boolean; aftercare_reminder: boolean; membership_expiry_alert: boolean }) {
+const SETTINGS_COLUMNS = "push_enabled, aftercare_reminder, membership_expiry_alert, marketing_alert";
+
+function toDto(row: {
+  push_enabled: boolean;
+  aftercare_reminder: boolean;
+  membership_expiry_alert: boolean;
+  marketing_alert: boolean;
+}) {
   return {
     pushEnabled: row.push_enabled,
     aftercareReminder: row.aftercare_reminder,
     membershipExpiryAlert: row.membership_expiry_alert,
+    marketingAlert: row.marketing_alert,
   };
 }
 
 export async function getNotificationSettings(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("push_enabled, aftercare_reminder, membership_expiry_alert")
+    .select(SETTINGS_COLUMNS)
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -33,10 +42,11 @@ export async function updateNotificationSettings(userId: string, patch: Notifica
       ...(patch.pushEnabled !== undefined && { push_enabled: patch.pushEnabled }),
       ...(patch.aftercareReminder !== undefined && { aftercare_reminder: patch.aftercareReminder }),
       ...(patch.membershipExpiryAlert !== undefined && { membership_expiry_alert: patch.membershipExpiryAlert }),
+      ...(patch.marketingAlert !== undefined && { marketing_alert: patch.marketingAlert }),
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId)
-    .select("push_enabled, aftercare_reminder, membership_expiry_alert")
+    .select(SETTINGS_COLUMNS)
     .single();
 
   if (error || !data) throw Errors.noActiveCustomerProfile();

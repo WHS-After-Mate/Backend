@@ -3,7 +3,12 @@ import { isSupportedCategory } from "../lib/categories";
 import { Errors } from "../lib/errors";
 import { containsRiskKeyword, violatesOutputPolicy } from "../lib/riskKeywords";
 import { sanitizeLlmText, sanitizeLlmTextArray } from "../lib/sanitizeLlmText";
-import { daysElapsedSince, getCareRecordById, getLatestCareRecord } from "./careRecords.service";
+import {
+  daysElapsedSince,
+  getCareRecordById,
+  getLatestCareRecord,
+  type CareRecordRow,
+} from "./careRecords.service";
 import {
   DAILY_GUIDE_INPUT_SCHEMA,
   DAILY_GUIDE_SYSTEM_PROMPT,
@@ -94,12 +99,49 @@ async function generateViaLlm(context: {
   return null;
 }
 
-export async function getOrGenerateDailyGuide(userId: string, careRecordId?: string) {
+// elapsedDay가 지정되고 오늘 실제 경과일과 다르면(1/3/5/7/10일차 탭 선택) 개인화 LLM 호출 없이
+// reference_guides 원문을 그대로 반환한다. 가상의 경과일에 대해 매번 LLM을 호출하는
+// 비용·안전 부담을 피하기 위함 — api-spec.md v0.5 GET /aftercare/daily-guide?elapsedDay= 참고
+async function getReferenceGuidePreview(careRecord: CareRecordRow, elapsedDay: number) {
+  const referenceGuide = await findReferenceGuide(careRecord.care_type, elapsedDay);
+  if (!referenceGuide) throw Errors.guideNotAvailable();
+
+  const careDateMs = new Date(`${careRecord.care_date}T00:00:00+09:00`).getTime();
+  const nextCheckDate = referenceGuide.next_check_offset_days
+    ? new Date(careDateMs + (elapsedDay + referenceGuide.next_check_offset_days) * 86400000)
+        .toISOString()
+        .slice(0, 10)
+    : null;
+
+  return {
+    guideId: referenceGuide.id,
+    careRecordId: careRecord.id,
+    careName: careRecord.care_name,
+    daysElapsed: elapsedDay,
+    elapsedRange: referenceGuide.elapsed_range_label,
+    isToday: false,
+    mustAvoid: referenceGuide.must_avoid,
+    basicCare: referenceGuide.basic_care,
+    nextCheckDate,
+    generatedAt: new Date().toISOString(),
+    generatedBy: "reference_guide",
+    cacheExpiresAt: nextMidnightKstIso(),
+  };
+}
+
+export async function getOrGenerateDailyGuide(userId: string, careRecordId?: string, elapsedDay?: number) {
   const careRecord = careRecordId
     ? await getCareRecordById(userId, careRecordId)
     : await getLatestCareRecord(userId);
 
   if (!careRecord) throw Errors.guideNotAvailable();
+
+  const actualDaysElapsed = daysElapsedSince(careRecord.care_date);
+  const isToday = elapsedDay === undefined || elapsedDay === actualDaysElapsed;
+
+  if (!isToday) {
+    return getReferenceGuidePreview(careRecord, elapsedDay!);
+  }
 
   const cached = await getCachedGuide(careRecord.id);
   if (cached) {
@@ -109,6 +151,7 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
       careName: careRecord.care_name,
       daysElapsed: cached.days_elapsed,
       elapsedRange: cached.elapsed_range,
+      isToday: true,
       mustAvoid: cached.must_avoid,
       basicCare: cached.basic_care,
       nextCheckDate: cached.next_check_date,
@@ -118,7 +161,7 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
     };
   }
 
-  const daysElapsed = daysElapsedSince(careRecord.care_date);
+  const daysElapsed = actualDaysElapsed;
   const referenceGuide = await findReferenceGuide(careRecord.care_type, daysElapsed);
   if (!referenceGuide) throw Errors.guideNotAvailable();
 
@@ -182,6 +225,7 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
         careName: careRecord.care_name,
         daysElapsed: raceCache.days_elapsed,
         elapsedRange: raceCache.elapsed_range,
+        isToday: true,
         mustAvoid: raceCache.must_avoid,
         basicCare: raceCache.basic_care,
         nextCheckDate: raceCache.next_check_date,
@@ -199,6 +243,7 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
     careName: careRecord.care_name,
     daysElapsed,
     elapsedRange: referenceGuide.elapsed_range_label,
+    isToday: true,
     mustAvoid,
     basicCare,
     nextCheckDate,

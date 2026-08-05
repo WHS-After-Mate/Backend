@@ -1,6 +1,8 @@
-# WHS After Mate — DB 스키마 (v0.2)
+# WHS After Mate — DB 스키마 (v0.3)
 
-기준: `api-spec.md` v0.4. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 Supabase의 phone-auth 기능을 쓰지 않고 `phone_verifications` 테이블로 직접 구현한다(국내 SMS 업체 연동 때문).
+기준: `api-spec.md` v0.5. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 Supabase의 phone-auth 기능을 쓰지 않고 `phone_verifications` 테이블로 직접 구현한다(국내 SMS 업체 연동 때문).
+
+v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하는 스키마 변경. `profiles`에 컬럼 2개 추가, `care_records`에 컬럼 4개 추가, `membership_usages` 신규 테이블 1개. **마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`)이 Supabase 프로젝트에 실제 적용됐고, 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 확인했다.** 자세한 내용은 하단 "v0.3에서 추가된 항목" 절 참고.
 
 시각 자료(ERD, 확대/드래그 가능한 다이어그램)는 `db-schema.html` 참고.
 
@@ -11,6 +13,8 @@
 이메일/비밀번호 계정 생성, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 Supabase Auth가 처리한다. 우리 테이블은 `auth.users.id`를 FK로 참조만 한다.
 
 **가입 흐름**: `POST /auth/signup/verify-phone/request` → 서버가 국내 SMS API 호출 → `phone_verifications`에 코드 해시 저장 → `/confirm`으로 검증 → `phoneVerifiedToken` 발급 → `POST /auth/signup` 호출 시 토큰 검증 후 `supabase.auth.signUp()` → 생성된 `user.id`로 `profiles` 행 insert.
+
+**비밀번호 재설정/변경** *(v0.3, `api-spec.md` v0.5 신규 — 구현 완료, DB 마이그레이션 불필요)*: 가입 흐름과 마찬가지로 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`, `POST /auth/password/reset-confirm`은 이메일 링크의 recovery 토큰을 `supabaseAnon.auth.verifyOtp({ type: "recovery" })`로 검증한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`). `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
 
 ---
 
@@ -34,12 +38,14 @@
 create table public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   name text not null,
+  birth_date date,
   phone text unique,
   phone_verified_at timestamptz,
   interest_goals text[] not null default '{}',
   push_enabled boolean not null default true,
   aftercare_reminder boolean not null default true,
   membership_expiry_alert boolean not null default true,
+  marketing_alert boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -48,10 +54,13 @@ create table public.profiles (
 | 컬럼 | 설명 |
 |---|---|
 | `user_id` | PK, `auth.users(id)` 참조, 계정 삭제 시 CASCADE |
+| `birth_date` | *(v0.3 신규)* 내 정보 화면의 생년월일. `GET /profile` 응답 `birthDate` |
 | `interest_goals` | 관심 목표 — 추천 API(`basis: goal`)의 입력값 |
 | `push_enabled` / `aftercare_reminder` / `membership_expiry_alert` | 알림 설정. 1:1이라 별도 테이블로 안 쪼갬 |
+| `marketing_alert` | *(v0.3 신규)* 설정 화면의 "마케팅 알림" 토글. 기본값 `false`(옵트인) |
 
 → `GET/PATCH /profile`, `PUT /profile/interests`, `GET/PATCH /notifications/settings` 모두 이 한 테이블로 처리.
+→ `phone`은 기존부터 있던 컬럼(가입 시 인증한 번호)이며, `GET /profile` 응답에 `phone` 필드로 노출하는 것 자체는 v0.5에서 새로 추가된 것이지 컬럼 자체는 신규가 아니다.
 
 ### public.phone_verifications — 독립 테이블 (가입 전 단계, 계정과 미연결)
 
@@ -87,6 +96,10 @@ create table public.care_records (
   brand text,
   store text,
   practitioner text,
+  status text not null default 'completed',
+  session_number int,
+  total_sessions int,
+  membership_id uuid references public.memberships(id) on delete set null,
   basic_aftercare_guide text[] not null default '{}',
   doctor_comment text,
   external_record_id text,
@@ -104,6 +117,9 @@ create unique index idx_care_records_external_id
 ```
 
 - `care_type`: `reference_guides.care_type`과 매칭하는 내부 정규화 키(예: `peeling`, `laser_toning`). `care_name`은 사용자에게 보여주는 표시용 문자열이라 매칭 키로 쓰기 부적절해 별도 컬럼으로 분리. API 응답에는 노출하지 않음 (서버 구현 시 추가)
+- `status` *(v0.3, 마이그레이션 003)*: `GET /care-records`/`{id}` 응답의 `status`. 기본값 `completed`(EMR 동기화 데이터는 이미 끝난 시술 위주)
+- `session_number` / `total_sessions` *(v0.3, 마이그레이션 003)*: 관리 상세의 "관리 회차: 2/3회차". nullable — 회차 개념이 없는 단건 시술은 비워둠
+- `membership_id` *(v0.3, 마이그레이션 003)*: 이 시술이 차감한 이용권 FK. `on delete set null`로 이용권이 삭제돼도 시술 기록 자체는 보존. **마이그레이션 순서 주의**: `public.memberships`가 먼저 생성되어 있어야 하므로, 실제 적용 시 이 테이블 정의를 `memberships` 다음으로 옮기거나 `ALTER TABLE ... ADD COLUMN membership_id ...`를 memberships 생성 후 별도 스텝으로 분리해야 한다(문서 내 테이블 순서는 설명 편의상 EMR 연동 그룹을 앞에 둔 것)
 - `doctor_comment`: 해당 시술 건에 대한 의사의 코멘트 (EMR 원본). 환자에게 노출할지는 프론트 정책에 따라 다르지만, LLM 컨텍스트에는 항상 포함
 - `external_record_id` / `source_system` / `synced_at`: EMR 원본 레코드 추적용. MVP에선 시드 데이터라 비워두거나 더미값 사용, 실연동 시 이 필드로 중복 동기화 방지
 
@@ -179,6 +195,27 @@ create index idx_memberships_user_expiry
 ```
 
 - `remaining_count`는 GENERATED 컬럼 — 직접 갱신 불필요, `used_count`만 늘리면 자동 계산됨
+
+### public.membership_usages — 이용권 회차별 사용 이력 *(v0.3, 마이그레이션 003)*
+
+```sql
+create table public.membership_usages (
+  id uuid primary key default gen_random_uuid(),
+  membership_id uuid not null references public.memberships(id) on delete cascade,
+  care_record_id uuid references public.care_records(id) on delete set null,
+  session_number int not null,
+  used_at date not null,
+  created_at timestamptz not null default now(),
+  unique (membership_id, session_number)
+);
+
+create index idx_membership_usages_membership
+  on public.membership_usages (membership_id, session_number);
+```
+
+- 이용권 화면(`GET /memberships`/`{id}`)의 "1회차 2026.01.01(일)", "2회차 2026.03.01(일)" — `used_count`(집계값)만으로는 회차별 날짜를 복원할 수 없어 별도 테이블로 분리
+- `care_record_id`: 어떤 시술 건이 이 회차를 소모했는지 역참조(선택). `care_records.membership_id`와 함께 있으면 양방향 조회 가능하지만, 회차 자체는 이 테이블이 유일한 사실 근거
+- `unique (membership_id, session_number)`: 같은 이용권에서 회차 번호 중복 방지
 
 ### public.aftercare_guides — LLM 일차별 가이드 캐시
 
@@ -279,6 +316,8 @@ create table public.device_tokens (
 | **전화 인증은 Supabase 기능 미사용** | 국내 SMS 업체 연동을 위해 `phone_verifications` 직접 구현 |
 | **알러지·의사코멘트는 별도 테이블(`medical_profiles`)로 분리** | `profiles`(앱 계정 데이터)와 성격이 달라 접근 권한·감사 로그를 다르게 관리하기 위함. EMR 동기화 대상이라는 점도 명확히 구분 |
 | **의료정보 접근은 감사 로그(`medical_data_access_log`) 필수** | 알러지·의사 코멘트가 민감정보라 "누가/언제/왜" 봤는지 남겨야 함. LLM이 컨텍스트로 읽을 때도 기록 |
+| **`relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` 전용 테이블 없음** *(v0.3)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, `care_type`별 사전 정의 매핑, `care_records.brand` distinct 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
+| **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. `phone_verifications`와 달리 국내 제약이 없어 자체 구현 불필요 |
 
 ## 알려진 트레이드오프
 
@@ -286,3 +325,17 @@ create table public.device_tokens (
 - Supabase 무료 플랜은 장기간 미접속 시 프로젝트가 자동 일시정지(pause)됨 — 데모 전날 접속 확인 필요
 - 클라이언트가 DB에 직접 붙는 패턴을 쓸 경우 Row Level Security(RLS) 미설정 시 다른 사용자 데이터 노출 위험. 지금 구조(백엔드 서버가 인증된 `user_id`로 필터링)에서는 해당 위험이 낮음
 - 실제 서비스로 갈 경우 클리닉 EMR과의 연동은 별도 법적 검토(개인정보 제3자 제공/위탁 동의, 의료법 관련 규정)가 필요함 — MVP는 가상 데이터 시드로 이 부분을 우회하지만, 프로덕션 전환 시 반드시 확인해야 할 항목
+
+## v0.3에서 추가된 항목 (와이어프레임 검토 반영, 마이그레이션 적용 완료)
+
+`api-spec.md` v0.5 대응. **`server/db/migrations/003_v05_wireframe_features.sql`이 Supabase 프로젝트에 실제 적용됐고, `npm run seed` 재시드까지 완료해 아래 컬럼/테이블에 데모 데이터가 채워진 상태를 직접 조회로 확인했다.**
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 컬럼 추가 | `profiles.birth_date`, `profiles.marketing_alert` | |
+| 컬럼 추가 | `care_records.status`, `session_number`, `total_sessions`, `membership_id` | 마이그레이션 003은 `memberships`가 001_init.sql에서 이미 생성돼 있다는 전제로 FK를 바로 추가한다(순서 주의, 위 "마이그레이션 순서 주의" 참고) |
+| 신규 테이블 | `public.membership_usages` | 이용권 회차별 사용 이력 |
+| 신규 테이블 없음 | 비밀번호 재설정/변경 | Supabase Auth 위임 |
+| 신규 테이블 없음 | 추천 상세 확장 필드 3종 | 기존 테이블 조합으로 즉석 계산 |
+
+이미 001·002·003 순서로 적용된 프로젝트 기준이다. 아직 마이그레이션을 실행하지 않은 다른 환경(예: 신규 클론)이라면 `server/db/migrations/*.sql`을 001부터 순서대로 Supabase SQL Editor(또는 `supabase db push`)로 실행하면 된다.

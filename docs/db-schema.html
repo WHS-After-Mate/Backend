@@ -133,6 +133,21 @@
     display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px;
     border-radius: 4px; background: var(--patch-soft); color: var(--patch); margin-left: 4px;
   }
+  .todo-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px dashed var(--border-strong); color: var(--text-muted);
+    background: transparent; white-space: nowrap;
+  }
+  .pending-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px solid var(--patch-soft); color: var(--patch);
+    background: var(--patch-soft); white-space: nowrap;
+  }
+  .done-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px solid var(--post-soft); color: var(--post);
+    background: var(--post-soft); white-space: nowrap;
+  }
 
   .table-card {
     border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised);
@@ -205,11 +220,12 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.4 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.5 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블.</p>
     <div class="badges">
-      <span class="badge">v0.2</span>
+      <span class="badge">v0.3</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
+      <span class="badge outline">와이어프레임 검토 반영(v0.3, 마이그레이션 적용 완료)</span>
     </div>
   </header>
 
@@ -220,6 +236,7 @@
     <a href="#emr">클리닉 EMR 연동</a>
     <a href="#tables">테이블 정의</a>
     <a href="#decisions">설계 결정</a>
+    <a href="#v03new">v0.3 신규 항목(적용 완료)</a>
   </nav>
 
   <main>
@@ -247,6 +264,8 @@ erDiagram
   AUTH_USERS ||--o{ MEDICAL_DATA_ACCESS_LOG : "1:N"
   CARE_RECORDS ||--o{ AFTERCARE_GUIDES : "1:N"
   CARE_RECORDS ||--o{ QUESTIONS : "0:N"
+  MEMBERSHIPS ||--o{ CARE_RECORDS : "0:N (v0.3, membership_id)"
+  MEMBERSHIPS ||--o{ MEMBERSHIP_USAGES : "1:N (v0.3)"
 
   AUTH_USERS {
     uuid id PK
@@ -273,12 +292,14 @@ erDiagram
   PROFILES {
     uuid user_id PK "FK -> auth.users"
     text name
+    date birth_date "v0.3"
     text phone
     timestamptz phone_verified_at
     text_array interest_goals
     bool push_enabled
     bool aftercare_reminder
     bool membership_expiry_alert
+    bool marketing_alert "v0.3"
   }
   CARE_RECORDS {
     uuid id PK
@@ -289,6 +310,10 @@ erDiagram
     text brand
     text store
     text practitioner
+    text status "v0.3"
+    int session_number "v0.3"
+    int total_sessions "v0.3"
+    uuid membership_id FK "v0.3"
     text_array basic_aftercare_guide
     text doctor_comment
     text external_record_id
@@ -304,6 +329,13 @@ erDiagram
     date expires_at
     date last_used_at
     text_array available_care_names
+  }
+  MEMBERSHIP_USAGES {
+    uuid id PK
+    uuid membership_id FK
+    uuid care_record_id FK
+    int session_number
+    date used_at
   }
   AFTERCARE_GUIDES {
     uuid id PK
@@ -346,6 +378,9 @@ erDiagram
       <div class="note-card">
         <b>가입 흐름</b>: <span class="mono">POST /auth/signup/verify-phone/request</span> → 우리 서버가 국내 SMS API 호출 → <span class="mono">phone_verifications</span>에 코드 해시 저장 → <span class="mono">/confirm</span>으로 검증 → <span class="mono">phoneVerifiedToken</span>(짧은 서명 토큰) 발급 → <span class="mono">POST /auth/signup</span> 호출 시 이 토큰을 검증한 뒤 <span class="mono">supabase.auth.signUp()</span>으로 계정 생성 → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> 행 insert.
       </div>
+      <div class="note-card" style="margin-top:10px;">
+        <b>비밀번호 재설정/변경</b> <span class="done-badge">v0.3 · 구현 완료</span>: 가입 흐름과 마찬가지로 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>, <span class="mono">reset-confirm</span>·<span class="mono">POST /profile/password</span>는 <span class="mono">supabaseAnon.auth.verifyOtp()</span> + <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>/<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
+      </div>
     </section>
 
     <section id="emr">
@@ -371,12 +406,14 @@ erDiagram
               <tbody>
                 <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="pk">PK</span> <span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>Supabase 계정과 1:1</td></tr>
                 <tr><td class="mono">name</td><td class="mono">text</td><td>not null</td><td>이름</td></tr>
+                <tr><td class="mono">birth_date</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.3</span> 내 정보 화면 생년월일 (<span class="mono">GET /profile</span> 응답 <span class="mono">birthDate</span>)</td></tr>
                 <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>인증된 전화번호</td></tr>
                 <tr><td class="mono">phone_verified_at</td><td class="mono">timestamptz</td><td>—</td><td>전화번호 인증 완료 시각</td></tr>
                 <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
                 <tr><td class="mono">push_enabled</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
                 <tr><td class="mono">aftercare_reminder</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
                 <tr><td class="mono">membership_expiry_alert</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
+                <tr><td class="mono">marketing_alert</td><td class="mono">boolean</td><td>default false</td><td><span class="done-badge">v0.3</span> 설정 화면 "마케팅 알림" 토글, 기본 옵트인 안 함</td></tr>
                 <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
               </tbody>
             </table>
@@ -423,6 +460,9 @@ erDiagram
                 <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null</td><td>관리명</td></tr>
                 <tr><td class="mono">care_date</td><td class="mono">date</td><td>not null</td><td>관리일</td></tr>
                 <tr><td class="mono">part_of_body / brand / store / practitioner</td><td class="mono">text</td><td>—</td><td>부위 · 브랜드 · 매장 · 담당자</td></tr>
+                <tr><td class="mono">status</td><td class="mono">text</td><td>not null, default 'completed'</td><td><span class="done-badge">v0.3</span> 이력 화면의 상태 칩</td></tr>
+                <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td><span class="done-badge">v0.3</span> 관리 상세 "관리 회차: N/M회차"</td></tr>
+                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.3</span> 이 시술이 차감한 이용권. memberships 생성 후 FK 추가 필요(순서 주의)</td></tr>
                 <tr><td class="mono">basic_aftercare_guide</td><td class="mono">text[]</td><td>default '{}'</td><td>기본 사후관리 안내</td></tr>
                 <tr><td class="mono">doctor_comment</td><td class="mono">text</td><td>—</td><td>해당 시술 건에 대한 의사 코멘트 (EMR 원본), LLM 컨텍스트에 포함</td></tr>
                 <tr><td class="mono">external_record_id</td><td class="mono">text</td><td>unique (nullable 허용)</td><td>클리닉 EMR 원본 레코드 ID</td></tr>
@@ -502,6 +542,30 @@ erDiagram
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.membership_usages</span>
+          <span class="owner">회차별 사용 이력</span>
+          <span class="done-badge">v0.3 · 적용 완료</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→memberships(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">care_record_id</td><td class="mono">uuid</td><td><span class="fk">FK→care_records(id)</span> <span class="constraint">SET NULL</span>, nullable</td><td>이 회차를 소모한 시술 건(선택)</td></tr>
+                <tr><td class="mono">session_number</td><td class="mono">int</td><td>not null</td><td>몇 회차인지</td></tr>
+                <tr><td class="mono">used_at</td><td class="mono">date</td><td>not null</td><td>사용일</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (membership_id, session_number)</td><td>같은 이용권 내 회차 번호 중복 방지</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET /memberships</span>/<span class="mono">{id}</span>의 <span class="mono">usageHistory</span> 필드. <span class="mono">used_count</span>(집계값)만으로는 회차별 날짜를 복원할 수 없어 분리</p>
         </div>
       </div>
 
@@ -593,10 +657,36 @@ erDiagram
           <h3>실서비스 전환 시 법적 검토 필요</h3>
           <p>클리닉 EMR과의 실제 연동은 개인정보 제3자 제공/위탁 동의, 의료법 관련 규정 검토가 필요. MVP는 가상 데이터 시드로 우회.</p>
         </div>
+        <div class="decision-card">
+          <h3>추천 상세 확장 필드 전용 테이블 없음 <span class="done-badge">v0.3 · 구현 완료</span></h3>
+          <p><span class="mono">relatedRecentCares</span>/<span class="mono">popularWithSimilarCustomers</span>/<span class="mono">clinicContacts</span>는 <span class="mono">care_records</span> 조회·사전 정의 매핑으로 즉석 계산 — 추천 테이블 없음과 같은 이유.</p>
+        </div>
+        <div class="decision-card">
+          <h3>비밀번호 재설정/변경 전용 테이블 없음 <span class="done-badge">v0.3 · 구현 완료</span></h3>
+          <p>Supabase Auth가 재설정 토큰 발급·검증·해싱을 전담. <span class="mono">phone_verifications</span>와 달리 국내 제약이 없어 자체 구현 불필요.</p>
+        </div>
       </div>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 기준 · db-schema v0.2 · 2026-07-30</footer>
+    <section id="v03new">
+      <h2>v0.3에서 추가된 항목 <span class="tag">와이어프레임 검토 반영 · 마이그레이션 적용 완료</span></h2>
+      <p class="desc"><code>api-spec.md</code> v0.5 대응. <span class="mono">server/db/migrations/003_v05_wireframe_features.sql</span>이 Supabase 프로젝트에 실제 적용됐고, <span class="mono">npm run seed</span> 재시드로 아래 컬럼/테이블에 데모 데이터가 채워진 상태를 직접 조회로 확인했다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>변경</th><th>대상</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>컬럼 추가</td><td class="mono">profiles.birth_date, marketing_alert</td><td>—</td></tr>
+            <tr><td>컬럼 추가</td><td class="mono">care_records.status, session_number, total_sessions, membership_id</td><td>마이그레이션 003은 memberships가 이미 생성돼 있다는 전제로 FK를 바로 추가(순서 주의)</td></tr>
+            <tr><td>신규 테이블</td><td class="mono">public.membership_usages</td><td>이용권 회차별 사용 이력</td></tr>
+            <tr><td>신규 테이블 없음</td><td>비밀번호 재설정/변경</td><td>Supabase Auth 위임 — 구현 완료</td></tr>
+            <tr><td>신규 테이블 없음</td><td>추천 상세 확장 필드 3종</td><td>기존 테이블 조합으로 즉석 계산 — 구현 완료</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">이미 001·002·003 순서로 적용된 프로젝트 기준이다. 아직 마이그레이션을 실행하지 않은 다른 환경(예: 신규 클론)이라면 <span class="mono">server/db/migrations/*.sql</span>을 001부터 순서대로 Supabase SQL Editor(또는 <span class="mono">supabase db push</span>)로 실행하면 된다.</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.5 기준 · db-schema v0.3 · 2026-08-05</footer>
   </main>
 </div>
 

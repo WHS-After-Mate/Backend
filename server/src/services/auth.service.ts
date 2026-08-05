@@ -1,3 +1,4 @@
+import { env } from "../config/env";
 import { supabaseAdmin, supabaseAnon } from "../config/supabase";
 import { ApiError, Errors } from "../lib/errors";
 import { generateOtpCode, hashOtpCode, isValidKrPhone } from "../lib/otp";
@@ -146,4 +147,30 @@ export async function refreshAccessToken(refreshToken: string) {
 export async function logout(accessToken: string) {
   const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, "global");
   if (error) throw new ApiError(500, "INTERNAL_ERROR", "로그아웃 처리에 실패했습니다.");
+}
+
+// 로그인 화면의 "비밀번호를 잊으셨나요?" — 계정 존재 여부와 무관하게 항상 성공 처리한다
+// (이메일 열거 공격 방지: Supabase도 미존재 이메일에 에러를 던지지 않고 동일하게 성공 응답한다)
+export async function requestPasswordReset(email: string) {
+  await supabaseAnon.auth.resetPasswordForEmail(email, {
+    redirectTo: env.PASSWORD_RESET_REDIRECT_URL,
+  });
+}
+
+// 재설정 이메일 링크에서 추출한 토큰(token_hash)으로 새 비밀번호 설정.
+// Supabase의 recovery OTP 검증 흐름: verifyOtp로 임시 세션을 얻은 뒤 admin API로 비밀번호를 갱신한다.
+export async function confirmPasswordReset(recoveryToken: string, newPassword: string) {
+  const { data, error } = await supabaseAnon.auth.verifyOtp({
+    token_hash: recoveryToken,
+    type: "recovery",
+  });
+  if (error || !data.session || !data.user) throw Errors.invalidOrExpiredResetToken();
+
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+    password: newPassword,
+  });
+  if (updateError) throw Errors.invalidOrExpiredResetToken();
+
+  // 재설정 과정에서 발급된 임시 세션을 포함해 기존 세션 전체를 무효화(탈취된 토큰 무력화)
+  await supabaseAdmin.auth.admin.signOut(data.session.access_token, "global").catch(() => {});
 }

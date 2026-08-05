@@ -4,6 +4,7 @@ import {
   getCalendarSummary,
   getCareRecordById,
   listCareRecords,
+  toCareRecordDetail,
 } from "../services/careRecords.service";
 import { calendarQuerySchema, listCareRecordsQuerySchema } from "../validators/careRecords.validators";
 
@@ -39,15 +40,6 @@ careRecordsRouter.get(
   "/:careRecordId",
   asyncHandler(async (req, res) => {
     const record = await getCareRecordById(req.userId, req.params.careRecordId);
-    res.status(200).json({
-      careRecordId: record.id,
-      careName: record.care_name,
-      careDate: record.care_date,
-      partOfBody: record.part_of_body,
-      brand: record.brand,
-      store: record.store,
-      practitioner: record.practitioner,
-      basicAftercareGuide: record.basic_aftercare_guide,
-    });
+    res.status(200).json(toCareRecordDetail(record));
   }),
 );

@@ -18,8 +18,10 @@ npm install
 
 ## DB 마이그레이션 적용
 
-`db/migrations/*.sql`을 Supabase SQL Editor에 순서대로(001 → 002) 붙여넣어 실행한다.
+`db/migrations/*.sql`을 Supabase SQL Editor에 순서대로(001 → 002 → 003) 붙여넣어 실행한다.
 (CLI를 쓴다면 `supabase db push` 또는 `psql`로 동일 파일 실행)
+
+`003_v05_wireframe_features.sql`은 최종 와이어프레임 검토로 추가된 v0.5 항목(비밀번호 재설정 제외, DB 변경 필요분만) 대응 — `profiles`/`care_records` 컬럼 추가 + `membership_usages` 신규 테이블. 001이 먼저 적용돼 `memberships` 테이블이 존재해야 003의 FK가 성립한다.
 
 ## 데모 데이터 시드
 
@@ -66,3 +68,4 @@ db/
   - `DELETE /notifications/device-token` — `{ fcmToken }`, 204
   - 실제 발송 로직(`src/services/push.service.ts`)은 준비만 해두었고 스케줄러 연동은 MVP 범위 밖
 - **추천 상세조회 라우팅**: `recommendationId`는 저장되지 않고 `userId` 기반 결정론적 해시로 매 요청 생성 — `GET /recommendations/next-care/{id}`는 재계산 후 id가 일치할 때만 상세를 반환
+- **v0.5 신규 항목** (최종 와이어프레임 검토 반영, `docs/api-spec.md` v0.5): 비밀번호 재설정/변경(`POST /auth/password/reset-request`·`/reset-confirm`, `POST /profile/password`), 프로필 `birthDate`/`phone`, 알림 `marketingAlert`, 이용권 `usageHistory`, 관리 상세 `status`/`daysElapsed`/`session`/`membership`, `GET /aftercare/daily-guide?elapsedDay=`, 추천 상세 `relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` — 전부 구현 완료. DB 컬럼/테이블이 필요한 항목은 `db/migrations/003_v05_wireframe_features.sql`로 이미 적용 완료됐다 (자세한 구현 위치는 `docs/server-code-guide.md` 9절 참고)

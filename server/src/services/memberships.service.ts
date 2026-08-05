@@ -10,7 +10,11 @@ interface MembershipRow {
   expires_at: string | null;
   last_used_at: string | null;
   available_care_names: string[];
+  membership_usages: { session_number: number; used_at: string }[];
 }
+
+const MEMBERSHIP_COLUMNS =
+  "id, product_name, total_count, used_count, remaining_count, expires_at, last_used_at, available_care_names, membership_usages(session_number, used_at)";
 
 function toMembershipDto(row: MembershipRow) {
   return {
@@ -22,30 +26,35 @@ function toMembershipDto(row: MembershipRow) {
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
     availableCareNames: row.available_care_names,
+    // 회차별 사용일자 — 1회차 2026.01.01 형태로 My Care·이용권 화면에 표시 (v0.5)
+    usageHistory: (row.membership_usages ?? [])
+      .slice()
+      .sort((a, b) => a.session_number - b.session_number)
+      .map((u) => ({ sessionNumber: u.session_number, usedAt: u.used_at })),
   };
 }
 
 export async function listMemberships(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("memberships")
-    .select("id, product_name, total_count, used_count, remaining_count, expires_at, last_used_at, available_care_names")
+    .select(MEMBERSHIP_COLUMNS)
     .eq("user_id", userId)
     .order("expires_at", { ascending: true });
 
   if (error) throw Errors.internal("이용권 조회에 실패했습니다.");
-  return { items: (data as MembershipRow[]).map(toMembershipDto) };
+  return { items: (data as unknown as MembershipRow[]).map(toMembershipDto) };
 }
 
 export async function getMembershipById(userId: string, membershipId: string) {
   const { data, error } = await supabaseAdmin
     .from("memberships")
-    .select("id, product_name, total_count, used_count, remaining_count, expires_at, last_used_at, available_care_names")
+    .select(MEMBERSHIP_COLUMNS)
     .eq("user_id", userId)
     .eq("id", membershipId)
     .maybeSingle();
 
   if (error || !data) throw Errors.membershipNotFound();
-  return toMembershipDto(data as MembershipRow);
+  return toMembershipDto(data as unknown as MembershipRow);
 }
 
 export async function getNearestExpiringMembership(userId: string) {

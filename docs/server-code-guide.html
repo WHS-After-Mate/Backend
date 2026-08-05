@@ -186,6 +186,21 @@
   .status-chip.err { color: var(--error); border-color: var(--error-soft); background: var(--error-soft); }
   .status-chip.ok { color: var(--post); border-color: var(--post-soft); background: var(--post-soft); }
   .status-chip.llm { color: var(--accent-text); border-color: var(--accent-soft); background: var(--accent-soft); }
+  .todo-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px dashed var(--border-strong); color: var(--text-muted);
+    background: transparent; white-space: nowrap;
+  }
+  .pending-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px solid var(--patch-soft); color: var(--patch);
+    background: var(--patch-soft); white-space: nowrap;
+  }
+  .done-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 5px; border: 1px solid var(--post-soft); color: var(--post);
+    background: var(--post-soft); white-space: nowrap;
+  }
 
   .open-q { display: flex; flex-direction: column; gap: 10px; padding-left: 20px; }
   .open-q li { margin: 0; }
@@ -480,6 +495,25 @@
           </tbody>
         </table>
       </div>
+
+      <h3 style="font-size:15px; margin:28px 0 4px;">v0.5 신규 항목 — 구현·마이그레이션·시드 전부 완료</h3>
+      <p class="desc" style="margin-top:4px;">최종 와이어프레임 검토로 <span class="mono">api-spec.md</span>가 v0.4 → v0.5로 갱신되며 추가된 9개 항목은 <strong>서버 코드 구현, <span class="mono">server/db/migrations/003_v05_wireframe_features.sql</span> Supabase 적용, <span class="mono">npm run seed</span> 재시드까지 완료돼 실제 DB에서 동작 확인됐다.</strong></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>항목</th><th>api-spec.md 위치</th><th>구현 위치</th><th>마이그레이션</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">POST /auth/password/reset-request, /reset-confirm</td><td>1절</td><td><span class="mono">auth.routes.ts</span>/<span class="mono">auth.service.ts</span></td><td><span class="done-badge">불필요</span></td></tr>
+            <tr><td class="mono">POST /profile/password</td><td>5절</td><td><span class="mono">profile.routes.ts</span>/<span class="mono">profile.service.ts</span> — <span class="mono">signInWithPassword</span> 재검증 후 <span class="mono">updateUserById</span></td><td><span class="done-badge">불필요</span></td></tr>
+            <tr><td class="mono">NotificationSettings.marketingAlert</td><td>5절</td><td><span class="mono">notifications.service.ts</span></td><td><span class="done-badge"><span class="mono" style="color:inherit;">profiles.marketing_alert</span> · 적용 완료</span></td></tr>
+            <tr><td class="mono">Profile.birthDate / phone</td><td>5절</td><td><span class="mono">profile.service.ts</span></td><td><span class="done-badge"><span class="mono" style="color:inherit;">profiles.birth_date</span> · 적용 완료</span></td></tr>
+            <tr><td class="mono">Membership.usageHistory</td><td>4절</td><td><span class="mono">memberships.service.ts</span> — <span class="mono">membership_usages</span> 조인 후 JS에서 회차순 정렬</td><td><span class="done-badge">membership_usages 신규 테이블 · 적용 완료</span></td></tr>
+            <tr><td class="mono">CareRecord.status/daysElapsed/session/membership</td><td>4절</td><td><span class="mono">careRecords.service.ts</span> — daysElapsed는 기존 <span class="mono">daysElapsedSince</span> 재사용, membership은 FK 임베드</td><td><span class="done-badge">status/session_number/total_sessions/membership_id · 적용 완료</span></td></tr>
+            <tr><td class="mono">GET /aftercare/daily-guide?elapsedDay=</td><td>3절</td><td><span class="mono">aftercare.service.ts</span>의 <span class="mono">getReferenceGuidePreview()</span>로 분기, <span class="mono">isToday</span> 필드로 구분</td><td><span class="done-badge">불필요</span></td></tr>
+            <tr><td class="mono">추천 상세 확장 3종</td><td>2절</td><td><span class="mono">recommendations.service.ts</span> — <span class="mono">listRecentCareRecords()</span> + 키워드 기반 태그 매핑</td><td><span class="done-badge">불필요</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="desc">마이그레이션 003은 이미 Supabase 프로젝트에 적용됐고(001·002 위에 누적), 데모 데이터도 <span class="mono">npm run seed</span>로 재시드해 새 필드가 채워진 상태를 직접 조회로 검증했다.</p>
     </section>
 
     <section id="notes">
@@ -491,6 +525,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Backend Reference · api-spec v0.4 / db-schema v0.2 / llm-prompt-design v0.1 기준 · 대상 커밋 16c2f5f · 2026-08-02</footer>
+    <footer>WHS After Mate · Backend Reference · api-spec v0.5 / db-schema v0.3 / llm-prompt-design v0.1 기준 · 대상 커밋 16c2f5f + v0.5 신규 항목 9건(아직 별도 커밋 전) · 2026-08-05</footer>
   </main>
 </div>

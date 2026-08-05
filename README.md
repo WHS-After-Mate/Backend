@@ -23,9 +23,9 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 
 | 문서 | 버전 | 내용 |
 |---|---|---|
-| [`docs/api-spec.md`](docs/api-spec.md) / `.html` | v0.4 | 전체 API 엔드포인트 명세 (요청/응답, 에러 코드, 데이터 모델) |
-| [`docs/api-user-flow.html`](docs/api-user-flow.html) | — | 화면 유저플로우에 실제 API 호출을 매핑한 순서도 (mermaid, 확대/드래그 가능) |
-| [`docs/db-schema.md`](docs/db-schema.md) / `.html` | v0.2 | ERD + 테이블별 `CREATE TABLE` DDL, 설계 결정과 트레이드오프 |
+| [`docs/api-spec.md`](docs/api-spec.md) / `.html` | v0.5 | 전체 API 엔드포인트 명세 (요청/응답, 에러 코드, 데이터 모델). v0.5는 최종 와이어프레임 검토로 추가된 9개 항목 포함 — 구현·마이그레이션·시드 전부 완료 (문서 내 "v0.5에서 추가된 항목" 절 참고) |
+| [`docs/api-user-flow.html`](docs/api-user-flow.html) | — | 화면 유저플로우에 실제 API 호출을 매핑한 순서도 (mermaid, 확대/드래그 가능). 비밀번호 재설정/변경 흐름(v0.5) 포함 |
+| [`docs/db-schema.md`](docs/db-schema.md) / `.html` | v0.3 | ERD + 테이블별 `CREATE TABLE` DDL, 설계 결정과 트레이드오프. v0.3 추가분(컬럼 6개, 신규 테이블 1개)은 마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`) 적용 완료 |
 | [`docs/llm-prompt-design.md`](docs/llm-prompt-design.md) / `.html` | v0.1 | LLM 호출 파이프라인, 컨텍스트 주입 필드, 시스템 프롬프트 초안, 출력 스키마 |
 | [`docs/server-code-guide.md`](docs/server-code-guide.md) / `.html` | v0.1 | 위 문서들과 달리 API 계약이 아니라 **`server/src` 코드 자체의 동작**을 설명 (레이어 구조, 요청 파이프라인, LLM 파이프라인 단계별 흐름, 파일별 역할) |
 | [`docs/frontend-integration-guide.md`](docs/frontend-integration-guide.md) / `.html` | v0.1 | Android(프론트) 담당자용 — 리포 clone, `.env` 설정, 서버 실행, baseUrl(에뮬레이터/실기기), 데모 계정, Retrofit 호출 예시, 자주 막히는 지점 |
@@ -52,6 +52,14 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 - Anthropic Claude API 연동 확인: `daily-guide`가 알러지·의사 코멘트를 반영해 실제 생성되고, `questions`는 정상 답변/근거 부족 시 `out_of_scope`/위험 신호 시 `expert_required` 3가지 케이스 모두 정상 동작 검증
 - 테스트 중 발견한 버그(Claude 응답에 `</answer>` 등 XML 태그 흔적 섞임)를 `sanitizeLlmText.ts`로 수정
 - 서버 실행 방법은 [`server/README.md`](server/README.md) 참고 — Android Studio 에뮬레이터에서는 `http://10.0.2.2:4000/api/v1`로 접근
+
+### v0.5 추가 구현 (2026-08-05 기준)
+
+최종 프론트 와이어프레임(`WHS After Mate.png`) 검토로 `api-spec.md` v0.4 → v0.5에 추가된 9개 항목(비밀번호 재설정/변경, 프로필 생년월일/휴대폰, 마케팅 알림, 이용권 회차별 사용이력, 관리 상세 확장, 일차별 가이드 탭 조회, 추천 상세 확장)을 **서버 코드 구현, DB 마이그레이션 적용, 데모 데이터 재시드까지 전부 완료**했습니다.
+
+- DB 변경이 필요한 항목은 `server/db/migrations/003_v05_wireframe_features.sql`을 **Supabase 프로젝트에 실제 적용 완료**했습니다(001 → 002 → 003 순서).
+- 비밀번호 재설정/변경은 DB 변경 없이 Supabase Auth만으로 동작합니다.
+- 데모 시드 데이터(`server/db/seed/seed.ts`)도 생년월일·이용권 회차별 사용이력·관리 상세 연결 정보(홍길동·김민지·이서준 3개 계정)를 포함하도록 갱신해 `npm run seed`로 재시드했고, Supabase에서 직접 조회해 값이 채워진 것까지 확인했습니다.
 
 다음 단계는 Android Studio 프로젝트에서 이 서버 API를 실제로 연동하는 작업입니다.
 

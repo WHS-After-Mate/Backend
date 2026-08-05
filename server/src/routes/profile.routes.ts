@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import * as profileService from "../services/profile.service";
-import { updateInterestsSchema, updateProfileSchema } from "../validators/profile.validators";
+import {
+  changePasswordSchema,
+  updateInterestsSchema,
+  updateProfileSchema,
+} from "../validators/profile.validators";
 
 // 5. 설정 / 프로필 (api-spec.md §5)
 
@@ -23,6 +27,16 @@ profileRouter.patch(
     const patch = updateProfileSchema.parse(req.body);
     const profile = await profileService.updateProfile(req.userId, patch);
     res.status(200).json(profile);
+  }),
+);
+
+// 내 정보 화면의 비밀번호 변경 — 현재 비밀번호 확인 후 저장 (v0.5)
+profileRouter.post(
+  "/password",
+  asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    await profileService.changePassword(req.userId, currentPassword, newPassword);
+    res.status(204).send();
   }),
 );
 

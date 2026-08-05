@@ -225,7 +225,7 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>API 유저플로우</h1>
-    <p class="subtitle">유저플로우 "사후관리 Q&amp;A AI 일차별 업데이트"(v2)의 화면 흐름에, <code>api-spec.md</code>에 정의된 실제 API 호출을 매핑한 다이어그램. 어느 화면에서 어떤 엔드포인트가 호출되는지 순서대로 확인한다.</p>
+    <p class="subtitle">유저플로우 "사후관리 Q&amp;A AI 일차별 업데이트"(v2)의 화면 흐름에, <code>api-spec.md</code>에 정의된 실제 API 호출을 매핑한 다이어그램. 어느 화면에서 어떤 엔드포인트가 호출되는지 순서대로 확인한다. 비밀번호 찾기/변경 흐름(v0.5)은 최종 와이어프레임 검토로 추가돼 구현 완료됐다.</p>
     <div class="legend">
       <span class="item"><span class="swatch sw-get"></span>GET (조회)</span>
       <span class="item"><span class="swatch sw-post"></span>POST (생성/실행)</span>
@@ -254,6 +254,8 @@ flowchart TD
     LOGIN["로그인 화면<br/><b>POST /auth/login</b>"]
     PHONEVERIFY["전화번호 인증<br/><b>POST /auth/signup/verify-phone/*</b>"]
     SIGNUP["회원가입<br/><b>POST /auth/signup</b>"]
+    PWFORGOT["비밀번호를 잊으셨나요?<br/><b>POST /auth/password/reset-request</b>"]
+    PWRESET["재설정 링크 클릭 → 새 비밀번호<br/><b>POST /auth/password/reset-confirm</b>"]
   end
 
   subgraph SEC2["② 홈 대시보드"]
@@ -289,6 +291,7 @@ flowchart TD
     INTERESTS["관심 목표 설정<br/><b>PUT /profile/interests</b>"]
     NOTIF["알림 설정<br/><b>GET /notifications/settings</b>"]
     NOTIFUPDATE["알림 온/오프<br/><b>PATCH /notifications/settings</b>"]
+    PWCHANGE["비밀번호 변경<br/><b>POST /profile/password</b>"]
     LOGOUT["로그아웃<br/><b>POST /auth/logout</b>"]
   end
 
@@ -296,6 +299,7 @@ flowchart TD
   START -->|신규 회원| PHONEVERIFY --> SIGNUP
   SIGNUP -->|가입 완료| HOME
   LOGIN -->|로그인 성공| HOME
+  LOGIN -->|비밀번호를 잊으셨나요?| PWFORGOT --> PWRESET -->|재설정 완료| LOGIN
   HOME --> AFTERCARD --> DAILYGUIDE
   HOME --> ASKAI --> CHATENTRY
   HOME --> RECCARD --> RECDETAIL
@@ -316,6 +320,7 @@ flowchart TD
   CAREDETAIL -->|AI 사후관리 가이드 버튼| DAILYGUIDE
 
   SETTINGS --> PROFILE --> INTERESTS
+  PROFILE --> PWCHANGE
   SETTINGS --> NOTIF --> NOTIFUPDATE
   SETTINGS --> LOGOUT
 
@@ -325,8 +330,8 @@ flowchart TD
   classDef plain fill:#ffffff,stroke:#C3CDC8,color:#16211E;
 
   class HOME,RECDETAIL,DAILYGUIDE,CHATENTRY,CALENDAR,CALENDARDAY,CARELIST,CAREFILTER,CAREDETAIL,MEMLIST,MEMDETAIL,PROFILE,NOTIF get;
-  class LOGIN,ASKQ,LOGOUT,PHONEVERIFY,SIGNUP post;
-  class INTERESTS,NOTIFUPDATE patch;
+  class LOGIN,ASKQ,LOGOUT,PHONEVERIFY,SIGNUP,PWFORGOT post;
+  class INTERESTS,NOTIFUPDATE,PWRESET,PWCHANGE patch;
   class AFTERCARD,ASKAI,RECCARD,ANSWER,EXPERT,MYCARE,SETTINGS,START plain;
 </pre>
       </div>
@@ -343,6 +348,7 @@ flowchart TD
           <tr><td class="step-no">0a</td><td>전화번호 인증 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/request</span>, <span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/confirm</span></td><td>SMS 코드 발송 → 확인, phoneVerifiedToken 발급</td></tr>
           <tr><td class="step-no">0b</td><td>회원가입 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup</span></td><td>이메일/비밀번호 + 인증된 전화번호</td></tr>
           <tr><td class="step-no">1</td><td>로그인 화면 (기존 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/login</span></td><td>이메일/비밀번호, accessToken+refreshToken 발급</td></tr>
+          <tr><td class="step-no">1a</td><td>비밀번호를 잊으셨나요? (v0.5)</td><td><span class="method post">POST</span> <span class="mono">/auth/password/reset-request</span>, <span class="method post">POST</span> <span class="mono">/auth/password/reset-confirm</span></td><td>이메일 입력 → 재설정 링크 발송 → 링크로 새 비밀번호 설정 후 로그인 화면으로 복귀</td></tr>
           <tr><td class="step-no">2</td><td>홈 진입</td><td><span class="method get">GET</span> <span class="mono">/home/summary</span></td><td>사후관리 카드·이용권 요약·추천을 한 번에 로드</td></tr>
           <tr><td class="step-no">3</td><td>사후관리 카드 클릭 → AI 사후관리 가이드</td><td><span class="method get">GET</span> <span class="mono">/aftercare/daily-guide</span></td><td>시술 경과 일차별 사후관리. 1일 1회 LLM 생성, 자정까지 캐시</td></tr>
           <tr><td class="step-no">4</td><td>챗봇 Q&amp;A 진입</td><td><span class="method get">GET</span> <span class="mono">/aftercare/question-categories</span></td><td>진입 경로 2곳: ① 가이드 페이지의 "더 궁금한 점?" ② 홈 화면의 "AI에게 물어보기" 버튼</td></tr>
@@ -356,6 +362,7 @@ flowchart TD
           <tr><td class="step-no">12</td><td>이용권 목록 → 상세</td><td><span class="method get">GET</span> <span class="mono">/memberships</span>, <span class="method get">GET</span> <span class="mono">/memberships/:id</span></td><td>잔여 횟수는 목록 응답에 포함</td></tr>
           <tr><td class="step-no">13</td><td>프로필 화면</td><td><span class="method get">GET</span> <span class="mono">/profile</span></td><td>—</td></tr>
           <tr><td class="step-no">14</td><td>관심 목표 설정</td><td><span class="method put">PUT</span> <span class="mono">/profile/interests</span></td><td>추천 API의 <span class="mono">basis: goal</span> 입력값으로 사용됨</td></tr>
+          <tr><td class="step-no">14a</td><td>비밀번호 변경 (v0.5)</td><td><span class="method post">POST</span> <span class="mono">/profile/password</span></td><td>내 정보 화면. 현재 비밀번호 확인 후 변경</td></tr>
           <tr><td class="step-no">15</td><td>알림 설정 조회 → 변경</td><td><span class="method get">GET</span> / <span class="method patch">PATCH</span> <span class="mono">/notifications/settings</span></td><td>변경 필드만 전달</td></tr>
           <tr><td class="step-no">16</td><td>로그아웃</td><td><span class="method post">POST</span> <span class="mono">/auth/logout</span></td><td>서버 측 refreshToken 무효화</td></tr>
         </tbody>
@@ -370,7 +377,7 @@ flowchart TD
     </div>
   </section>
 
-  <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 기준 · 2026-07-30</footer>
+  <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.5 기준 · 2026-08-05</footer>
 </div>
 
 <script>

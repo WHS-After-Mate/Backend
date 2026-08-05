@@ -25,3 +25,12 @@ export const loginSchema = z.object({
 export const refreshSchema = z.object({
   refreshToken: z.string(),
 });
+
+export const passwordResetRequestSchema = z.object({
+  email: z.string().email(),
+});
+
+export const passwordResetConfirmSchema = z.object({
+  recoveryToken: z.string().min(1),
+  newPassword: z.string().min(8),
+});

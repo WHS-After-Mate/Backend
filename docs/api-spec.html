@@ -388,6 +388,29 @@
   .status-chip.ok { color: var(--post); border-color: var(--post-soft); background: var(--post-soft); }
   .status-chip.llm { color: var(--accent-text); border-color: var(--accent-soft); background: var(--accent-soft); }
 
+  .todo-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-muted);
+    background: transparent;
+    white-space: nowrap;
+  }
+  .done-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--post-soft);
+    color: var(--post);
+    background: var(--post-soft);
+    white-space: nowrap;
+  }
+
   .open-q { display: flex; flex-direction: column; gap: 10px; }
   .open-q li { margin: 0 0 6px; }
 
@@ -442,12 +465,13 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>API 명세서</h1>
-    <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다.</p>
+    <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.4</span>
+      <span class="badge">v0.5</span>
       <span class="badge outline">전화번호 인증 회원가입</span>
       <span class="badge outline">LLM 일차별 사후관리</span>
       <span class="badge outline">API 유저플로우 기준 재정렬</span>
+      <span class="badge outline">와이어프레임 검토 반영(v0.5, 구현·마이그레이션·시드 완료 9건)</span>
     </div>
     <div class="infobar">
       <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
@@ -466,6 +490,7 @@
     <a href="#settings">5. 설정/프로필</a>
     <a href="#models">데이터 모델</a>
     <a href="#errors">공통 에러 코드</a>
+    <a href="#v05new">v0.5 신규 항목(구현 완료)</a>
     <a href="#open">미확정 사항</a>
   </nav>
 
@@ -494,6 +519,8 @@
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>로그인 (이메일/비밀번호)</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/refresh</td><td>accessToken 재발급</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/logout</td><td>로그아웃</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-request</td><td>비밀번호 재설정 요청</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-confirm</td><td>비밀번호 재설정 확정</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/home/summary</td><td>홈 요약(최근 관리·주의사항·이용권·추천)</td><td>R-USXPEM, R-QGENNK</td><td class="mono">home.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care</td><td>다음 관리 추천 후보 + 이유</td><td>R-QGENNK</td><td class="mono">recommendations.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care/{id}</td><td>추천 상세 보기</td><td>R-QGENNK</td><td class="mono">recommendations.routes.ts</td></tr>
@@ -508,6 +535,7 @@
             <tr><td><span class="method get">GET</span></td><td class="mono">/memberships/{id}</td><td>이용권 상세</td><td>R-DCDOJF</td><td class="mono">memberships.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/profile</td><td>프로필 조회</td><td>—</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/profile</td><td>프로필 수정</td><td>—</td><td class="mono">profile.routes.ts</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/profile/password</td><td>비밀번호 변경</td><td>—</td><td class="mono">profile.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
             <tr><td><span class="method put">PUT</span></td><td class="mono">/profile/interests</td><td>관심 목표 설정</td><td>R-QGENNK</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/notifications/settings</td><td>알림 설정 조회</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/notifications/settings</td><td>알림 온/오프 설정</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
@@ -649,6 +677,45 @@
           <div class="status-row"><span class="status-chip">204 No Content</span></div>
         </div>
       </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/password/reset-request</span>
+          <span class="done-badge">v0.5 · 구현 완료</span>
+          <span class="note">로그인 화면 "비밀번호를 잊으셨나요?"</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">email</td><td class="mono">string</td><td>가입 이메일</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 204 — 가입 여부와 무관하게 항상 204(계정 존재 여부 미노출). Supabase Auth <span class="mono">resetPasswordForEmail()</span> 위임 예정</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/password/reset-confirm</span>
+          <span class="done-badge">v0.5 · 구현 완료</span>
+          <span class="note">재설정 링크 화면에서 새 비밀번호 설정</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">recoveryToken</td><td class="mono">string</td><td>재설정 이메일 링크에서 추출한 토큰</td></tr>
+                <tr><td class="mono">newPassword</td><td class="mono">string</td><td>새 비밀번호</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip err">400 INVALID_OR_EXPIRED_RESET_TOKEN</span></div>
+        </div>
+      </div>
     </section>
 
     <section id="home">
@@ -733,10 +800,20 @@
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method get">GET</span><span class="path mono">/recommendations/next-care/{recommendationId}</span>
-          <span class="note">추천 카드 → 추천 상세 보기</span>
+          <span class="note">추천 카드 → 추천 상세 보기(AI 관리 추천 화면)</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13.5px; color:var(--text-muted);"><span class="mono">GET /recommendations/next-care</span> 응답과 동일 스키마 + <span class="mono">detailDescription</span> 상세 설명 문단</p>
+          <p style="margin:0; font-size:13.5px; color:var(--text-muted);"><span class="mono">GET /recommendations/next-care</span> 응답과 동일 스키마 + <span class="mono">detailDescription</span> 상세 설명 문단 + 아래 필드</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">relatedRecentCares</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "최근 관리와 함께 확인해보세요" — 최근 관리 이력 여러 건 + 경과일. <span class="mono">care_records</span> 최신 N건 조회로 계산</td></tr>
+                <tr><td class="mono">popularWithSimilarCustomers</td><td class="mono">string[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "비슷한 고객이 자주 찾는 관리" 태그. <span class="mono">care_type</span>별 사전 정의된 규칙 기반 매핑</td></tr>
+                <tr><td class="mono">clinicContacts</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "담당" chips. 사용자 최근 이력의 <span class="mono">brand</span> distinct 목록에서 파생</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -759,6 +836,7 @@
                 <thead><tr><th>파라미터</th><th>타입</th><th>설명</th></tr></thead>
                 <tbody>
                   <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>optional. 생략 시 최근 관리 기준. 홈/My Care 상세에서 진입 시 전달됨</td></tr>
+                  <tr><td class="mono">elapsedDay</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> optional. AI 사후관리 가이드 화면의 1/3/5/7/10일차 탭 선택값. 생략 시 오늘 실제 경과일</td></tr>
                 </tbody>
               </table>
             </div>
@@ -768,6 +846,7 @@
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">daysElapsed / elapsedRange</td><td class="mono">number / string</td><td>경과일 및 구간</td></tr>
+                <tr><td class="mono">isToday</td><td class="mono">boolean</td><td><span class="done-badge">v0.5 · 구현 완료</span> <span class="mono">elapsedDay</span>가 오늘과 같거나 생략 시 true. false면 개인화 LLM 대신 <span class="mono">reference_guides</span> 원문 반환(<span class="mono">generatedBy: "reference_guide"</span>)</td></tr>
                 <tr><td class="mono">mustAvoid</td><td class="mono">string[]</td><td>피해야 할 행동</td></tr>
                 <tr><td class="mono">basicCare</td><td class="mono">string[]</td><td>기본 사후관리 방법</td></tr>
                 <tr><td class="mono">generatedAt</td><td class="mono">datetime</td><td>LLM 생성/갱신 시각</td></tr>
@@ -910,6 +989,7 @@
                   <tr><td class="mono">partOfBody</td><td class="mono">string</td><td>부위</td></tr>
                   <tr><td class="mono">brand / store</td><td class="mono">string</td><td>이용 브랜드 · 매장</td></tr>
                   <tr><td class="mono">practitioner</td><td class="mono">string</td><td>담당자</td></tr>
+                  <tr><td class="mono">status</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 이력 목록의 "완료" 등 상태 칩</td></tr>
                 </tbody>
               </table>
             </div>
@@ -924,6 +1004,16 @@
         </div>
         <div class="endpoint-body">
           <p style="margin:0; font-size:13px; color:var(--text-muted);">상세 화면의 "AI 사후관리 가이드" 버튼 → <span class="mono">GET /aftercare/daily-guide?careRecordId={careRecordId}</span> (3절 참고)</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">daysElapsed</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> "결과일: 관리 후 N일차". <span class="mono">careDate</span>로부터 서버 계산</td></tr>
+                <tr><td class="mono">session.number / session.total</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> "관리 회차: 2/3회차"</td></tr>
+                <tr><td class="mono">membership</td><td class="mono">object</td><td><span class="done-badge">v0.5 · 구현 완료</span> 이 시술이 차감한 이용권 참조(<span class="mono">membershipId</span>, <span class="mono">productName</span>)</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="status-row"><span class="status-chip err">404 CARE_RECORD_NOT_FOUND</span></div>
           <details class="example">
             <summary>예시 JSON</summary>
@@ -935,6 +1025,10 @@
   "brand": "AAC 청담",
   "store": "AAC 청담점",
   "practitioner": "김OO 원장",
+  "status": "completed",
+  "daysElapsed": 19,
+  "session": { "number": 2, "total": 3 },
+  "membership": { "membershipId": "M-501", "productName": "울쎄라 3회 이용권" },
   "basicAftercareGuide": ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"]
 }</pre>
           </details>
@@ -956,6 +1050,7 @@
                 <tr><td class="mono">expiresAt</td><td class="mono">date</td><td>유효기간</td></tr>
                 <tr><td class="mono">lastUsedAt</td><td class="mono">date</td><td>최근 사용일</td></tr>
                 <tr><td class="mono">availableCareNames</td><td class="mono">string[]</td><td>이용 가능 관리 목록</td></tr>
+                <tr><td class="mono">usageHistory</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "1회차 2026.01.01" 등 회차별 사용일자. <span class="mono">{ sessionNumber, usedAt }</span>. 신규 테이블 <span class="mono">membership_usages</span> 필요</td></tr>
               </tbody>
             </table>
           </div>
@@ -965,7 +1060,7 @@
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method get">GET</span><span class="path mono">/memberships/{membershipId}</span>
-          <span class="note">응답 스키마는 목록 항목과 동일</span>
+          <span class="note">응답 스키마는 목록 항목과 동일 (usageHistory 포함)</span>
         </div>
         <div class="endpoint-body">
           <div class="status-row"><span class="status-chip err">404 MEMBERSHIP_NOT_FOUND</span></div>
@@ -987,6 +1082,8 @@
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">name / email</td><td class="mono">string</td><td>기본 정보</td></tr>
+                <tr><td class="mono">birthDate</td><td class="mono">date</td><td><span class="done-badge">v0.5 · 구현 완료</span> 내 정보 화면의 생년월일</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 가입 시 인증된 번호, 조회 전용</td></tr>
                 <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td>관심 목표</td></tr>
               </tbody>
             </table>
@@ -997,10 +1094,30 @@
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method patch">PATCH</span><span class="path mono">/profile</span>
-          <span class="note">기본 정보 수정</span>
+          <span class="note">기본 정보 수정 (email/phone은 읽기 전용)</span>
         </div>
         <div class="endpoint-body">
           <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/profile/password</span>
+          <span class="done-badge">v0.5 · 구현 완료</span>
+          <span class="note">내 정보 화면의 비밀번호 변경</span>
+        </div>
+        <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">currentPassword</td><td class="mono">string</td><td>현재 비밀번호 확인용</td></tr>
+                <tr><td class="mono">newPassword</td><td class="mono">string</td><td>새 비밀번호</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip err">401 INVALID_CURRENT_PASSWORD</span></div>
         </div>
       </div>
 
@@ -1029,6 +1146,7 @@
                 <tr><td class="mono">pushEnabled</td><td class="mono">boolean</td><td>푸시 전체 on/off</td></tr>
                 <tr><td class="mono">aftercareReminder</td><td class="mono">boolean</td><td>사후관리 알림</td></tr>
                 <tr><td class="mono">membershipExpiryAlert</td><td class="mono">boolean</td><td>이용권 만료 임박 알림</td></tr>
+                <tr><td class="mono">marketingAlert</td><td class="mono">boolean</td><td><span class="done-badge">v0.5 · 구현 완료</span> 설정 화면 "마케팅 알림" 토글</td></tr>
               </tbody>
             </table>
           </div>
@@ -1051,13 +1169,13 @@
           <tbody>
             <tr><td class="mono">User</td><td class="mono">id, name, email, phone, phoneVerifiedAt, role(customer/expert/admin)</td></tr>
             <tr><td class="mono">PhoneVerification</td><td class="mono">id, phone, codeHash, expiresAt, attempts, verifiedAt</td></tr>
-            <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide</td></tr>
-            <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames</td></tr>
-            <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt</td></tr>
+            <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide, <b>status, daysElapsed, session{number,total}, membership{id,productName}</b> <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, <b>usageHistory[]</b> <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt</td></tr>
-            <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription</td></tr>
-            <tr><td class="mono">Profile</td><td class="mono">userId, name, email, interestGoals[]</td></tr>
-            <tr><td class="mono">NotificationSettings</td><td class="mono">pushEnabled, aftercareReminder, membershipExpiryAlert</td></tr>
+            <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription, <b>relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[]</b> <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">Profile</td><td class="mono">userId, name, email, interestGoals[], <b>birthDate, phone</b> <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">NotificationSettings</td><td class="mono">pushEnabled, aftercareReminder, membershipExpiryAlert, <b>marketingAlert</b> <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -1085,9 +1203,33 @@
             <tr><td class="mono">GUIDE_GENERATION_FAILED</td><td>LLM 일차별 가이드 생성 실패</td></tr>
             <tr><td class="mono">ANSWER_GENERATION_FAILED</td><td>LLM Q&amp;A 답변 생성 실패</td></tr>
             <tr><td class="mono">UNSUPPORTED_CATEGORY</td><td>미지원 질문 카테고리</td></tr>
+            <tr><td class="mono">INVALID_OR_EXPIRED_RESET_TOKEN</td><td>비밀번호 재설정 토큰 무효/만료 <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">INVALID_CURRENT_PASSWORD</td><td>비밀번호 변경 시 현재 비밀번호 불일치 <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section id="v05new">
+      <h2>v0.5 신규 항목 <span class="req-id">와이어프레임 검토 반영 · 구현 완료</span></h2>
+      <p class="desc">최종 프론트 와이어프레임(<span class="mono">WHS After Mate.png</span>, 15개 화면)을 v0.4 명세와 대조해 발견한 9건. <strong>서버 코드 구현, <span class="mono">server/db/migrations/003_v05_wireframe_features.sql</span> Supabase 적용, <span class="mono">npm run seed</span> 재시드까지 전부 완료돼 실제 DB에서 동작 확인됐다.</strong></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>항목</th><th>화면(와이어프레임)</th><th>엔드포인트/필드</th><th>구현 위치</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>비밀번호 찾기</td><td>05. 비밀번호를 잊으셨나요?</td><td class="mono">POST /auth/password/reset-request, /reset-confirm</td><td class="mono">auth.service.ts</td></tr>
+            <tr><td>2</td><td>비밀번호 변경</td><td>14. 내 정보</td><td class="mono">POST /profile/password</td><td class="mono">profile.service.ts</td></tr>
+            <tr><td>3</td><td>마케팅 알림 토글</td><td>13. 설정</td><td class="mono">NotificationSettings.marketingAlert</td><td class="mono">notifications.service.ts</td></tr>
+            <tr><td>4</td><td>프로필 확장</td><td>14. 내 정보</td><td class="mono">Profile.birthDate, phone</td><td class="mono">profile.service.ts</td></tr>
+            <tr><td>5</td><td>이용권 회차별 사용이력</td><td>10. My Care·이용권</td><td class="mono">Membership.usageHistory[]</td><td class="mono">memberships.service.ts</td></tr>
+            <tr><td>6</td><td>관리 상세 확장</td><td>11. 관리 상세</td><td class="mono">CareRecord.status, daysElapsed, session, membership</td><td class="mono">careRecords.service.ts</td></tr>
+            <tr><td>7</td><td>일차별 가이드 탭 조회</td><td>07. AI 사후관리 가이드</td><td class="mono">GET /aftercare/daily-guide?elapsedDay=</td><td class="mono">aftercare.service.ts</td></tr>
+            <tr><td>8</td><td>추천 상세 확장</td><td>15. AI 관리 추천</td><td class="mono">relatedRecentCares, popularWithSimilarCustomers, clinicContacts</td><td class="mono">recommendations.service.ts</td></tr>
+            <tr><td>9</td><td>이력 상태 칩</td><td>09. My Care·이력</td><td class="mono">CareRecord.status (6과 동일 필드)</td><td class="mono">careRecords.service.ts</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">DB 스키마 변경은 <span class="mono">db-schema.html</span>의 "v0.3에서 추가된 항목" 절, 유저플로우 변경은 <span class="mono">api-user-flow.html</span> 참고.</p>
     </section>
 
     <section id="open">
@@ -1099,6 +1241,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.4 MVP · 2026-07-30 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.5 MVP · 2026-08-05 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

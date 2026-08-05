@@ -4,6 +4,8 @@ import { Errors } from "../lib/errors";
 import * as authService from "../services/auth.service";
 import {
   loginSchema,
+  passwordResetConfirmSchema,
+  passwordResetRequestSchema,
   refreshSchema,
   signupSchema,
   verifyPhoneConfirmSchema,
@@ -71,6 +73,26 @@ authRouter.post(
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) throw Errors.unauthorized();
     await authService.logout(header.slice("Bearer ".length));
+    res.status(204).send();
+  }),
+);
+
+// 로그인 화면 "비밀번호를 잊으셨나요?" — 이메일 입력 시 재설정 링크 발송 (v0.5)
+authRouter.post(
+  "/password/reset-request",
+  asyncHandler(async (req, res) => {
+    const { email } = passwordResetRequestSchema.parse(req.body);
+    await authService.requestPasswordReset(email);
+    res.status(204).send();
+  }),
+);
+
+// 재설정 링크로 열린 화면에서 새 비밀번호 설정 (v0.5)
+authRouter.post(
+  "/password/reset-confirm",
+  asyncHandler(async (req, res) => {
+    const { recoveryToken, newPassword } = passwordResetConfirmSchema.parse(req.body);
+    await authService.confirmPasswordReset(recoveryToken, newPassword);
     res.status(204).send();
   }),
 );

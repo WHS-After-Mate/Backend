@@ -4,7 +4,7 @@
 이 문서는 **그 계약을 `server/src` 코드가 실제로 어떻게 구현하는가**를 설명한다.
 파일 경로·함수명 기준으로 작성했으므로 코드와 나란히 두고 보는 것을 전제로 한다.
 
-대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점)
+대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점) + v0.5 신규 항목 9건(2026-08-05, 아직 별도 커밋 전 — 9절 "v0.5 신규 항목" 참고)
 
 ---
 
@@ -236,6 +236,23 @@ app.ts
 | 검수 가이드 저장 위치 | 미확정 | `reference_guides` 테이블 (`referenceGuides.service.ts`) |
 | FCM 디바이스 토큰 | 문서에 없음 | `notifications.routes.ts`의 `POST/DELETE /device-token` 신규 |
 | `care_records.care_type` | 문서에 없음 | 검수 가이드 매칭용 내부 키, Android 응답 DTO에는 노출 안 함(`toCareRecordSummary` 참고) |
+
+### v0.5 신규 항목 — 구현·마이그레이션·시드 전부 완료
+
+최종 와이어프레임 검토로 `api-spec.md`가 v0.4 → v0.5로 갱신되며 추가된 9개 항목은 **서버 코드 구현, `server/db/migrations/003_v05_wireframe_features.sql` Supabase 적용, `npm run seed` 재시드까지 완료돼 실제 DB에서 동작 확인됐다.**
+
+| 항목 | api-spec.md 위치 | 구현 위치 | 마이그레이션 |
+|---|---|---|---|
+| `POST /auth/password/reset-request`, `/reset-confirm` | 1절 | `auth.routes.ts`/`auth.service.ts` — `supabaseAnon.auth.resetPasswordForEmail`/`verifyOtp` + `supabaseAdmin.auth.admin.updateUserById` | 불필요 |
+| `POST /profile/password` | 5절 | `profile.routes.ts`/`profile.service.ts` — `signInWithPassword` 재검증 후 `updateUserById` | 불필요 |
+| `NotificationSettings.marketingAlert` | 5절 | `notifications.service.ts` | `profiles.marketing_alert` — 적용 완료 |
+| `Profile.birthDate`/`phone` | 5절 | `profile.service.ts` | `profiles.birth_date` — 적용 완료 |
+| `Membership.usageHistory` | 4절 | `memberships.service.ts` — `membership_usages` 조인 후 JS에서 회차순 정렬 | `public.membership_usages` 신규 테이블 — 적용 완료 |
+| `CareRecord.status`/`daysElapsed`/`session`/`membership` | 4절 | `careRecords.service.ts` — `daysElapsed`는 기존 `daysElapsedSince` 재사용, `membership`은 FK 임베드(`memberships(id, product_name)`) | `care_records.status`/`session_number`/`total_sessions`/`membership_id` — 적용 완료 |
+| `GET /aftercare/daily-guide?elapsedDay=` | 3절 | `aftercare.service.ts` — `elapsedDay`가 오늘과 다르면 `getReferenceGuidePreview()`로 분기해 LLM 생략, `isToday` 필드로 구분 | 불필요 |
+| 추천 상세 확장 3종(`relatedRecentCares` 등) | 2절 | `recommendations.service.ts` — `listRecentCareRecords()` + 키워드 기반 태그 매핑(`POPULAR_TAG_RULES`) | 불필요 |
+
+마이그레이션 003은 이미 Supabase 프로젝트에 적용됐고(001·002 위에 누적), 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 직접 조회로 검증했다.
 
 ---
 

@@ -10,12 +10,19 @@ export interface CareRecordRow {
   brand: string | null;
   store: string | null;
   practitioner: string | null;
+  status: string;
   basic_aftercare_guide: string[];
   doctor_comment: string | null;
+  session_number?: number | null;
+  total_sessions?: number | null;
+  membership?: { id: string; product_name: string } | null;
 }
 
 const LIST_COLUMNS =
-  "id, care_name, care_type, care_date, part_of_body, brand, store, practitioner, basic_aftercare_guide, doctor_comment";
+  "id, care_name, care_type, care_date, part_of_body, brand, store, practitioner, status, basic_aftercare_guide, doctor_comment";
+
+// 상세 화면 전용 — 회차·연결 이용권까지 조회 (v0.5). memberships FK(membership_id)로 상품명을 조인한다.
+const DETAIL_COLUMNS = `${LIST_COLUMNS}, session_number, total_sessions, membership:memberships(id, product_name)`;
 
 export function toCareRecordSummary(row: CareRecordRow) {
   return {
@@ -26,6 +33,23 @@ export function toCareRecordSummary(row: CareRecordRow) {
     brand: row.brand,
     store: row.store,
     practitioner: row.practitioner,
+    status: row.status,
+  };
+}
+
+// 관리 상세 화면 응답 — "결과일/관리 회차/이용권" 확장 필드 포함 (v0.5)
+export function toCareRecordDetail(row: CareRecordRow) {
+  return {
+    ...toCareRecordSummary(row),
+    daysElapsed: daysElapsedSince(row.care_date),
+    session:
+      row.session_number != null && row.total_sessions != null
+        ? { number: row.session_number, total: row.total_sessions }
+        : null,
+    membership: row.membership
+      ? { membershipId: row.membership.id, productName: row.membership.product_name }
+      : null,
+    basicAftercareGuide: row.basic_aftercare_guide,
   };
 }
 
@@ -45,13 +69,33 @@ export async function getLatestCareRecord(userId: string): Promise<CareRecordRow
 export async function getCareRecordById(userId: string, careRecordId: string): Promise<CareRecordRow> {
   const { data, error } = await supabaseAdmin
     .from("care_records")
-    .select(LIST_COLUMNS)
+    .select(DETAIL_COLUMNS)
     .eq("user_id", userId)
     .eq("id", careRecordId)
     .maybeSingle();
 
   if (error || !data) throw Errors.careRecordNotFound();
-  return data as CareRecordRow;
+  return data as unknown as CareRecordRow;
+}
+
+// "최근 관리와 함께 확인해보세요" 등에 쓰이는 다건 최근 이력 조회 (추천 상세, v0.5)
+export async function listRecentCareRecords(
+  userId: string,
+  limit: number,
+  excludeCareRecordId?: string,
+): Promise<CareRecordRow[]> {
+  let query = supabaseAdmin
+    .from("care_records")
+    .select(LIST_COLUMNS)
+    .eq("user_id", userId)
+    .order("care_date", { ascending: false })
+    .limit(limit);
+
+  if (excludeCareRecordId) query = query.neq("id", excludeCareRecordId);
+
+  const { data, error } = await query;
+  if (error) throw Errors.internal("최근 관리 이력 조회에 실패했습니다.");
+  return data as CareRecordRow[];
 }
 
 export async function listCareRecords(

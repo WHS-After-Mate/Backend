@@ -14,8 +14,8 @@ export const aftercareRouter = Router();
 aftercareRouter.get(
   "/daily-guide",
   asyncHandler(async (req, res) => {
-    const { careRecordId } = dailyGuideQuerySchema.parse(req.query);
-    const guide = await aftercareService.getOrGenerateDailyGuide(req.userId, careRecordId);
+    const { careRecordId, elapsedDay } = dailyGuideQuerySchema.parse(req.query);
+    const guide = await aftercareService.getOrGenerateDailyGuide(req.userId, careRecordId, elapsedDay);
     res.status(200).json(guide);
   }),
 );

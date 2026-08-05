@@ -42,6 +42,10 @@ export const Errors = {
     new ApiError(503, "ANSWER_GENERATION_FAILED", "답변 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
   unsupportedCategory: () =>
     new ApiError(422, "UNSUPPORTED_CATEGORY", "지원하지 않는 질문 카테고리입니다."),
+  invalidOrExpiredResetToken: () =>
+    new ApiError(400, "INVALID_OR_EXPIRED_RESET_TOKEN", "재설정 링크가 유효하지 않거나 만료되었습니다."),
+  invalidCurrentPassword: () =>
+    new ApiError(401, "INVALID_CURRENT_PASSWORD", "현재 비밀번호가 올바르지 않습니다."),
   validation: (message: string) => new ApiError(400, "VALIDATION_ERROR", message),
   notFound: (message = "요청한 리소스를 찾을 수 없습니다.") =>
     new ApiError(404, "NOT_FOUND", message),
