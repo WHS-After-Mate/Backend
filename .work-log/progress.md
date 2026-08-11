@@ -1,3 +1,14 @@
+## 2026-08-12
+- Tier 2 커밋(`501a268`) push 완료 — `WHS-After-Mate/Backend` main에 반영(`3b2ef51..501a268`)
+- **Tier 3 착수** — `/notifications/settings` 알림설정 단순화 논의
+  - `pushEnabled`/`aftercareReminder`/`membershipExpiryAlert`/`marketingAlert` 4개 값을 코드로 추적한 결과, DB에 저장만 될 뿐 어디서도 실제로 읽어 분기하지 않는 순수 placeholder였음을 확인(`push.service.ts`의 `sendPushToUser`도 이 값들을 체크하지 않고, 발송 스케줄러 자체가 없음)
+  - 사용자 확인으로 "완전 제거"로 범위 확정(단순 축소가 아니라 GET/PATCH 엔드포인트 자체 삭제)
+  - `notifications.routes.ts`/`notifications.service.ts`에서 settings 조회/수정 라우트·서비스·타입 전부 삭제, `profile.validators.ts`의 `updateNotificationSettingsSchema` 삭제, `push.service.ts` 주석 정리 — device-token 등록/해제는 실제로 쓰이므로 그대로 유지
+  - 신규 마이그레이션 `005_remove_notification_settings.sql` 작성(`profiles`의 4개 컬럼 삭제) — 아직 Supabase 미적용
+  - `npm run typecheck`/`npm run build` 통과 확인
+  - 문서 동기화: `docs/api-spec.md`/`.html`(엔드포인트 요약·상세·데이터모델·미확정사항·v0.5 이력 테이블), `docs/db-schema.md`/`.html`(CREATE TABLE·컬럼표·ERD mermaid·설계결정 카드·신규 "알림 설정 제거(005)" 절 추가), `docs/server-code-guide.md`/`.html`, `docs/api-user-flow.html`(mermaid NOTIF/NOTIFUPDATE 노드·엣지·스텝 테이블 15행 삭제), 루트 `README.md`·`server/README.md`
+  - 아직 git commit 안 함
+
 ## 2026-08-11
 - 세션 시작, work-log 브리핑 후 실제 git 상태 재확인 — 08-05 저녁분이 여전히(6일째) 미커밋 상태임을 확인
 - 신규 untracked `.work-log/dd.txt` 발견(사용자가 남긴 다음 요구사항 메모) — 사용자 확인으로 정식 변경사항임을 확정, Tier 0~5로 우선순위 정리

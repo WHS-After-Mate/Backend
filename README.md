@@ -66,5 +66,5 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 ## 미확정 사항
 
 - 위험 신호 키워드 목록 — `server/src/lib/riskKeywords.ts`에 초안 작성했으나 전문가(의료진) 검수 필요
-- refreshToken 만료 정책 (Supabase Auth 기본값 사용 중, 서비스 정책 확정 필요), 알림 설정 세부 항목 범위
+- refreshToken 만료 정책 (Supabase Auth 기본값 사용 중, 서비스 정책 확정 필요)
 - FCM 실제 발송 스케줄러(아침 리마인더 등) — 배선만 준비, 트리거 로직은 MVP 범위 밖

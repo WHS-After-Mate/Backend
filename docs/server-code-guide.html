@@ -433,7 +433,7 @@
     <section id="profile">
       <h2>7. 설정 / 프로필 / 알림 <span class="tag">profile.service.ts · notifications.service.ts</span></h2>
       <p class="desc">
-        프로필의 이메일은 <span class="mono">profiles</span> 테이블이 아니라 <span class="mono">supabaseAdmin.auth.admin.getUserById</span>로 Supabase Auth 쪽에서 가져온다 — 이메일은 Auth가 진실 소스(source of truth)이고, <span class="mono">profiles</span>는 이름/관심 목표/알림 설정 같은 애플리케이션 고유 데이터만 갖고 있다.
+        프로필의 이메일은 <span class="mono">profiles</span> 테이블이 아니라 <span class="mono">supabaseAdmin.auth.admin.getUserById</span>로 Supabase Auth 쪽에서 가져온다 — 이메일은 Auth가 진실 소스(source of truth)이고, <span class="mono">profiles</span>는 이름/생년월일/관심 목표 같은 애플리케이션 고유 데이터만 갖고 있다.
       </p>
       <p class="desc">
         <strong>FCM 디바이스 토큰</strong>(<span class="mono">registerDeviceToken</span>/<span class="mono">unregisterDeviceToken</span>)은 api-spec.md에 없던 Android 전용 확장 엔드포인트의 구현체. <span class="mono">upsert(..., {onConflict:"fcm_token"})</span>을 써서 같은 토큰이 다른 계정으로 재등록되는 경우(기기 공유 로그아웃/로그인)에도 항상 최신 <span class="mono">user_id</span>로 덮어쓴다.
@@ -480,7 +480,7 @@
           <tbody>
             <tr><td class="mono">POST /auth/password/reset-request, /reset-confirm</td><td>1절</td><td><span class="mono">auth.routes.ts</span>/<span class="mono">auth.service.ts</span></td><td><span class="done-badge">불필요</span></td></tr>
             <tr><td class="mono">POST /profile/password</td><td>5절</td><td><span class="mono">profile.routes.ts</span>/<span class="mono">profile.service.ts</span> — <span class="mono">signInWithPassword</span> 재검증 후 <span class="mono">updateUserById</span></td><td><span class="done-badge">불필요</span></td></tr>
-            <tr><td class="mono">NotificationSettings.marketingAlert</td><td>5절</td><td><span class="mono">notifications.service.ts</span></td><td><span class="done-badge"><span class="mono" style="color:inherit;">profiles.marketing_alert</span> · 적용 완료</span></td></tr>
+            <tr><td class="mono" style="text-decoration:line-through;">NotificationSettings.marketingAlert</td><td>5절</td><td>제거됨 — <span class="mono">GET</span>/<span class="mono">PATCH /notifications/settings</span> 자체를 삭제. 발송 로직 없는 placeholder였음</td><td><span class="done-badge"><span class="mono" style="color:inherit;">005_remove_notification_settings.sql</span></span></td></tr>
             <tr><td class="mono">Profile.birthDate / phone</td><td>5절</td><td><span class="mono">profile.service.ts</span></td><td><span class="done-badge"><span class="mono" style="color:inherit;">profiles.birth_date</span> · 적용 완료</span></td></tr>
             <tr><td class="mono">Membership.usageHistory</td><td>4절</td><td><span class="mono">memberships.service.ts</span> — <span class="mono">membership_usages</span> 조인 후 JS에서 회차순 정렬</td><td><span class="done-badge">membership_usages 신규 테이블 · 적용 완료</span></td></tr>
             <tr><td class="mono">CareRecord.status/daysElapsed/session/membership</td><td>4절</td><td><span class="mono">careRecords.service.ts</span> — daysElapsed는 기존 <span class="mono">daysElapsedSince</span> 재사용, membership은 FK 임베드</td><td><span class="done-badge">status/session_number/total_sessions/membership_id · 적용 완료</span></td></tr>

@@ -48,8 +48,6 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 | PATCH | `/profile` | `profile.routes.ts` |
 | POST | `/profile/password` | `profile.routes.ts` *(v0.5)* |
 | PUT | `/profile/interests` | `profile.routes.ts` |
-| GET | `/notifications/settings` | `notifications.routes.ts` |
-| PATCH | `/notifications/settings` | `notifications.routes.ts` |
 | POST | `/notifications/device-token` | `notifications.routes.ts` |
 | DELETE | `/notifications/device-token` | `notifications.routes.ts` |
 
@@ -448,20 +446,6 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 ```
 **Response 200**: 저장된 `interestGoals` 배열 반환
 
-### GET /notifications/settings
-알림 설정 조회.
-
-**Response 200**
-```json
-{ "pushEnabled": true, "aftercareReminder": true, "membershipExpiryAlert": true, "marketingAlert": true }
-```
-- `marketingAlert` `(v0.5)`: 설정 화면의 "마케팅 알림" 토글
-
-### PATCH /notifications/settings
-알림 온/오프 설정.
-
-**Request**: 위 응답과 동일한 필드 중 변경할 값만 전달
-
 ### POST /notifications/device-token
 Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 뒤 서버에 등록. 앱 시작 시 또는 토큰 갱신(`onNewToken`) 시 호출.
 
@@ -493,7 +477,6 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt |
 | Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, **relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[]** *(v0.5)* |
 | Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)* |
-| NotificationSettings | pushEnabled, aftercareReminder, membershipExpiryAlert, **marketingAlert** *(v0.5)* |
 
 ## 공통 에러 코드
 
@@ -515,7 +498,6 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 
 ## 미확정 사항 (기획팀 확인 필요)
 - refreshToken 만료 기간 및 재로그인 정책 (현재 Supabase Auth 기본값 사용)
-- 알림 설정 세부 항목이 push/aftercareReminder/membershipExpiryAlert 3종으로 충분한지
 - FCM 실제 발송 트리거(아침 리마인더 배치 등) 스케줄 — 서버는 발송 함수만 준비된 상태
 
 ## 구현 시 확정된 사항 (server/README.md 참고)
@@ -530,7 +512,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 |---|---|---|---|---|
 | 1 | 비밀번호 찾기 | 05. 비밀번호를 잊으셨나요? | `POST /auth/password/reset-request`, `POST /auth/password/reset-confirm` | `auth.routes.ts`/`auth.service.ts` |
 | 2 | 비밀번호 변경 | 14. 내 정보 | `POST /profile/password` | `profile.routes.ts`/`profile.service.ts` |
-| 3 | 마케팅 알림 토글 | 13. 설정 | `NotificationSettings.marketingAlert` | `notifications.service.ts` |
+| 3 | ~~마케팅 알림 토글~~ | 13. 설정 | *(제거됨 — 실제로 읽어 분기하는 발송 로직이 없는 placeholder였음. `GET`/`PATCH /notifications/settings` 자체를 삭제, `db/migrations/005_remove_notification_settings.sql`)* | — |
 | 4 | 프로필 확장 | 14. 내 정보 | `Profile.birthDate`, `Profile.phone` | `profile.service.ts` |
 | 5 | 이용권 회차별 사용이력 | 10. My Care·이용권 | `Membership.usageHistory[]` (신규 테이블 `membership_usages`) | `memberships.service.ts` |
 | 6 | 관리 상세 확장 | 11. 관리 상세 | `CareRecord.status`, `daysElapsed`, `session`, `membership` (신규 컬럼) | `careRecords.service.ts` |

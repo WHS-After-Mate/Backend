@@ -192,8 +192,8 @@ app.ts
 ## 7. 설정 / 프로필 / 알림 (`services/profile.service.ts`, `services/notifications.service.ts`)
 
 - 프로필의 이메일은 `profiles` 테이블이 아니라 `supabaseAdmin.auth.admin.getUserById`로 Supabase
-  Auth 쪽에서 가져온다 — 이메일은 Auth가 진실 소스(source of truth)이고, `profiles`는 이름/관심
-  목표/알림 설정 같은 애플리케이션 고유 데이터만 갖고 있다.
+  Auth 쪽에서 가져온다 — 이메일은 Auth가 진실 소스(source of truth)이고, `profiles`는 이름/생년월일/관심
+  목표 같은 애플리케이션 고유 데이터만 갖고 있다.
 - **FCM 디바이스 토큰** (`registerDeviceToken`/`unregisterDeviceToken`): `api-spec.md`에 없던
   Android 전용 확장 엔드포인트의 구현체. `upsert(..., { onConflict: "fcm_token" })`을 써서 같은
   토큰이 다른 계정으로 재등록되는 경우(기기 공유 로그아웃/로그인)에도 항상 최신 `user_id`로 덮어쓴다.
@@ -236,7 +236,7 @@ app.ts
 |---|---|---|---|
 | `POST /auth/password/reset-request`, `/reset-confirm` | 1절 | `auth.routes.ts`/`auth.service.ts` — `supabaseAnon.auth.resetPasswordForEmail`/`verifyOtp` + `supabaseAdmin.auth.admin.updateUserById` | 불필요 |
 | `POST /profile/password` | 5절 | `profile.routes.ts`/`profile.service.ts` — `signInWithPassword` 재검증 후 `updateUserById` | 불필요 |
-| `NotificationSettings.marketingAlert` | 5절 | `notifications.service.ts` | `profiles.marketing_alert` — 적용 완료 |
+| ~~`NotificationSettings.marketingAlert`~~ | 5절 | *(제거됨 — `GET`/`PATCH /notifications/settings` 자체를 삭제. 실제로 읽는 발송 로직이 없는 placeholder였음)* | `db/migrations/005_remove_notification_settings.sql` |
 | `Profile.birthDate`/`phone` | 5절 | `profile.service.ts` | `profiles.birth_date` — 적용 완료 |
 | `Membership.usageHistory` | 4절 | `memberships.service.ts` — `membership_usages` 조인 후 JS에서 회차순 정렬 | `public.membership_usages` 신규 테이블 — 적용 완료 |
 | `CareRecord.status`/`daysElapsed`/`session`/`membership` | 4절 | `careRecords.service.ts` — `daysElapsed`는 기존 `daysElapsedSince` 재사용, `membership`은 FK 임베드(`memberships(id, product_name)`) | `care_records.status`/`session_number`/`total_sessions`/`membership_id` — 적용 완료 |

@@ -295,10 +295,6 @@ erDiagram
     date birth_date "v0.3"
     text phone
     text_array interest_goals
-    bool push_enabled
-    bool aftercare_reminder
-    bool membership_expiry_alert
-    bool marketing_alert "v0.3"
   }
   CARE_RECORDS {
     uuid id PK
@@ -400,15 +396,12 @@ erDiagram
                 <tr><td class="mono">birth_date</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.3</span> 내 정보 화면 생년월일 (<span class="mono">GET /profile</span> 응답 <span class="mono">birthDate</span>)</td></tr>
                 <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>연락처 (가입 시 입력값, 인증 없음)</td></tr>
                 <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
-                <tr><td class="mono">push_enabled</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
-                <tr><td class="mono">aftercare_reminder</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
-                <tr><td class="mono">membership_expiry_alert</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
-                <tr><td class="mono">marketing_alert</td><td class="mono">boolean</td><td>default false</td><td><span class="done-badge">v0.3</span> 설정 화면 "마케팅 알림" 토글, 기본 옵트인 안 함</td></tr>
                 <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET/PATCH /profile</span>, <span class="mono">PUT /profile/interests</span>, <span class="mono">GET/PATCH /notifications/settings</span> 모두 이 한 테이블로 처리 (알림 설정을 별도 테이블로 분리하지 않음 — 1:1이라 조인 이득이 없음)</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET/PATCH /profile</span>, <span class="mono">PUT /profile/interests</span> 모두 이 한 테이블로 처리.
+          <span class="mono">push_enabled</span>/<span class="mono">aftercare_reminder</span>/<span class="mono">membership_expiry_alert</span>/<span class="mono">marketing_alert</span> 컬럼은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 <span class="mono">GET/PATCH /notifications/settings</span> 엔드포인트와 함께 <span class="mono">005_remove_notification_settings.sql</span>로 삭제됐다.</p>
         </div>
       </div>
 
@@ -607,8 +600,8 @@ erDiagram
           <p>Supabase Auth가 내부적으로 관리. <span class="mono">POST /auth/refresh</span>·<span class="mono">/logout</span>은 Supabase SDK 호출로 대체.</p>
         </div>
         <div class="decision-card">
-          <h3>알림 설정은 profiles 컬럼</h3>
-          <p>사용자당 1행이라 별도 테이블로 정규화할 이득이 없음. 항목이 늘어나 구조화가 필요해지면 그때 분리.</p>
+          <h3>알림 설정은 미구현으로 제거</h3>
+          <p>실제로 읽어 분기하는 발송 로직이 없는 placeholder였음(발송 스케줄러 미구현). <span class="mono">GET/PATCH /notifications/settings</span> 엔드포인트와 4개 컬럼 전부 삭제(<span class="mono">005_remove_notification_settings.sql</span>).</p>
         </div>
         <div class="decision-card">
           <h3>캘린더는 집계 쿼리</h3>
@@ -652,7 +645,7 @@ erDiagram
         <table>
           <thead><tr><th>변경</th><th>대상</th><th>비고</th></tr></thead>
           <tbody>
-            <tr><td>컬럼 추가</td><td class="mono">profiles.birth_date, marketing_alert</td><td>—</td></tr>
+            <tr><td>컬럼 추가</td><td class="mono">profiles.birth_date, marketing_alert</td><td><span class="mono">marketing_alert</span>는 이후 005에서 삭제됨(아래 참고)</td></tr>
             <tr><td>컬럼 추가</td><td class="mono">care_records.status, session_number, total_sessions, membership_id</td><td>마이그레이션 003은 memberships가 이미 생성돼 있다는 전제로 FK를 바로 추가(순서 주의)</td></tr>
             <tr><td>신규 테이블</td><td class="mono">public.membership_usages</td><td>이용권 회차별 사용 이력</td></tr>
             <tr><td>신규 테이블 없음</td><td>비밀번호 재설정/변경</td><td>Supabase Auth 위임 — 구현 완료</td></tr>
@@ -676,6 +669,20 @@ erDiagram
         </table>
       </div>
       <p class="note">이 마이그레이션은 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.</p>
+    </section>
+
+    <section id="v05remove">
+      <h2>알림 설정 제거 <span class="tag">005</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/005_remove_notification_settings.sql</span> — <span class="mono">push_enabled</span>/<span class="mono">aftercare_reminder</span>/<span class="mono">membership_expiry_alert</span>/<span class="mono">marketing_alert</span> 4개 컬럼 모두 저장만 될 뿐 실제로 읽어 분기하는 발송 로직이 없는 placeholder였다(발송 스케줄러 자체가 미구현). <span class="mono">GET</span>/<span class="mono">PATCH /notifications/settings</span> 엔드포인트를 걷어내며 컬럼도 함께 삭제했다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>변경</th><th>대상</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>컬럼 삭제</td><td class="mono">profiles.push_enabled, aftercare_reminder, membership_expiry_alert, marketing_alert</td><td><span class="mono">device_tokens</span> 테이블(FCM 토큰)은 실제로 쓰이므로 그대로 유지</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">이 마이그레이션도 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.</p>
     </section>
 
     <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.5 기준 · db-schema v0.3 · 2026-08-05</footer>

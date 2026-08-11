@@ -71,6 +71,7 @@ db/
 - **회원가입 `birthDate` 필드 추가**: `POST /auth/signup`에 생년월일(`YYYY-MM-DD`)이 필수 필드로 추가됐고, 가입 시 입력값이 `profiles.birth_date`에 바로 저장돼 `GET /profile`의 `birthDate`로 조회된다(이전에는 회원가입엔 없고 `PATCH /profile`로만 채울 수 있었음).
 - **비밀번호 찾기(`POST /auth/password/reset-request`)**: SMS와 달리 개발용 우회 모드가 없다. Supabase Auth `resetPasswordForEmail`에 그대로 위임하기 때문에 호출 즉시 실제로 메일이 발송된다. 따라서 이 플로우를 끝까지 테스트하려면 회원가입 시 실제로 수신 가능한 이메일 주소로 가입해둔 계정이 필요하다(회원가입 자체는 `admin.createUser({ email_confirm: true })`라 가짜 이메일도 통과됨).
 - **추천 상세조회 라우팅**: `recommendationId`는 저장되지 않고 `userId` 기반 결정론적 해시로 매 요청 생성 — `GET /recommendations/next-care/{id}`는 재계산 후 id가 일치할 때만 상세를 반환
+- **알림 설정(`GET`/`PATCH /notifications/settings`) — 기능 자체를 제거**: `pushEnabled`/`aftercareReminder`/`membershipExpiryAlert`/`marketingAlert` 4개 값 모두 DB에 저장만 될 뿐, 실제로 읽어서 발송 여부를 분기하는 코드가 없는 placeholder였다(발송 스케줄러 자체가 미구현). 엔드포인트와 `profiles`의 관련 4개 컬럼을 함께 삭제했다(`db/migrations/005_remove_notification_settings.sql`). FCM 디바이스 토큰 등록/해제(`POST`/`DELETE /notifications/device-token`)는 실제로 쓰이므로 그대로 유지
 - **v0.5 신규 항목** (최종 와이어프레임 검토 반영, `docs/api-spec.md` v0.5): 비밀번호 재설정/변경(`POST /auth/password/reset-request`·`/reset-confirm`, `POST /profile/password`), 프로필 `birthDate`/`phone`, 알림 `marketingAlert`, 이용권 `usageHistory`, 관리 상세 `status`/`daysElapsed`/`session`/`membership`, `GET /aftercare/daily-guide?elapsedDay=`, 추천 상세 `relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` — 전부 구현 완료. DB 컬럼/테이블이 필요한 항목은 `db/migrations/003_v05_wireframe_features.sql`로 이미 적용 완료됐다 (자세한 구현 위치는 `docs/server-code-guide.md` 9절 참고)
 
 ## TODO — 프로덕션 전 처리 필요

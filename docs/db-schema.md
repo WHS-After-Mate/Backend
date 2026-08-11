@@ -41,10 +41,6 @@ create table public.profiles (
   birth_date date,
   phone text unique,
   interest_goals text[] not null default '{}',
-  push_enabled boolean not null default true,
-  aftercare_reminder boolean not null default true,
-  membership_expiry_alert boolean not null default true,
-  marketing_alert boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -55,11 +51,10 @@ create table public.profiles (
 | `user_id` | PK, `auth.users(id)` 참조, 계정 삭제 시 CASCADE |
 | `birth_date` | *(v0.3 신규)* 내 정보 화면의 생년월일. `GET /profile` 응답 `birthDate` |
 | `interest_goals` | 관심 목표 — 추천 API(`basis: goal`)의 입력값 |
-| `push_enabled` / `aftercare_reminder` / `membership_expiry_alert` | 알림 설정. 1:1이라 별도 테이블로 안 쪼갬 |
-| `marketing_alert` | *(v0.3 신규)* 설정 화면의 "마케팅 알림" 토글. 기본값 `false`(옵트인) |
 
-→ `GET/PATCH /profile`, `PUT /profile/interests`, `GET/PATCH /notifications/settings` 모두 이 한 테이블로 처리.
+→ `GET/PATCH /profile`, `PUT /profile/interests` 모두 이 한 테이블로 처리.
 → `phone`은 기존부터 있던 컬럼(가입 시 입력한 연락처)이며, `GET /profile` 응답에 `phone` 필드로 노출하는 것 자체는 v0.5에서 새로 추가된 것이지 컬럼 자체는 신규가 아니다. `phone_verified_at` 컬럼은 전화인증 기능 제거와 함께 삭제됐다(`004_remove_phone_verification.sql`).
+→ `push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert` 컬럼은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 `GET/PATCH /notifications/settings` 엔드포인트와 함께 삭제됐다(`005_remove_notification_settings.sql`).
 
 ### ~~public.phone_verifications~~ — 제거됨
 
@@ -314,7 +309,7 @@ create table public.device_tokens (
 
 | 변경 | 대상 | 비고 |
 |---|---|---|
-| 컬럼 추가 | `profiles.birth_date`, `profiles.marketing_alert` | |
+| 컬럼 추가 | `profiles.birth_date`, `profiles.marketing_alert` | `marketing_alert`는 이후 005에서 삭제됨(아래 참고) |
 | 컬럼 추가 | `care_records.status`, `session_number`, `total_sessions`, `membership_id` | 마이그레이션 003은 `memberships`가 001_init.sql에서 이미 생성돼 있다는 전제로 FK를 바로 추가한다(순서 주의, 위 "마이그레이션 순서 주의" 참고) |
 | 신규 테이블 | `public.membership_usages` | 이용권 회차별 사용 이력 |
 | 신규 테이블 없음 | 비밀번호 재설정/변경 | Supabase Auth 위임 |
@@ -332,3 +327,13 @@ create table public.device_tokens (
 | 컬럼 삭제 | `profiles.phone_verified_at` | `phone` 컬럼 자체와 unique 제약은 유지 |
 
 이 마이그레이션은 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.
+
+## 알림 설정 제거 (005)
+
+`server/db/migrations/005_remove_notification_settings.sql` — `push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert` 4개 컬럼 모두 저장만 될 뿐 실제로 읽어 분기하는 발송 로직이 없는 placeholder였다(발송 스케줄러 자체가 미구현). `GET`/`PATCH /notifications/settings` 엔드포인트를 걷어내며 컬럼도 함께 삭제했다.
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 컬럼 삭제 | `profiles.push_enabled`, `profiles.aftercare_reminder`, `profiles.membership_expiry_alert`, `profiles.marketing_alert` | `device_tokens` 테이블(FCM 토큰)은 실제로 쓰이므로 그대로 유지 |
+
+이 마이그레이션도 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.

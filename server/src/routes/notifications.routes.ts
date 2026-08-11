@@ -1,33 +1,11 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import * as notificationsService from "../services/notifications.service";
-import {
-  registerDeviceTokenSchema,
-  updateNotificationSettingsSchema,
-} from "../validators/profile.validators";
+import { registerDeviceTokenSchema } from "../validators/profile.validators";
 
 // 5. 설정 / 프로필 — 알림 (api-spec.md §5)
 
 export const notificationsRouter = Router();
-
-// 알림 설정 조회 (pushEnabled/aftercareReminder/membershipExpiryAlert)
-notificationsRouter.get(
-  "/settings",
-  asyncHandler(async (req, res) => {
-    const settings = await notificationsService.getNotificationSettings(req.userId);
-    res.status(200).json(settings);
-  }),
-);
-
-// 알림 온/오프 설정 — 변경할 값만 부분 전달
-notificationsRouter.patch(
-  "/settings",
-  asyncHandler(async (req, res) => {
-    const patch = updateNotificationSettingsSchema.parse(req.body);
-    const settings = await notificationsService.updateNotificationSettings(req.userId, patch);
-    res.status(200).json(settings);
-  }),
-);
 
 // Android 전용 확장 — FCM(Firebase Cloud Messaging) 토큰 등록. 앱 시작 시 또는
 // 토큰 갱신(onNewToken) 시 호출. 구현 중 api-spec.md §5에 신규 추가된 엔드포인트

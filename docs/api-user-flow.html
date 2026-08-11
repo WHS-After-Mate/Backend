@@ -288,8 +288,6 @@ flowchart TD
     SETTINGS["설정 진입"]
     PROFILE["프로필 화면<br/><b>GET /profile</b>"]
     INTERESTS["관심 목표 설정<br/><b>PUT /profile/interests</b>"]
-    NOTIF["알림 설정<br/><b>GET /notifications/settings</b>"]
-    NOTIFUPDATE["알림 온/오프<br/><b>PATCH /notifications/settings</b>"]
     PWCHANGE["비밀번호 변경<br/><b>POST /profile/password</b>"]
     LOGOUT["로그아웃<br/><b>POST /auth/logout</b>"]
   end
@@ -320,7 +318,6 @@ flowchart TD
 
   SETTINGS --> PROFILE --> INTERESTS
   PROFILE --> PWCHANGE
-  SETTINGS --> NOTIF --> NOTIFUPDATE
   SETTINGS --> LOGOUT
 
   classDef get fill:#E5EEF6,stroke:#2B6CA8,color:#16211E;
@@ -328,9 +325,9 @@ flowchart TD
   classDef patch fill:#F3EDDD,stroke:#8A6D1F,color:#16211E;
   classDef plain fill:#ffffff,stroke:#C3CDC8,color:#16211E;
 
-  class HOME,RECDETAIL,DAILYGUIDE,CHATENTRY,CALENDAR,CALENDARDAY,CARELIST,CAREFILTER,CAREDETAIL,MEMLIST,MEMDETAIL,PROFILE,NOTIF get;
+  class HOME,RECDETAIL,DAILYGUIDE,CHATENTRY,CALENDAR,CALENDARDAY,CARELIST,CAREFILTER,CAREDETAIL,MEMLIST,MEMDETAIL,PROFILE get;
   class LOGIN,ASKQ,LOGOUT,SIGNUP,PWFORGOT post;
-  class INTERESTS,NOTIFUPDATE,PWRESET,PWCHANGE patch;
+  class INTERESTS,PWRESET,PWCHANGE patch;
   class AFTERCARD,ASKAI,RECCARD,ANSWER,EXPERT,MYCARE,SETTINGS,START plain;
 </pre>
       </div>
@@ -361,7 +358,6 @@ flowchart TD
           <tr><td class="step-no">13</td><td>프로필 화면</td><td><span class="method get">GET</span> <span class="mono">/profile</span></td><td>—</td></tr>
           <tr><td class="step-no">14</td><td>관심 목표 설정</td><td><span class="method put">PUT</span> <span class="mono">/profile/interests</span></td><td>추천 API의 <span class="mono">basis: goal</span> 입력값으로 사용됨</td></tr>
           <tr><td class="step-no">14a</td><td>비밀번호 변경 (v0.5)</td><td><span class="method post">POST</span> <span class="mono">/profile/password</span></td><td>내 정보 화면. 현재 비밀번호 확인 후 변경</td></tr>
-          <tr><td class="step-no">15</td><td>알림 설정 조회 → 변경</td><td><span class="method get">GET</span> / <span class="method patch">PATCH</span> <span class="mono">/notifications/settings</span></td><td>변경 필드만 전달</td></tr>
           <tr><td class="step-no">16</td><td>로그아웃</td><td><span class="method post">POST</span> <span class="mono">/auth/logout</span></td><td>서버 측 refreshToken 무효화</td></tr>
         </tbody>
       </table>

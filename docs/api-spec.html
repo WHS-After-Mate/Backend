@@ -535,8 +535,6 @@
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/profile</td><td>프로필 수정</td><td>—</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/profile/password</td><td>비밀번호 변경</td><td>—</td><td class="mono">profile.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
             <tr><td><span class="method put">PUT</span></td><td class="mono">/profile/interests</td><td>관심 목표 설정</td><td>R-QGENNK</td><td class="mono">profile.routes.ts</td></tr>
-            <tr><td><span class="method get">GET</span></td><td class="mono">/notifications/settings</td><td>알림 설정 조회</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
-            <tr><td><span class="method patch">PATCH</span></td><td class="mono">/notifications/settings</td><td>알림 온/오프 설정</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/notifications/device-token</td><td>FCM 토큰 등록 (Android 전용, 신규)</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
             <tr><td><span class="method delete">DELETE</span></td><td class="mono">/notifications/device-token</td><td>FCM 토큰 해제 (Android 전용, 신규)</td><td>—</td><td class="mono">notifications.routes.ts</td></tr>
           </tbody>
@@ -1086,31 +1084,6 @@
         </div>
       </div>
 
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="method get">GET</span><span class="path mono">/notifications/settings</span>
-        </div>
-        <div class="endpoint-body">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
-              <tbody>
-                <tr><td class="mono">pushEnabled</td><td class="mono">boolean</td><td>푸시 전체 on/off</td></tr>
-                <tr><td class="mono">aftercareReminder</td><td class="mono">boolean</td><td>사후관리 알림</td></tr>
-                <tr><td class="mono">membershipExpiryAlert</td><td class="mono">boolean</td><td>이용권 만료 임박 알림</td></tr>
-                <tr><td class="mono">marketingAlert</td><td class="mono">boolean</td><td><span class="done-badge">v0.5 · 구현 완료</span> 설정 화면 "마케팅 알림" 토글</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="method patch">PATCH</span><span class="path mono">/notifications/settings</span>
-          <span class="note">변경할 필드만 전달</span>
-        </div>
-      </div>
     </section>
 
     <section id="models">
@@ -1126,7 +1099,6 @@
             <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt</td></tr>
             <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription, <b>relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[]</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">Profile</td><td class="mono">userId, name, email, interestGoals[], <b>birthDate, phone</b> <span class="done-badge">v0.5</span></td></tr>
-            <tr><td class="mono">NotificationSettings</td><td class="mono">pushEnabled, aftercareReminder, membershipExpiryAlert, <b>marketingAlert</b> <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -1165,7 +1137,7 @@
           <tbody>
             <tr><td>1</td><td>비밀번호 찾기</td><td>05. 비밀번호를 잊으셨나요?</td><td class="mono">POST /auth/password/reset-request, /reset-confirm</td><td class="mono">auth.service.ts</td></tr>
             <tr><td>2</td><td>비밀번호 변경</td><td>14. 내 정보</td><td class="mono">POST /profile/password</td><td class="mono">profile.service.ts</td></tr>
-            <tr><td>3</td><td>마케팅 알림 토글</td><td>13. 설정</td><td class="mono">NotificationSettings.marketingAlert</td><td class="mono">notifications.service.ts</td></tr>
+            <tr><td>3</td><td><s>마케팅 알림 토글</s></td><td>13. 설정</td><td class="mono">제거됨 — 발송 로직 없는 placeholder였음. 005 마이그레이션</td><td>—</td></tr>
             <tr><td>4</td><td>프로필 확장</td><td>14. 내 정보</td><td class="mono">Profile.birthDate, phone</td><td class="mono">profile.service.ts</td></tr>
             <tr><td>5</td><td>이용권 회차별 사용이력</td><td>10. My Care·이용권</td><td class="mono">Membership.usageHistory[]</td><td class="mono">memberships.service.ts</td></tr>
             <tr><td>6</td><td>관리 상세 확장</td><td>11. 관리 상세</td><td class="mono">CareRecord.status, daysElapsed, session, membership</td><td class="mono">careRecords.service.ts</td></tr>
@@ -1183,7 +1155,6 @@
       <ul class="open-q">
         <li>LLM 생성 실패/타임아웃 시 폴백 문구를 어디까지 준비해둘지 (관리 유형별 기본 가이드 사전 작성 범위)</li>
         <li>refreshToken 만료 기간 및 재로그인 정책</li>
-        <li>알림 설정 세부 항목이 push / aftercareReminder / membershipExpiryAlert 3종으로 충분한지</li>
       </ul>
     </section>
 
