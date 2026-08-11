@@ -241,7 +241,7 @@ app.ts
 | `Membership.usageHistory` | 4절 | `memberships.service.ts` — `membership_usages` 조인 후 JS에서 회차순 정렬 | `public.membership_usages` 신규 테이블 — 적용 완료 |
 | `CareRecord.status`/`daysElapsed`/`session`/`membership` | 4절 | `careRecords.service.ts` — `daysElapsed`는 기존 `daysElapsedSince` 재사용, `membership`은 FK 임베드(`memberships(id, product_name)`) | `care_records.status`/`session_number`/`total_sessions`/`membership_id` — 적용 완료 |
 | `GET /aftercare/daily-guide?elapsedDay=` | 3절 | `aftercare.service.ts` — `elapsedDay`가 오늘과 다르면 `getReferenceGuidePreview()`로 분기해 LLM 생략, `isToday` 필드로 구분 | 불필요 |
-| 추천 상세 확장 3종(`relatedRecentCares` 등) | 2절 | `recommendations.service.ts` — `listRecentCareRecords()` + 키워드 기반 태그 매핑(`POPULAR_TAG_RULES`) | 불필요 |
+| 추천 상세 확장 3종(`relatedRecentCares` 등) | 2절 | `recommendations.service.ts` — `listRecentCareRecords()` + 키워드 기반 태그 매핑(`KEYWORD_GROUPS`, interestGoals 매칭과 공유) | 불필요 |
 
 마이그레이션 003은 이미 Supabase 프로젝트에 적용됐고(001·002 위에 누적), 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 직접 조회로 검증했다.
 

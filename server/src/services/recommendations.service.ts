@@ -7,24 +7,29 @@ const DISCLAIMER = "의료적 진단이 아니며 최종 관리는 전문가 상
 const MIN_INTERVAL_DAYS = 21;
 const RELATED_CARES_LIMIT = 3;
 
-// "비슷한 고객이 자주 찾는 관리" 태그 (v0.5) — 실제 유사도 계산이 아니라 추천 관리명의
-// 키워드 매칭으로 사전 정의된 태그를 반환하는 규칙 기반 근사치 (MVP 범위)
-const POPULAR_TAG_RULES: { keyword: string; tags: string[] }[] = [
-  { keyword: "리프트", tags: ["리프트 관리", "탄력 관리"] },
-  { keyword: "리프팅", tags: ["리프트 관리", "탄력 관리"] },
-  { keyword: "미백", tags: ["색소 관리", "브라이트닝 케어"] },
-  { keyword: "브라이트닝", tags: ["색소 관리", "브라이트닝 케어"] },
-  { keyword: "색소", tags: ["색소 관리", "브라이트닝 케어"] },
-  { keyword: "수분", tags: ["수분 재생 관리", "보습 케어"] },
-  { keyword: "모공", tags: ["모공 관리", "피지 케어"] },
-  { keyword: "바디", tags: ["바디라인 관리", "슬리밍 케어"] },
-  { keyword: "탄력", tags: ["회복탄력 관리", "리프트 관리"] },
+// 관리명/관심 목표 텍스트를 공통 태그로 묶는 키워드 그룹 (v0.5) — 실제 유사도 계산이 아니라
+// 키워드 매칭 기반 근사치 (MVP 범위). "비슷한 고객이 자주 찾는 관리" 태그와 interestGoals
+// 매칭 양쪽에서 같은 어휘를 재사용해, "미백" 같은 관심 목표가 "브라이트닝 필링"처럼 다른
+// 표현을 쓰는 관리명과도 매칭되도록 함 (단순 앞글자 substring 비교보다 정확)
+const KEYWORD_GROUPS: { tags: string[]; keywords: string[] }[] = [
+  { tags: ["리프트 관리", "탄력 관리"], keywords: ["리프트", "리프팅", "탄력"] },
+  { tags: ["색소 관리", "브라이트닝 케어"], keywords: ["미백", "브라이트닝", "색소", "톤업"] },
+  { tags: ["수분 재생 관리", "보습 케어"], keywords: ["수분", "보습", "재생"] },
+  { tags: ["모공 관리", "피지 케어"], keywords: ["모공", "피지", "트러블"] },
+  { tags: ["바디라인 관리", "슬리밍 케어"], keywords: ["바디", "슬리밍", "체형"] },
 ];
 const DEFAULT_POPULAR_TAGS = ["회복탄력 관리", "색소 관리", "수분 재생 관리"];
 
+function tagsFor(text: string): string[] {
+  const tags = KEYWORD_GROUPS.filter((group) => group.keywords.some((keyword) => text.includes(keyword))).flatMap(
+    (group) => group.tags,
+  );
+  return [...new Set(tags)];
+}
+
 function popularTagsFor(careName: string): string[] {
-  const rule = POPULAR_TAG_RULES.find((r) => careName.includes(r.keyword));
-  return rule ? rule.tags : DEFAULT_POPULAR_TAGS;
+  const tags = tagsFor(careName);
+  return tags.length > 0 ? tags : DEFAULT_POPULAR_TAGS;
 }
 
 function recommendationIdFor(userId: string): string {
@@ -64,7 +69,8 @@ export async function computeNextCareRecommendation(userId: string) {
   let careName = candidateNames[0];
 
   if (goals.length > 0) {
-    const goalMatch = candidateNames.find((name) => goals.some((goal) => name.includes(goal.slice(0, 2))));
+    const goalTags = new Set(goals.flatMap((goal) => tagsFor(goal)));
+    const goalMatch = candidateNames.find((name) => tagsFor(name).some((tag) => goalTags.has(tag)));
     if (goalMatch) {
       careName = goalMatch;
       basis.push("goal");

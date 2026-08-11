@@ -14,7 +14,18 @@
   - `npm run typecheck` 통과 확인
   - `api-call-example.html` A섹션 3단계 SMS 플로우 → 단일 가입 버튼으로 축소
   - `docs/api-spec.md`/`.html`, `server/README.md`, `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html`, `docs/api-user-flow.html`, `docs/frontend-integration-guide.md`/`.html` 전부 동기화, 아티팩트 5개 재발행
-  - 이번 세션 Tier 1 변경사항은 git 미커밋 상태로 세션 종료
+  - git commit/push 완료 — `3b2ef51` (`7e62ddf..3b2ef51`)
+- 마이그레이션 004를 사용자가 Supabase SQL Editor에서 직접 실행 → `phone_verifications` 테이블·`profiles.phone_verified_at` 컬럼이 실제로 삭제됐는지 service role key로 조회하는 임시 스크립트로 검증(둘 다 존재하지 않음 확인), 스크립트는 확인 후 삭제 — Tier 0·Tier 1 전체 완료
+- work-log 최종 정리 — `/기록저장`으로 저장, 다음 세션은 Tier 2부터
+- **Tier 2 착수** — `interestGoals`를 다음 시술 추천 로직에 반영하는 작업 재개
+  - 조사 결과: 추천은 LLM이 아니라 `recommendations.service.ts`의 규칙 기반 로직이며, `interestGoals`는 이미 매칭에 쓰이고 있었으나 `goal.slice(0, 2))`(앞 2글자만 비교)라 "미백" 같은 단어가 "브라이트닝 필링"과 매칭 안 되는 등 부정확했음
+  - 사용자가 `docs/AAC_클리닉_자산_조사.docx`(python-docx로 텍스트 추출) 제공 — 실제 AAC(주식회사 에이에이씨) 회사 정보: AMRED CLINIC(청담, 하이엔드 리프팅 — 울쎄라·써마지·튠페이스·튠라이트)/DERNA CLINIC(대중형, EVE랩 AI 진단)/WIM Clinic·Center(메디컬 웰니스) 3개 브랜드 + 웰니스하우스서울(WHS) 공간 구조 확인
+  - 사용자 확인으로 작업 범위를 "추천 로직 개선만"으로 한정(브랜드명/시술명 실제 데이터 교체는 별도 작업으로 분리, seed.ts는 이번엔 미변경)
+  - `recommendations.service.ts`: 기존 `POPULAR_TAG_RULES`(관리명→태그, "비슷한 고객이 자주 찾는 관리" 칩 전용)를 `KEYWORD_GROUPS`(태그↔키워드 양방향)로 일반화해 `tagsFor()` 헬퍼 신설, `popularTagsFor()`가 이를 재사용하도록 리팩터링
+  - `computeNextCareRecommendation()`의 `interestGoals` 매칭을 `name.includes(goal.slice(0, 2))` → `tagsFor(name)`/`tagsFor(goal)` 태그 교집합 비교로 교체 — 관리명 표기가 관심 목표 어휘와 달라도(동의어 그룹 매칭) 정확히 매칭되도록 개선
+  - `npm run typecheck` 통과 확인
+  - `docs/server-code-guide.md`의 `POPULAR_TAG_RULES` 참조를 `KEYWORD_GROUPS`로 동기화(`.html`은 상수명 직접 언급 없어 수정 불필요)
+  - 아직 git commit 안 함
 
 ## 2026-08-06
 - 새 세션 시작, `.work-log/current.md` 브리핑 후 사용자 요청으로 실제 git 상태(diff/status) 재확인
