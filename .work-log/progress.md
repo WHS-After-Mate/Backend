@@ -1,3 +1,25 @@
+## 2026-08-11
+- 세션 시작, work-log 브리핑 후 실제 git 상태 재확인 — 08-05 저녁분이 여전히(6일째) 미커밋 상태임을 확인
+- 신규 untracked `.work-log/dd.txt` 발견(사용자가 남긴 다음 요구사항 메모) — 사용자 확인으로 정식 변경사항임을 확정, Tier 0~5로 우선순위 정리
+- `/aftercare/questions`가 진짜 LLM(AI API)을 쓰는지 재확인 요청 → `llm/client.ts`의 `callStructuredLlm`이 실제 `anthropic.messages.create`를 호출함을 코드로 검증
+- `server/src/examples/api-call-example.html`에 D(사후관리 질문 테스트) 섹션 추가, accessToken을 공용 변수로 리팩터링
+- `docs/api-spec.md`/`.html`의 "LLM 기반" 표현에 "실제 Anthropic Claude API 호출, 하드코딩 아님" 설명 추가, 아티팩트 재발행
+- Tier 0(08-05 저녁분 + 08-11 오늘분) commit/push 진행
+
+## 2026-08-06
+- 새 세션 시작, `.work-log/current.md` 브리핑 후 사용자 요청으로 실제 git 상태(diff/status) 재확인
+- 미커밋 변경 3건 발견: `auth.service.ts`(비밀번호 재설정 로직), `docs/api-spec.md`, `server/README.md` 수정 + `server/src/examples/api-call-example.html` 신규 파일 — work-log(00:34 저장)와 마지막 커밋(17:23)엔 반영 안 됨
+- `api-call-example.html` 내용 확인 — 프론트(Android) 담당자용 fetch 기반 API 수동 테스트 페이지(회원가입/로그인/비밀번호찾기 3시나리오, 초보자 주석 포함)임을 파악
+- 파일 mtime(08-05 21:25~21:39)이 마지막 커밋(17:23)·work-log 저장(00:34) 이후임을 대조해, "08-05 저녁 세션에서 실제 작업했으나 `/기록저장` 없이 종료돼 기록 누락"으로 결론 — 사용자 확인으로 검증됨
+- `.work-log/current.md`를 08-05 저녁 작업 내역 기준으로 소급 갱신, `progress.md`에 08-05 (2) 항목 추가
+
+## 2026-08-05 (2)
+- (당시 미기록, 08-06에 소급 정리) **비밀번호 재설정 버그 수정** — `confirmPasswordReset`이 Supabase `token_hash`/`verifyOtp` 방식을 가정했으나, 기본 "Reset Password" 메일 템플릿은 이미 검증된 `access_token`을 URL 해시로 전달하는 방식임을 실사용 링크로 실측 확인 → `getUser(recoveryToken)` 기반 검증으로 교체, 세션 무효화 로직도 함께 수정
+- `requestPasswordReset`에 Supabase 에러 콘솔 로깅 추가
+- `docs/api-spec.md`/`server/README.md` 동기화 — `recoveryToken`이 `access_token`임을 명시, SMS 미구현/개발모드 설명 보강, "TODO — 프로덕션 전 처리 필요"(Supabase 커스텀 SMTP 연동, SMS 실연동) 섹션 신규 추가
+- 신규 파일 `server/src/examples/api-call-example.html` 제작 — 프론트(Android) 담당자가 브라우저에서 직접 눌러볼 수 있는 fetch 기반 API 테스트 페이지(회원가입 3단계/로그인+홈조회/비밀번호찾기), 초보자용 상세 주석 포함
+- 이 세션 변경사항은 `/기록저장` 없이 종료되어 git commit/push 및 work-log 반영 모두 안 된 채로 다음날(08-06)까지 남아있었음
+
 ## 2026-08-05
 - 세션 대부분 개념 설명(Express 서버 구조, 클라이언트-서버 아키텍처, localhost/LAN/에뮬레이터 주소 차이) Q&A — 코드 변경 없음
   - `app.ts`(설계도) vs `server.ts`(`app.listen()`으로 실제 실행) 구조, "코드를 앱에서 import해서 못 쓰는 이유"(런타임 차이 + 비밀키/신뢰/배포 문제), 안드로이드가 Retrofit으로 API 호출하는 실제 코드 예시 등 설명

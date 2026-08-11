@@ -8,7 +8,7 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 범위:
 - 로그인은 **실제 계정** 기반 (이메일/비밀번호, access/refresh 토큰)
 - 관리 이력·이용권은 MVP 특성상 시드(가상) 데이터 조회 중심, 실제 예약·결제·매장 시스템 연동 제외
-- 사후관리 안내(일차별 주의사항)와 Q&A 답변은 **LLM 기반**으로 생성, 최근 관리·경과일·검수 가이드를 컨텍스트로 사용
+- 사후관리 안내(일차별 주의사항)와 Q&A 답변은 **LLM 기반**으로 생성(실제 Anthropic Claude API를 호출해 응답을 만들며, 하드코딩된 템플릿이 아니다), 최근 관리·경과일·검수 가이드를 컨텍스트로 사용
 
 - Base URL: `/api/v1`
 - 인증: `Authorization: Bearer {accessToken}` (모든 엔드포인트 공통, 이후 절 생략)
@@ -154,6 +154,7 @@ accessToken 재발급.
 ```
 **Response 204**
 `400 INVALID_OR_EXPIRED_RESET_TOKEN`
+- `recoveryToken`은 Supabase 기본 "Reset Password" 메일 템플릿이 리다이렉트 시 URL 해시(`#access_token=...&type=recovery`)로 실어 보내는 **access_token 값**이다(실사용 링크로 실측 확인, `auth.service.ts`의 `confirmPasswordReset` 참고). `token_hash`가 아니므로 이메일 템플릿을 커스텀하지 않는 한 클라이언트는 해시 프래그먼트에서 `access_token` 파라미터를 추출해 그대로 전달하면 된다.
 
 ---
 
@@ -245,7 +246,7 @@ accessToken 재발급.
 
 ## 3. 사후관리 안내 및 Q&A — LLM 기반 (R-USXPEM → F-GBZTGO, F-ULCIXA)
 
-일차별 주의사항과 Q&A 답변은 모두 LLM이 생성한다. 컨텍스트로 최근 관리명·관리일·경과일·검수된 관리 가이드(RAG 소스)를 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.
+일차별 주의사항과 Q&A 답변은 모두 LLM이 생성한다(여기서 "LLM"은 실제로 서버가 Anthropic Claude API를 호출해 받는 응답을 뜻하며, 미리 정해둔 문구를 보여주는 것이 아니다 — 구현은 `server/src/services/llm/client.ts`, `callStructuredLlm()` 참고). 컨텍스트로 최근 관리명·관리일·경과일·검수된 관리 가이드(RAG 소스)를 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.
 
 **진입 경로**: 홈의 "사후관리 카드" 클릭 시 `careRecordId`가 지정된 채로 AI 사후관리 가이드에 진입한다. 챗봇은 ① 가이드 페이지의 "더 궁금한 점?" ② 홈의 "AI에게 물어보기" 버튼, 두 경로로 진입할 수 있다. My Care 관리 상세 화면의 "AI 사후관리 가이드" 버튼도 동일한 가이드 화면으로 연결된다(4절 참고).
 

@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>WHS After Mate — API 호출 예시</title>
+<style>
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 20px; }
+  p.desc { color: #666; font-size: 14px; }
+  label { display: block; margin-top: 12px; font-size: 13px; font-weight: 600; }
+  input { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; }
+  button { margin-top: 16px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+  .step { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd; }
+  .status { font-weight: 600; }
+  .status.ok { color: #0a7a3d; }
+  .status.err { color: #c0392b; }
+</style>
+</head>
+<body>
+  <h1>WHS After Mate — 프론트가 백엔드 API 호출하는 예시</h1>
+  <p class="desc">
+    이 파일은 서버 코드(<code>server/src</code>)를 import하지 않는다 — 오직 <code>fetch()</code>로
+    HTTP 요청만 보낸다. Android 앱이 Retrofit으로 하는 일과 원리가 완전히 같다.
+    먼저 다른 터미널에서 <code>npm run dev</code>로 서버를 켜둔 상태여야 한다.
+  </p>
+
+  <label>Base URL</label>
+  <input id="baseUrl" value="http://localhost:4000/api/v1" />
+
+  <h2 style="margin-top:32px;">A. 회원가입 실험 (전화번호 인증 → 가입 → 자동 로그인)</h2>
+  <p class="desc">
+    3개의 버튼을 <b>순서대로</b> 눌러야 한다. 2번 버튼을 누르기 전에,
+    <code>npm run dev</code>를 실행 중인 터미널 창에서
+    <code>[SMS_DEV_MODE] ... 인증코드: 123456</code> 같은 줄을 찾아 코드를 복사해야 한다
+    (실제 SMS는 안 나가고 콘솔에만 출력되는 개발용 모드).
+  </p>
+
+  <label>전화번호</label>
+  <input id="signupPhone" value="01099998888" />
+
+  <label>이름</label>
+  <input id="signupName" value="테스트유저" />
+
+  <label>이메일 (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
+  <input id="signupEmail" />
+
+  <label>비밀번호</label>
+  <input id="signupPassword" value="Passw0rd!2024" />
+
+  <button id="signupStep1Btn">1) 인증코드 발송 — POST /auth/signup/verify-phone/request</button>
+  <div class="step">
+    <span id="signupStep1Status" class="status"></span>
+    <pre id="signupStep1Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <label>인증코드 (서버 콘솔에서 확인한 6자리 숫자를 여기에 입력)</label>
+  <input id="signupCode" placeholder="예: 123456" />
+
+  <button id="signupStep2Btn">2) 인증코드 확인 — POST /auth/signup/verify-phone/confirm</button>
+  <div class="step">
+    <span id="signupStep2Status" class="status"></span>
+    <pre id="signupStep2Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <button id="signupStep3Btn">3) 회원가입 완료 — POST /auth/signup (성공하면 accessToken까지 바로 발급됨)</button>
+  <div class="step">
+    <span id="signupStep3Status" class="status"></span>
+    <pre id="signupStep3Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2 style="margin-top:40px;">B. 기존 계정으로 로그인 (데모 계정 또는 위에서 새로 가입한 계정)</h2>
+
+  <label>이메일</label>
+  <input id="email" value="demo@whsaftermate.app" />
+
+  <label>비밀번호</label>
+  <input id="password" value="Passw0rd!2024" />
+
+  <button id="runBtn">1) 로그인 → 2) 홈 요약 조회 실행</button>
+
+  <div class="step">
+    <div>단계 1 — <code>POST /auth/login</code> <span id="loginStatus" class="status"></span></div>
+    <pre id="loginResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <div class="step">
+    <div>단계 2 — <code>GET /home/summary</code> (accessToken을 Authorization 헤더에 실어서 호출) <span id="homeStatus" class="status"></span></div>
+    <pre id="homeResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2 style="margin-top:40px;">C. 비밀번호 찾기 실험</h2>
+  <p class="desc">
+    이건 SMS와 달리 개발용 우회 모드가 없다 — <code>POST /auth/password/reset-request</code>를 누르면
+    Supabase가 <b>실제로 메일을 발송</b>한다. 그러니 위 A에서 <b>실제 수신 가능한 이메일</b>로 가입해둔
+    계정이어야 끝까지 테스트된다.
+  </p>
+
+  <label>이메일 (실제 가입에 쓴, 메일 수신 가능한 주소)</label>
+  <input id="resetEmail" placeholder="실제 가입한 이메일 입력" />
+
+  <button id="resetStep1Btn">1) 재설정 메일 발송 — POST /auth/password/reset-request</button>
+  <div class="step">
+    <span id="resetStep1Status" class="status"></span>
+    <pre id="resetStep1Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <p class="desc">
+    메일함에서 링크를 열면 "사이트에 연결할 수 없음" 같은 에러 화면이 뜨는데 정상이다
+    (아직 이 주소를 받아줄 프론트가 없을 뿐). 그 화면의 <b>주소창</b>을 보면
+    <code>#access_token=...&amp;refresh_token=...&amp;type=recovery</code> 형태로 붙어있다.
+    <code>access_token=</code> 뒤부터 <code>&amp;expires_at=</code> 앞까지의 긴 문자열만 복사해서 아래 칸에 붙여넣는다.
+  </p>
+
+  <label>recoveryToken (메일 링크 주소창의 access_token 값)</label>
+  <input id="recoveryToken" placeholder="주소창에서 복사한 access_token" />
+
+  <label>새 비밀번호</label>
+  <input id="newPassword" value="NewPassw0rd!2024" />
+
+  <button id="resetStep2Btn">2) 새 비밀번호로 재설정 — POST /auth/password/reset-confirm</button>
+  <div class="step">
+    <span id="resetStep2Status" class="status"></span>
+    <pre id="resetStep2Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2 style="margin-top:40px;">D. 사후관리 질문(AI 답변) 실험</h2>
+  <p class="desc">
+    이 API는 로그인이 필요하다(<code>Authorization: Bearer accessToken</code>). 먼저 위 <b>B</b>에서
+    로그인 버튼을 눌러 <code>accessToken</code>을 받아둔 상태여야 아래 버튼이 동작한다.
+    <code>question</code>에 통증/출혈 같은 위험 신호 단어를 넣으면 LLM 호출 없이 곧바로
+    <code>expert_required</code>로 차단되는 것도 함께 확인할 수 있다.
+  </p>
+
+  <label>careRecordId (선택 — 비워두면 최근 관리 이력 기준으로 처리됨)</label>
+  <input id="questionCareRecordId" placeholder="예: C-2001 (비워둬도 됨)" />
+
+  <label>category</label>
+  <select id="questionCategory">
+    <option>세안·샤워</option>
+    <option>화장·렌즈</option>
+    <option>운동·사우나</option>
+    <option>음주·흡연</option>
+    <option>화장품·성분</option>
+    <option>증상</option>
+  </select>
+
+  <label>question</label>
+  <input id="questionText" value="필링 후 사우나 언제부터 가능한가요?" />
+
+  <button id="questionSubmitBtn">1) 질문 등록 및 AI 답변 조회 — POST /aftercare/questions</button>
+  <div class="step">
+    <span id="questionSubmitStatus" class="status"></span>
+    <pre id="questionSubmitResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <button id="questionListBtn">2) 내 질문 이력 조회 — GET /aftercare/questions</button>
+  <div class="step">
+    <span id="questionListStatus" class="status"></span>
+    <pre id="questionListResult">(아직 실행 안 함)</pre>
+  </div>
+
+<script>
+  // ────────────────────────────────────────────────────────────
+  // $ 라는 이름의 "축약 함수"를 하나 만든다.
+  // document.getElementById(id) 를 매번 길게 치기 귀찮아서
+  // $("email") 처럼 짧게 쓰려고 만든 것뿐, 특별한 문법은 아니다.
+  // (id) => document.getElementById(id) 는 화살표 함수(arrow function)라는
+  // 함수를 짧게 쓰는 문법. function(id) { return document.getElementById(id); } 와 완전히 같다.
+  // ────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+
+  // ────────────────────────────────────────────────────────────
+  // 화면에 결과(JSON)를 찍어주는 "재사용 함수".
+  // el       : 결과를 표시할 <pre> 태그 (예: loginResult 박스)
+  // statusEl : "성공"/"실패" 글씨를 표시할 <span> 태그
+  // ok       : true면 성공, false면 실패
+  // data     : 서버가 돌려준 응답 데이터(JS 객체)
+  // ────────────────────────────────────────────────────────────
+  function setResult(el, statusEl, ok, data) {
+    // JSON.stringify(data, null, 2)
+    //   -> JS 객체(data)를 사람이 읽기 좋은 JSON 문자열로 바꿔준다.
+    //   -> 마지막 인자 2는 "들여쓰기 2칸"이라는 뜻 (안 넣으면 한 줄로 다 붙어서 나옴)
+    el.textContent = JSON.stringify(data, null, 2);
+
+    // 성공이면 "성공", 실패면 "실패" 글자를 span에 넣는다.
+    // ok ? "성공" : "실패" 는 삼항 연산자. if문을 한 줄로 줄인 것.
+    // 풀어쓰면: if (ok) { statusEl.textContent = "성공"; } else { statusEl.textContent = "실패"; }
+    statusEl.textContent = ok ? "성공" : "실패";
+
+    // class 속성을 바꿔서 CSS로 초록/빨강 글씨색을 입힌다 (style.css의 .status.ok / .status.err 참고)
+    statusEl.className = "status " + (ok ? "ok" : "err");
+  }
+
+  // 회원가입은 이메일이 이미 DB에 있으면 409 EMAIL_ALREADY_EXISTS로 실패한다.
+  // 버튼을 여러 번 눌러 반복 실험해도 안 겹치도록, 페이지가 열릴 때(스크립트가 처음 실행될 때)
+  // Date.now()(현재 시각의 숫자값, 밀리초 단위)를 이메일 앞에 붙여서 매번 다른 이메일을 자동으로 채워둔다.
+  // 이 줄은 addEventListener 안이 아니라 <script> 최상단에 바로 있으므로, 페이지 로드 즉시 실행된다.
+  $("signupEmail").value = `test+${Date.now()}@example.com`;
+
+  // ────────────────────────────────────────────────────────────
+  // 세 버튼(1,2,3)이 서로 "다른 클릭 이벤트"라서, 한 함수 안의 지역변수로는 값을 못 넘긴다.
+  // 그래서 verificationId / phoneVerifiedToken을 함수 바깥(스크립트 최상단)에 let으로 선언해서
+  // "1번 버튼 결과를 2번 버튼이, 2번 버튼 결과를 3번 버튼이 이어받아 쓸 수 있게" 만든다.
+  // ────────────────────────────────────────────────────────────
+  let signupVerificationId;
+  let signupPhoneVerifiedToken;
+
+  // B의 로그인 버튼이 여기에 값을 채워두면, 아래 D(사후관리 질문)에서도 그대로 재사용한다.
+  // (D는 로그인이 필요한 API라 B를 먼저 실행해둬야 함)
+  let accessToken;
+
+  // ============================================================
+  // A-1단계: 인증코드 발송 — POST /auth/signup/verify-phone/request
+  // Request body: { phone }
+  // Response 200: { verificationId, expiresIn }
+  // ============================================================
+  $("signupStep1Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("signupStep1Result");
+    const statusEl = $("signupStep1Status");
+    try {
+      const res = await fetch(`${baseUrl}/auth/signup/verify-phone/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: $("signupPhone").value }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (!res.ok) return;
+
+      // 응답으로 온 verificationId를 위에서 선언한 바깥 변수에 저장해둔다.
+      // 2단계(인증코드 확인) 버튼을 누를 때 이 값이 필요하다.
+      signupVerificationId = data.verificationId;
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // A-2단계: 인증코드 확인 — POST /auth/signup/verify-phone/confirm
+  // Request body: { verificationId, code }
+  // Response 200: { phoneVerifiedToken, expiresIn }
+  // ============================================================
+  $("signupStep2Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("signupStep2Result");
+    const statusEl = $("signupStep2Status");
+
+    // 1단계를 먼저 성공시키지 않고 이 버튼부터 누르면 signupVerificationId가 비어있다.
+    // 그런 실수를 바로 알 수 있게, fetch를 보내기 전에 화면에서 미리 막아준다.
+    if (!signupVerificationId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 1번 버튼(인증코드 발송)을 눌러야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/auth/signup/verify-phone/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verificationId: signupVerificationId,
+          code: $("signupCode").value,
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (!res.ok) return;
+
+      // 3단계(회원가입)에서 "이 전화번호는 인증된 게 맞다"는 증거로 제출해야 하는 토큰.
+      signupPhoneVerifiedToken = data.phoneVerifiedToken;
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // A-3단계: 회원가입 — POST /auth/signup
+  // Request body: { email, password, name, phone, phoneVerifiedToken }
+  // Response 200: POST /auth/login과 동일한 형식 { accessToken, refreshToken, expiresIn, user }
+  // → auth.service.ts를 보면 signup() 함수 맨 마지막 줄이 return login(...) 이라서,
+  //   가입에 성공하는 순간 바로 로그인까지 처리되어 토큰이 함께 내려온다.
+  // ============================================================
+  $("signupStep3Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("signupStep3Result");
+    const statusEl = $("signupStep3Status");
+
+    if (!signupPhoneVerifiedToken) {
+      setResult(resultEl, statusEl, false, { error: "먼저 2번 버튼(인증코드 확인)을 눌러야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: $("signupEmail").value,
+          password: $("signupPassword").value,
+          name: $("signupName").value,
+          phone: $("signupPhone").value,
+          phoneVerifiedToken: signupPhoneVerifiedToken,
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      // 여기서 성공하면 data.accessToken이 이미 나와있다.
+      // 확인해보고 싶으면: 위쪽 "B. 기존 계정으로 로그인" 칸의 이메일/비밀번호를
+      // 방금 가입한 값으로 바꾼 뒤 runBtn을 눌러서 실제로 로그인되는지 테스트해보면 된다.
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // "runBtn 버튼이 클릭되면, 아래 함수를 실행해라" 라고 브라우저에 등록해두는 코드.
+  // 지금 당장 실행되는 게 아니라, 나중에 사용자가 버튼을 누르는 "그 순간"에만 실행된다.
+  // Express로 치면 app.post("/login", handler) 처럼 "이벤트 - 핸들러"를 미리 등록해두는 것과 같은 개념.
+  //
+  // async () => { ... } 는 "이 함수 안에서 await(기다리기)를 쓸 수 있다"고 선언하는 것.
+  // await는 서버 응답이 돌아올 때까지 다음 줄로 넘어가지 않고 멈춰서 기다려주는 문법이다.
+  // ────────────────────────────────────────────────────────────
+  $("runBtn").addEventListener("click", async () => {
+    // 입력창(<input>)에 사용자가 타이핑해둔 값을 읽어온다. .value가 입력창의 현재 텍스트.
+    // .replace(/\/$/, "") 는 정규식으로 "맨 끝에 슬래시(/)가 있으면 지운다"는 뜻.
+    // 예: "http://localhost:4000/api/v1/" -> "http://localhost:4000/api/v1"
+    // (뒤에서 baseUrl + "/auth/login" 처럼 슬래시를 직접 붙이므로, 슬래시가 중복되는 걸 막기 위함)
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const email = $("email").value;
+    const password = $("password").value;
+
+    // ============================================================
+    // 1단계: 로그인 요청 보내기 — POST /auth/login
+    // 서버 소스코드(server/src)를 한 줄도 몰라도, api-spec.md 문서에 적힌
+    // "이 URL로, 이런 형식의 body를 보내면, 이런 형식의 응답이 온다"는 약속만 보고 호출한다.
+    // ============================================================
+
+    // accessToken은 스크립트 최상단에서 이미 let으로 선언해뒀다(D에서도 재사용하기 위함).
+    // 여기서는 새로 선언하지 않고 값만 채워 넣는다.
+
+    // try/catch: "혹시 에러가 나도 페이지 전체가 멈추지 않게" 감싸는 안전장치.
+    // 네트워크가 끊겼거나 서버가 꺼져있으면 fetch 자체가 에러를 던질 수 있는데,
+    // catch가 없으면 그 에러가 처리되지 않고 콘솔에만 빨갛게 찍히고 아무 반응이 없게 된다.
+    try {
+      // fetch(url, options) : 브라우저가 기본 제공하는 "HTTP 요청 보내는 함수".
+      // 백엔드에서 axios.post(...)나 http.request(...)로 다른 서버를 호출하는 것과 원리가 같다.
+      //
+      // `${baseUrl}/auth/login` 은 템플릿 리터럴(백틱 `` ` ``으로 감싼 문자열).
+      // ${...} 안에 변수를 넣으면 그 값이 문자열 안에 끼워 넣어진다.
+      // 예: baseUrl이 "http://localhost:4000/api/v1" 이면
+      //     결과는 "http://localhost:4000/api/v1/auth/login"
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: "POST", // HTTP 메서드. 로그인은 데이터를 "생성/처리"하는 요청이라 POST를 쓴다.
+
+        // 헤더: 이 요청의 "부가 정보"를 서버에 알려주는 부분.
+        // "Content-Type": "application/json" -> "내가 보내는 body는 JSON 형식이야" 라고 알려주는 것.
+        // 서버의 express.json() 미들웨어가 이 헤더를 보고 body를 JSON으로 파싱한다.
+        headers: { "Content-Type": "application/json" },
+
+        // body: 실제로 보낼 데이터.
+        // email, password는 JS 객체인데, fetch는 body에 "문자열"만 넣을 수 있어서
+        // JSON.stringify로 { email, password } 객체를 JSON 문자열로 변환해서 넣는다.
+        // { email, password } 는 { email: email, password: password } 의 축약 문법(shorthand).
+        body: JSON.stringify({ email, password }),
+      });
+
+      // res(response)는 아직 "응답이 왔다"는 것만 알려줄 뿐, body 내용은 별도로 한 번 더 읽어야 한다.
+      // res.json() 도 시간이 걸리는 작업(비동기)이라 await로 기다린다.
+      // 결과로 서버가 보내준 JSON이 JS 객체(data)로 변환되어 들어온다.
+      const data = await res.json();
+
+      // 화면의 loginResult(<pre>)와 loginStatus(<span>)에 결과를 표시.
+      // res.ok는 HTTP 상태 코드가 200~299(성공 범위)면 true, 아니면(400, 401, 500 등) false.
+      setResult($("loginResult"), $("loginStatus"), res.ok, data);
+
+      // 로그인이 실패했으면(res.ok가 false) 여기서 함수를 끝낸다.
+      // return을 안 하면 토큰도 없는데 2단계(홈 요약 조회)를 계속 시도하게 되어버린다.
+      if (!res.ok) return;
+
+      // 로그인 성공 응답 안에 들어있는 accessToken 값을 꺼내서 변수에 저장.
+      // 이 토큰이 "나는 로그인된 사용자다"를 증명하는 열쇠 역할을 한다.
+      accessToken = data.accessToken;
+    } catch (err) {
+      // fetch 자체가 실패한 경우(서버가 꺼져있음, 네트워크 오류 등) 여기로 온다.
+      // String(err)로 에러 객체를 문자열로 바꿔서 화면에 보여준다.
+      setResult($("loginResult"), $("loginStatus"), false, { error: String(err) });
+      return; // 로그인도 안 됐으니 2단계는 시도하지 않고 종료.
+    }
+
+    // ============================================================
+    // 2단계: 홈 요약 조회 — GET /home/summary
+    // 1단계에서 받은 accessToken을 "Authorization" 헤더에 실어서 보낸다.
+    // 서버는 이 헤더를 보고 "이 사람이 진짜 로그인한 사용자가 맞는지" 검증한 뒤 데이터를 내려준다.
+    // ============================================================
+    try {
+      const res = await fetch(`${baseUrl}/home/summary`, {
+        // GET 요청은 method를 안 써주면 기본값이 "GET"이라 따로 안 적었다 (1단계의 POST와 비교해보기).
+        // body도 없다 — GET은 원래 body를 안 보내는 게 관례.
+        headers: {
+          // "Bearer <토큰>" 형식은 업계 표준 규칙(관례)이다.
+          // Bearer는 "이 토큰을 가진 사람(bearer)에게 접근을 허용해라"는 뜻의 인증 방식 이름.
+          // 서버 쪽 인증 미들웨어가 이 헤더에서 "Bearer " 뒤의 문자열만 잘라내 검증한다.
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const data = await res.json();
+      setResult($("homeResult"), $("homeStatus"), res.ok, data);
+    } catch (err) {
+      setResult($("homeResult"), $("homeStatus"), false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // C-1단계: 재설정 메일 발송 — POST /auth/password/reset-request
+  // Request body: { email }
+  // Response: 성공/실패 관계없이 항상 "204 No Content"
+  //   → 계정 존재 여부를 노출하지 않으려는 의도적 설계 (api-spec.md 참고)
+  //   → 204는 body가 아예 없는 응답이라 res.json()을 호출하면 에러가 난다.
+  //     그래서 res.status가 204인지 먼저 확인하고, 그럴 땐 res.json()을 아예 호출하지 않는다.
+  // ============================================================
+  $("resetStep1Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("resetStep1Result");
+    const statusEl = $("resetStep1Status");
+    try {
+      const res = await fetch(`${baseUrl}/auth/password/reset-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("resetEmail").value }),
+      });
+
+      if (res.status === 204) {
+        // body가 없으므로 res.json() 대신 사람이 이해할 메시지를 직접 만들어서 보여준다.
+        setResult(resultEl, statusEl, true, {
+          status: 204,
+          message: "메일이 발송됐다(가입 여부와 무관하게 항상 204). 실제 메일함을 확인할 것.",
+        });
+        return;
+      }
+
+      // 204가 아니면(입력값 검증 실패 등) body가 있는 에러 응답이므로 평소처럼 json()으로 읽는다.
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // C-2단계: 새 비밀번호로 재설정 — POST /auth/password/reset-confirm
+  // Request body: { recoveryToken, newPassword }
+  // Response: 성공하면 204 No Content, 실패하면 400 INVALID_OR_EXPIRED_RESET_TOKEN + body
+  // ============================================================
+  $("resetStep2Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("resetStep2Result");
+    const statusEl = $("resetStep2Status");
+    try {
+      const res = await fetch(`${baseUrl}/auth/password/reset-confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recoveryToken: $("recoveryToken").value,
+          newPassword: $("newPassword").value,
+        }),
+      });
+
+      if (res.status === 204) {
+        setResult(resultEl, statusEl, true, {
+          status: 204,
+          message: "비밀번호가 변경됐다. 위 B에서 이 새 비밀번호로 로그인해서 확인해볼 것.",
+        });
+        return;
+      }
+
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // D-1단계: 질문 등록 + AI 답변 조회 — POST /aftercare/questions
+  // Request body: { careRecordId?, category, question }
+  // Response 200: status가 "answered"면 answer(LLM이 실제로 생성한 텍스트)까지 포함.
+  //   "expert_required"면 question에 위험 신호 단어가 있어 LLM을 아예 호출하지 않고 사전 차단된 것.
+  //   "out_of_scope"면 LLM이 답변은 만들었지만 범위를 벗어난다고 판단한 것.
+  // 다른 API와 달리 로그인 후에만 호출 가능 — Authorization 헤더에 accessToken을 실어 보낸다.
+  // ============================================================
+  $("questionSubmitBtn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("questionSubmitResult");
+    const statusEl = $("questionSubmitStatus");
+
+    if (!accessToken) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 B에서 로그인해 accessToken을 받아야 한다." });
+      return;
+    }
+
+    // careRecordId는 선택값이라, 입력칸이 비어있으면 아예 body에서 뺀다.
+    // (빈 문자열 ""을 그대로 보내면 서버가 "존재하지 않는 careRecordId"로 오해할 수 있다)
+    const careRecordId = $("questionCareRecordId").value.trim();
+    const body = {
+      category: $("questionCategory").value,
+      question: $("questionText").value,
+      ...(careRecordId ? { careRecordId } : {}),
+    };
+
+    try {
+      const res = await fetch(`${baseUrl}/aftercare/questions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // D-2단계: 내 질문 이력 조회 — GET /aftercare/questions
+  // Response 200: 위 D-1에서 등록한 질문들이 최신순 배열로 돌아온다(createdAt 포함).
+  // ============================================================
+  $("questionListBtn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("questionListResult");
+    const statusEl = $("questionListStatus");
+
+    if (!accessToken) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 B에서 로그인해 accessToken을 받아야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/aftercare/questions`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+</script>
+</body>
+</html>

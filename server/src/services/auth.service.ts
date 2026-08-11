@@ -152,25 +152,32 @@ export async function logout(accessToken: string) {
 // 로그인 화면의 "비밀번호를 잊으셨나요?" — 계정 존재 여부와 무관하게 항상 성공 처리한다
 // (이메일 열거 공격 방지: Supabase도 미존재 이메일에 에러를 던지지 않고 동일하게 성공 응답한다)
 export async function requestPasswordReset(email: string) {
-  await supabaseAnon.auth.resetPasswordForEmail(email, {
+  const { error } = await supabaseAnon.auth.resetPasswordForEmail(email, {
     redirectTo: env.PASSWORD_RESET_REDIRECT_URL,
   });
+  // 클라이언트 응답은 계정 존재 여부 노출 방지를 위해 항상 204로 그대로 두되,
+  // 실패 원인(예: 무료 이메일 발송 rate limit)은 서버 콘솔에서 확인할 수 있게 로그만 남긴다.
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[requestPasswordReset] Supabase 에러:", error.message);
+  }
 }
 
-// 재설정 이메일 링크에서 추출한 토큰(token_hash)으로 새 비밀번호 설정.
-// Supabase의 recovery OTP 검증 흐름: verifyOtp로 임시 세션을 얻은 뒤 admin API로 비밀번호를 갱신한다.
+// 재설정 이메일 링크에서 추출한 토큰으로 새 비밀번호 설정.
+// Supabase 기본 "Reset Password" 메일 템플릿은 자체 /auth/v1/verify 엔드포인트에서 먼저 검증을 마친 뒤
+// redirectTo 주소의 해시(#)에 access_token/refresh_token(이미 발급된 recovery 세션)을 실어 보낸다
+// (커스텀 템플릿으로 바꿔 우리가 직접 token_hash를 받는 방식이 아님 — 실사용 링크로 실측 확인함).
+// 그래서 recoveryToken은 "검증 전 원본 코드"가 아니라 "이미 검증된 access_token"이고,
+// getUser(jwt)로 그 토큰이 진짜 Supabase가 발급한 유효한 토큰인지만 확인하면 된다.
 export async function confirmPasswordReset(recoveryToken: string, newPassword: string) {
-  const { data, error } = await supabaseAnon.auth.verifyOtp({
-    token_hash: recoveryToken,
-    type: "recovery",
-  });
-  if (error || !data.session || !data.user) throw Errors.invalidOrExpiredResetToken();
+  const { data, error } = await supabaseAnon.auth.getUser(recoveryToken);
+  if (error || !data.user) throw Errors.invalidOrExpiredResetToken();
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
     password: newPassword,
   });
   if (updateError) throw Errors.invalidOrExpiredResetToken();
 
-  // 재설정 과정에서 발급된 임시 세션을 포함해 기존 세션 전체를 무효화(탈취된 토큰 무력화)
-  await supabaseAdmin.auth.admin.signOut(data.session.access_token, "global").catch(() => {});
+  // 재설정 과정에서 발급된 recovery 세션을 포함해 기존 세션 전체를 무효화(탈취된 토큰 무력화)
+  await supabaseAdmin.auth.admin.signOut(recoveryToken, "global").catch(() => {});
 }

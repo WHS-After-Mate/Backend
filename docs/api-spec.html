@@ -465,7 +465,7 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>API 명세서</h1>
-    <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
+    <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 Anthropic Claude API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다), 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
       <span class="badge">v0.5</span>
       <span class="badge outline">전화번호 인증 회원가입</span>
@@ -820,7 +820,7 @@
 
     <section id="aftercare">
       <h2>3. 사후관리 안내 및 Q&amp;A <span class="req-id">R-USXPEM → F-GBZTGO, F-ULCIXA</span> <span class="status-chip llm">LLM 기반</span></h2>
-      <p class="desc">일차별 주의사항과 Q&amp;A 답변은 모두 <strong>LLM이 생성</strong>한다. 최근 관리명·관리일·경과일·검수된 관리 가이드를 컨텍스트로 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.</p>
+      <p class="desc">일차별 주의사항과 Q&amp;A 답변은 모두 <strong>LLM이 생성</strong>한다(여기서 "LLM"은 실제로 서버가 Anthropic Claude API를 호출해 받는 응답을 뜻하며, 미리 정해둔 문구를 보여주는 것이 아니다 — 구현은 <span class="mono">server/src/services/llm/client.ts</span>의 <span class="mono">callStructuredLlm()</span> 참고). 최근 관리명·관리일·경과일·검수된 관리 가이드를 컨텍스트로 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.</p>
       <p class="note">진입 경로: 홈의 "사후관리 카드" 클릭 시 <span class="mono">careRecordId</span>가 지정된 채로 AI 사후관리 가이드에 진입한다. 챗봇은 ① 가이드 페이지의 "더 궁금한 점?" ② 홈의 "AI에게 물어보기" 버튼, 두 경로로 진입할 수 있다. My Care 관리 상세 화면의 "AI 사후관리 가이드" 버튼도 동일한 가이드 화면으로 연결된다(4절 참고).</p>
 
       <div class="endpoint-card">
