@@ -19,7 +19,7 @@ src/
   services/      → 도메인 로직 + DB(Supabase) 접근. **DB 접근은 반드시 이 레이어를 통해서만 한다**
     services/llm/ → Claude 프롬프트 정의 + 구조화 출력 호출 클라이언트
   middleware/    → 인증(requireAuth), 공통 에러 핸들러
-  lib/           → 상태 없는 순수 유틸(에러 정의, 위험신호 키워드, 서명 토큰, OTP, sanitize 등)
+  lib/           → 상태 없는 순수 유틸(에러 정의, 위험신호 키워드, sanitize 등)
   config/        → 외부 서비스 클라이언트 초기화(Supabase, Anthropic, Firebase) + 환경변수 스키마
 ```
 
@@ -62,26 +62,17 @@ app.ts
 
 ## 3. 인증 / 온보딩 (`routes/auth.routes.ts` → `services/auth.service.ts`)
 
-전화번호 인증과 실제 로그인 세션은 **서로 다른 토큰 체계**를 쓴다는 점이 핵심이다.
+전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 코드에서 완전히 제거됐다
+(`server/db/migrations/004_remove_phone_verification.sql`) — `lib/otp.ts`/`lib/sms.ts`/`lib/signedToken.ts`도
+함께 삭제됐다. 아래는 현재(전화인증 제거 후) 흐름이다.
 
-1. `POST /signup/verify-phone/request` → `requestPhoneVerification`
-   - `lib/otp.ts`의 `isValidKrPhone`으로 형식 검증 → 직전 발송 이력(`phone_verifications.created_at`)을
-     조회해 60초 재요청 쿨다운(`RESEND_COOLDOWN_SECONDS`)을 체크 → 6자리 코드 생성(`generateOtpCode`) →
-     원문은 저장하지 않고 SHA-256 해시(`hashOtpCode`)만 `phone_verifications`에 저장 →
-     `lib/sms.ts`로 발송(`SMS_DEV_MODE=true`면 콘솔 로그만 남기고 실제 발송 없음 — 실제 국내 SMS
-     업체 연동은 TODO로 남아있다).
-2. `POST /signup/verify-phone/confirm` → `confirmPhoneVerification`
-   - `verificationId`로 행을 찾아 이미 인증됨/시도 초과(`MAX_ATTEMPTS=5`)/만료(`CODE_EXPIRES_IN_SECONDS=180`)
-     여부를 순서대로 검사 → 코드 해시 불일치 시 `attempts`만 +1 하고 재시도 유도 →
-     성공하면 `lib/signedToken.ts`의 `signToken`으로 **자체 서명 토큰** `phoneVerifiedToken`을 발급
-     (HMAC-SHA256, `APP_TOKEN_SECRET`). 이 시점엔 아직 계정이 없으므로 Supabase 세션 토큰을 쓸 수 없다.
-3. `POST /signup` → `signup`
-   - `verifyToken`으로 `phoneVerifiedToken` 서명·만료·`phone` 일치 여부를 확인(불일치 시
-     `PHONE_NOT_VERIFIED`) → 동일 전화번호로 이미 가입된 프로필이 있으면 차단 →
-     `supabaseAdmin.auth.admin.createUser`로 계정 생성 → `profiles` 테이블에 이름/전화번호 insert →
-     프로필 insert가 실패하면 방금 만든 Auth 유저를 롤백(`deleteUser`)해 고아 계정을 남기지 않는다 →
-     마지막으로 내부적으로 `login()`을 호출해 응답 스키마를 로그인과 동일하게 맞춘다.
-4. `POST /login` / `POST /refresh` / `POST /logout`
+1. `POST /signup` → `signup`
+   - 동일 전화번호로 이미 가입된 프로필이 있으면 `PHONE_ALREADY_EXISTS`로 차단 →
+     `supabaseAdmin.auth.admin.createUser`로 계정 생성 → `profiles` 테이블에 이름/전화번호/생년월일
+     (`birthDate` → `birth_date`) insert → 프로필 insert가 실패하면 방금 만든 Auth 유저를 롤백
+     (`deleteUser`)해 고아 계정을 남기지 않는다 → 마지막으로 내부적으로 `login()`을 호출해 응답 스키마를
+     로그인과 동일하게 맞춘다.
+2. `POST /login` / `POST /refresh` / `POST /logout`
    - 이 세 개는 자체 로직 없이 **Supabase Auth를 그대로 감싸는 얇은 래퍼**다:
      `supabaseAnon.auth.signInWithPassword` / `refreshSession` / `supabaseAdmin.auth.admin.signOut(..., "global")`.
      accessToken/refreshToken의 실제 발급·검증·만료 정책은 Supabase 쪽 설정을 따른다
@@ -216,7 +207,7 @@ app.ts
 ## 8. 설정/환경 (`config/*.ts`)
 
 - **`config/env.ts`**: `zod`로 모든 환경변수를 파싱·검증하고, 실패하면 서버 기동 자체를 막는다
-  (설정 오류를 런타임 중간이 아니라 부팅 시점에 즉시 드러냄). `SMS_DEV_MODE`/`FCM_ENABLED`처럼
+  (설정 오류를 런타임 중간이 아니라 부팅 시점에 즉시 드러냄). `FCM_ENABLED`처럼
   "아직 실제 연동 전"인 기능은 boolean 플래그로 켜고 끌 수 있게 했다.
 - **`config/supabase.ts`**: `supabaseAdmin`(service-role, RLS 우회, 백엔드 전용)과
   `supabaseAnon`(로그인/토큰 검증처럼 사용자 컨텍스트가 필요한 호출 전용) 두 클라이언트를 분리한다.

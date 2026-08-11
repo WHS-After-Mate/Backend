@@ -26,8 +26,6 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 
 | Method | Path | 구현 파일 |
 |---|---|---|
-| POST | `/auth/signup/verify-phone/request` | `auth.routes.ts` |
-| POST | `/auth/signup/verify-phone/confirm` | `auth.routes.ts` |
 | POST | `/auth/signup` | `auth.routes.ts` |
 | POST | `/auth/login` | `auth.routes.ts` |
 | POST | `/auth/refresh` | `auth.routes.ts` |
@@ -59,47 +57,24 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 
 ## 1. 인증 / 온보딩
 
-회원가입은 **전화번호 SMS 인증 → 이메일/비밀번호 가입** 순서로 진행한다. 로그인은 이후 이메일/비밀번호만 사용한다.
-
-### POST /auth/signup/verify-phone/request
-회원가입 시 본인확인용 SMS 인증코드 발송.
-
-**Request**
-```json
-{ "phone": "01012345678" }
-```
-**Response 200**: `{ "verificationId": "V-8841", "expiresIn": 180 }`
-`400 INVALID_PHONE_FORMAT`
-`429 TOO_MANY_REQUESTS`: 재요청 주기 제한(예: 60초)
-
-### POST /auth/signup/verify-phone/confirm
-인증코드 확인. 성공 시 짧은 유효기간의 검증 토큰을 발급하며, 이 토큰을 회원가입 요청에 함께 보낸다.
-
-**Request**
-```json
-{ "verificationId": "V-8841", "code": "482913" }
-```
-**Response 200**: `{ "phoneVerifiedToken": "pvt_xxx", "expiresIn": 600 }`
-`400 INVALID_CODE`
-`410 CODE_EXPIRED`
-`429 TOO_MANY_ATTEMPTS`: 코드 오입력 횟수 초과
+회원가입은 **이메일/비밀번호 가입**으로 진행한다(전화번호 SMS 인증은 미구현으로 제외 — `server/README.md` TODO 참고). 로그인은 이메일/비밀번호만 사용한다.
 
 ### POST /auth/signup
-이메일/비밀번호 회원가입. 전화번호는 위 단계에서 인증된 상태여야 한다.
+이메일/비밀번호 회원가입.
 
 **Request**
 ```json
 {
   "email": "user@example.com",
-  "password": "string",
+  "password": "string (8자 이상)",
   "name": "홍길동",
   "phone": "01012345678",
-  "phoneVerifiedToken": "pvt_xxx"
+  "birthDate": "1995-03-14"
 }
 ```
 **Response 200**: `POST /auth/login`과 동일 스키마 (accessToken, refreshToken, expiresIn, user)
 `409 EMAIL_ALREADY_EXISTS`
-`400 PHONE_NOT_VERIFIED`: 토큰 누락/만료 또는 phone 불일치
+`409 PHONE_ALREADY_EXISTS`: 이미 가입된 전화번호
 
 ### POST /auth/login
 실제 계정 로그인 (이메일/비밀번호).
@@ -448,10 +423,10 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 }
 ```
 - `birthDate` `(v0.5)`: 내 정보 화면의 "생년월일"
-- `phone` `(v0.5)`: 내 정보 화면의 "휴대폰 번호". 회원가입 시 SMS로 인증된 번호를 그대로 조회 전용으로 노출(변경은 범위 밖 — 번호 변경은 재인증 필요하므로 별도 논의 필요)
+- `phone` `(v0.5)`: 내 정보 화면의 "휴대폰 번호". 회원가입 시 입력한 번호를 그대로 조회 전용으로 노출(변경은 범위 밖 — 별도 논의 필요)
 
 ### PATCH /profile
-이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·SMS 인증값이라 이 엔드포인트로 변경 불가).
+이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·가입 시 입력값이라 이 엔드포인트로 변경 불가).
 - 참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).
 
 ### POST /profile/password `(v0.5)`
@@ -511,8 +486,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 
 | 모델 | 핵심 필드 |
 |---|---|
-| User | id, name, email, phone, phoneVerifiedAt, role(customer/expert/admin) |
-| PhoneVerification | id, phone, codeHash, expiresAt, attempts, verifiedAt |
+| User | id, name, email, phone, role(customer/expert/admin) |
 | CareRecord | id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName}** *(굵은 필드 v0.5)* |
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
 | AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)* |
@@ -527,13 +501,8 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 |---|---|
 | `UNAUTHORIZED` | 토큰 없음/만료 |
 | `INVALID_REFRESH_TOKEN` | refreshToken 만료/무효 |
-| `INVALID_PHONE_FORMAT` | 잘못된 전화번호 형식 |
-| `INVALID_CODE` | 인증코드 불일치 |
-| `CODE_EXPIRED` | 인증코드 만료 |
-| `TOO_MANY_REQUESTS` | 인증코드 재요청 주기 초과 |
-| `TOO_MANY_ATTEMPTS` | 인증코드 오입력 횟수 초과 |
 | `EMAIL_ALREADY_EXISTS` | 이미 가입된 이메일 |
-| `PHONE_NOT_VERIFIED` | 전화번호 인증 미완료/토큰 만료 |
+| `PHONE_ALREADY_EXISTS` | 이미 가입된 전화번호 |
 | `NO_ACTIVE_CUSTOMER_PROFILE` | 연결된 고객 프로필 없음 |
 | `CARE_RECORD_NOT_FOUND` | 존재하지 않는 관리 이력 |
 | `MEMBERSHIP_NOT_FOUND` | 존재하지 않는 이용권 |

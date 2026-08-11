@@ -252,7 +252,6 @@ flowchart TD
 
   subgraph SEC1["① 인증 / 온보딩"]
     LOGIN["로그인 화면<br/><b>POST /auth/login</b>"]
-    PHONEVERIFY["전화번호 인증<br/><b>POST /auth/signup/verify-phone/*</b>"]
     SIGNUP["회원가입<br/><b>POST /auth/signup</b>"]
     PWFORGOT["비밀번호를 잊으셨나요?<br/><b>POST /auth/password/reset-request</b>"]
     PWRESET["재설정 링크 클릭 → 새 비밀번호<br/><b>POST /auth/password/reset-confirm</b>"]
@@ -296,7 +295,7 @@ flowchart TD
   end
 
   START -->|기존 회원| LOGIN
-  START -->|신규 회원| PHONEVERIFY --> SIGNUP
+  START -->|신규 회원| SIGNUP
   SIGNUP -->|가입 완료| HOME
   LOGIN -->|로그인 성공| HOME
   LOGIN -->|비밀번호를 잊으셨나요?| PWFORGOT --> PWRESET -->|재설정 완료| LOGIN
@@ -330,7 +329,7 @@ flowchart TD
   classDef plain fill:#ffffff,stroke:#C3CDC8,color:#16211E;
 
   class HOME,RECDETAIL,DAILYGUIDE,CHATENTRY,CALENDAR,CALENDARDAY,CARELIST,CAREFILTER,CAREDETAIL,MEMLIST,MEMDETAIL,PROFILE,NOTIF get;
-  class LOGIN,ASKQ,LOGOUT,PHONEVERIFY,SIGNUP,PWFORGOT post;
+  class LOGIN,ASKQ,LOGOUT,SIGNUP,PWFORGOT post;
   class INTERESTS,NOTIFUPDATE,PWRESET,PWCHANGE patch;
   class AFTERCARD,ASKAI,RECCARD,ANSWER,EXPERT,MYCARE,SETTINGS,START plain;
 </pre>
@@ -345,8 +344,7 @@ flowchart TD
       <table>
         <thead><tr><th>#</th><th>화면 / 액션</th><th>API 호출</th><th>비고</th></tr></thead>
         <tbody>
-          <tr><td class="step-no">0a</td><td>전화번호 인증 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/request</span>, <span class="method post">POST</span> <span class="mono">/auth/signup/verify-phone/confirm</span></td><td>SMS 코드 발송 → 확인, phoneVerifiedToken 발급</td></tr>
-          <tr><td class="step-no">0b</td><td>회원가입 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup</span></td><td>이메일/비밀번호 + 인증된 전화번호</td></tr>
+          <tr><td class="step-no">0</td><td>회원가입 (신규 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/signup</span></td><td>이메일/비밀번호/이름/전화번호/생년월일 — 전화번호 SMS 인증은 미구현으로 제외</td></tr>
           <tr><td class="step-no">1</td><td>로그인 화면 (기존 회원)</td><td><span class="method post">POST</span> <span class="mono">/auth/login</span></td><td>이메일/비밀번호, accessToken+refreshToken 발급</td></tr>
           <tr><td class="step-no">1a</td><td>비밀번호를 잊으셨나요? (v0.5)</td><td><span class="method post">POST</span> <span class="mono">/auth/password/reset-request</span>, <span class="method post">POST</span> <span class="mono">/auth/password/reset-confirm</span></td><td>이메일 입력 → 재설정 링크 발송 → 링크로 새 비밀번호 설정 후 로그인 화면으로 복귀</td></tr>
           <tr><td class="step-no">2</td><td>홈 진입</td><td><span class="method get">GET</span> <span class="mono">/home/summary</span></td><td>사후관리 카드·이용권 요약·추천을 한 번에 로드</td></tr>

@@ -8,35 +8,13 @@ import {
   passwordResetRequestSchema,
   refreshSchema,
   signupSchema,
-  verifyPhoneConfirmSchema,
-  verifyPhoneRequestSchema,
 } from "../validators/auth.validators";
 
-// 1. 인증 / 온보딩 (api-spec.md §1) — 회원가입은 "전화번호 SMS 인증 → 이메일/비밀번호 가입" 순서로 진행
+// 1. 인증 / 온보딩 (api-spec.md §1) — 회원가입은 이메일/비밀번호 기반 (전화인증은 미구현으로 제외)
 
 export const authRouter = Router();
 
-// 회원가입 1단계: 본인확인용 SMS 인증코드 발송 (재요청 주기 제한 대상)
-authRouter.post(
-  "/signup/verify-phone/request",
-  asyncHandler(async (req, res) => {
-    const { phone } = verifyPhoneRequestSchema.parse(req.body);
-    const result = await authService.requestPhoneVerification(phone);
-    res.status(200).json(result);
-  }),
-);
-
-// 회원가입 2단계: 인증코드 확인 → 성공 시 짧은 유효기간의 phoneVerifiedToken 발급 (3단계 signup에 필요)
-authRouter.post(
-  "/signup/verify-phone/confirm",
-  asyncHandler(async (req, res) => {
-    const { verificationId, code } = verifyPhoneConfirmSchema.parse(req.body);
-    const result = await authService.confirmPhoneVerification(verificationId, code);
-    res.status(200).json(result);
-  }),
-);
-
-// 회원가입 3단계: 이메일/비밀번호 가입. phoneVerifiedToken으로 전화번호 인증 완료 여부 확인
+// 회원가입: 이메일/비밀번호 가입
 authRouter.post(
   "/signup",
   asyncHandler(async (req, res) => {

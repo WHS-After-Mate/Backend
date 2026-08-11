@@ -301,7 +301,6 @@ async function seedPatient(patient: PatientSeed) {
     name: patient.name,
     birth_date: patient.birthDate,
     phone: patient.phone,
-    phone_verified_at: new Date().toISOString(),
     interest_goals: patient.interestGoals,
   });
 

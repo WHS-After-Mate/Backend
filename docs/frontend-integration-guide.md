@@ -26,7 +26,6 @@ cp .env.example .env
 | 변수 | 설명 |
 |---|---|
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` | 백엔드에서 이미 만든 Supabase 프로젝트 값 |
-| `APP_TOKEN_SECRET` | 회원가입 전화번호 인증용 서명 키 |
 | `ANTHROPIC_API_KEY` | 사후관리 가이드/Q&A 생성용 Claude API 키 |
 
 > ⚠️ **DB 마이그레이션과 시드(`npm run seed`)는 실행하지 않는다.** 이미 Supabase에 적용돼 있어서 재실행하면 데모 계정 중복 에러가 난다.

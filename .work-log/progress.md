@@ -4,7 +4,17 @@
 - `/aftercare/questions`가 진짜 LLM(AI API)을 쓰는지 재확인 요청 → `llm/client.ts`의 `callStructuredLlm`이 실제 `anthropic.messages.create`를 호출함을 코드로 검증
 - `server/src/examples/api-call-example.html`에 D(사후관리 질문 테스트) 섹션 추가, accessToken을 공용 변수로 리팩터링
 - `docs/api-spec.md`/`.html`의 "LLM 기반" 표현에 "실제 Anthropic Claude API 호출, 하드코딩 아님" 설명 추가, 아티팩트 재발행
-- Tier 0(08-05 저녁분 + 08-11 오늘분) commit/push 진행
+- Tier 0(08-05 저녁분 + 08-11 오늘분) commit/push 완료 — `7e62ddf` (`9eb1af2..7e62ddf`)
+- work-log(`current.md`/`progress.md`) 1차 정리 — `/기록저장`으로 저장
+- **Tier 1 착수 및 완료** — 전화번호 SMS 인증 기능 전체 제거 + 회원가입 생년월일 필드 추가
+  - `auth.routes.ts`/`auth.validators.ts`/`auth.service.ts`에서 `verify-phone/request`·`/confirm`·`phoneVerifiedToken` 관련 코드 전부 삭제, `signup()`을 토큰검증 없는 단순 가입으로 변경 + `birthDate` 파라미터 추가
+  - `lib/otp.ts`/`lib/sms.ts`/`lib/signedToken.ts` 삭제(다른 곳에서 미사용 확인 후), `errors.ts` 관련 에러 6종 삭제 + `phoneAlreadyExists` 추가, `env.ts`/`.env.example`에서 `APP_TOKEN_SECRET`/`SMS_*` 제거
+  - 비밀번호 8자 이상·이메일 형식 검증은 이미 구현돼 있었음을 확인(추가 작업 불필요)
+  - 신규 마이그레이션 `004_remove_phone_verification.sql` 작성(`phone_verifications` 테이블 + `profiles.phone_verified_at` 컬럼 삭제), `seed.ts` 갱신
+  - `npm run typecheck` 통과 확인
+  - `api-call-example.html` A섹션 3단계 SMS 플로우 → 단일 가입 버튼으로 축소
+  - `docs/api-spec.md`/`.html`, `server/README.md`, `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html`, `docs/api-user-flow.html`, `docs/frontend-integration-guide.md`/`.html` 전부 동기화, 아티팩트 5개 재발행
+  - 이번 세션 Tier 1 변경사항은 git 미커밋 상태로 세션 종료
 
 ## 2026-08-06
 - 새 세션 시작, `.work-log/current.md` 브리핑 후 사용자 요청으로 실제 git 상태(diff/status) 재확인

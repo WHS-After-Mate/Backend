@@ -242,7 +242,7 @@
   <main>
     <section id="erd">
       <h2>ERD</h2>
-      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. <span class="mono">phone_verifications</span>는 가입 전 단계라 계정과 연결되지 않는 독립 테이블이다.</p>
+      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고)</p>
 
       <div class="diagram-toolbar">
         <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
@@ -294,7 +294,6 @@ erDiagram
     text name
     date birth_date "v0.3"
     text phone
-    timestamptz phone_verified_at
     text_array interest_goals
     bool push_enabled
     bool aftercare_reminder
@@ -359,14 +358,6 @@ erDiagram
     text answer
     bool expert_contact_required
   }
-  PHONE_VERIFICATIONS {
-    uuid id PK
-    text phone
-    text code_hash
-    timestamptz expires_at
-    int attempts
-    timestamptz verified_at
-  }
 </pre>
         </div>
       </div>
@@ -374,12 +365,12 @@ erDiagram
 
     <section id="auth">
       <h2>인증 (Supabase 관리) <span class="tag">직접 구현 안 함</span></h2>
-      <p class="desc">이메일/비밀번호 계정, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 전부 Supabase Auth가 처리한다. 우리 스키마는 <span class="mono">auth.users.id</span>를 FK로 참조만 한다. 전화번호 인증(SMS OTP)은 Supabase의 전화 인증 기능을 쓰지 않고, 회원가입 이전 단계를 위한 별도 테이블(<span class="mono">phone_verifications</span>)로 직접 구현한다 — 국내 SMS 업체(예: Solapi, 알리고) 연동이 Supabase 기본 지원 목록에 없기 때문.</p>
+      <p class="desc">이메일/비밀번호 계정, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 전부 Supabase Auth가 처리한다. 우리 스키마는 <span class="mono">auth.users.id</span>를 FK로 참조만 한다. 전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(<span class="mono">004_remove_phone_verification.sql</span>) — <span class="mono">phone</span>은 이제 조회·표시용 연락처 값일 뿐이다.</p>
       <div class="note-card">
-        <b>가입 흐름</b>: <span class="mono">POST /auth/signup/verify-phone/request</span> → 우리 서버가 국내 SMS API 호출 → <span class="mono">phone_verifications</span>에 코드 해시 저장 → <span class="mono">/confirm</span>으로 검증 → <span class="mono">phoneVerifiedToken</span>(짧은 서명 토큰) 발급 → <span class="mono">POST /auth/signup</span> 호출 시 이 토큰을 검증한 뒤 <span class="mono">supabase.auth.signUp()</span>으로 계정 생성 → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> 행 insert.
+        <b>가입 흐름</b> <span class="tag">전화인증 제거 후</span>: <span class="mono">POST /auth/signup</span> 호출 → <span class="mono">supabase.auth.admin.createUser()</span>로 계정 생성 → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> 행 insert(<span class="mono">phone</span>은 연락처 값, <span class="mono">birth_date</span>는 signup 입력값 그대로 저장). 별도 인증 단계 없음.
       </div>
       <div class="note-card" style="margin-top:10px;">
-        <b>비밀번호 재설정/변경</b> <span class="done-badge">v0.3 · 구현 완료</span>: 가입 흐름과 마찬가지로 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>, <span class="mono">reset-confirm</span>·<span class="mono">POST /profile/password</span>는 <span class="mono">supabaseAnon.auth.verifyOtp()</span> + <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>/<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
+        <b>비밀번호 재설정/변경</b> <span class="done-badge">v0.3 · 구현 완료</span>: 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>, <span class="mono">reset-confirm</span>은 Supabase 기본 메일 템플릿이 URL 해시로 실어 보내는 이미 검증된 <span class="mono">access_token</span>을 <span class="mono">supabaseAnon.auth.getUser()</span>로 재확인 후 <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>/<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
       </div>
     </section>
 
@@ -407,8 +398,7 @@ erDiagram
                 <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="pk">PK</span> <span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>Supabase 계정과 1:1</td></tr>
                 <tr><td class="mono">name</td><td class="mono">text</td><td>not null</td><td>이름</td></tr>
                 <tr><td class="mono">birth_date</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.3</span> 내 정보 화면 생년월일 (<span class="mono">GET /profile</span> 응답 <span class="mono">birthDate</span>)</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>인증된 전화번호</td></tr>
-                <tr><td class="mono">phone_verified_at</td><td class="mono">timestamptz</td><td>—</td><td>전화번호 인증 완료 시각</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>연락처 (가입 시 입력값, 인증 없음)</td></tr>
                 <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
                 <tr><td class="mono">push_enabled</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
                 <tr><td class="mono">aftercare_reminder</td><td class="mono">boolean</td><td>default true</td><td>알림 설정</td></tr>
@@ -424,24 +414,11 @@ erDiagram
 
       <div class="table-card">
         <div class="table-head">
-          <span class="name">public.phone_verifications</span>
-          <span class="owner">독립 테이블</span>
+          <span class="name" style="text-decoration:line-through;">public.phone_verifications</span>
+          <span class="owner">제거됨 (004)</span>
         </div>
         <div class="table-body">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
-              <tbody>
-                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span> default gen_random_uuid()</td><td>—</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">text</td><td>not null</td><td>인증 요청한 번호</td></tr>
-                <tr><td class="mono">code_hash</td><td class="mono">text</td><td>not null</td><td>OTP 코드는 평문 저장 금지, 해시만 저장</td></tr>
-                <tr><td class="mono">expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>코드 유효기간 (예: 3분)</td></tr>
-                <tr><td class="mono">attempts</td><td class="mono">int</td><td>default 0</td><td>오입력 횟수, 초과 시 429</td></tr>
-                <tr><td class="mono">verified_at</td><td class="mono">timestamptz</td><td>—</td><td>확인 성공 시각</td></tr>
-                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (phone, created_at desc) — 재요청 주기 제한용</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">전화번호 SMS 인증 기능 자체를 MVP 범위 밖으로 확정하며 <span class="mono">004_remove_phone_verification.sql</span>로 삭제했다. 원래는 가입 전 단계(계정과 미연결)의 OTP 코드 해시·오입력 횟수·재요청 주기 제한을 저장하던 독립 테이블이었다.</p>
         </div>
       </div>
 
@@ -642,8 +619,8 @@ erDiagram
           <p><span class="mono">aftercare_guides</span>의 <span class="mono">(care_record_id, generated_date)</span> UNIQUE로 중복 생성을 애플리케이션 로직이 아니라 DB가 막는다.</p>
         </div>
         <div class="decision-card">
-          <h3>전화 인증은 Supabase 기능 미사용</h3>
-          <p>국내 SMS 업체 연동을 위해 <span class="mono">phone_verifications</span>를 직접 구현. Supabase의 phone-as-login 기능과는 별개.</p>
+          <h3>전화 인증은 미구현으로 제거</h3>
+          <p>국내 SMS 업체 연동 비용이 MVP 범위 밖이라 판단, <span class="mono">phone_verifications</span> 테이블·<span class="mono">phoneVerifiedToken</span> 흐름 전부 삭제(<span class="mono">004_remove_phone_verification.sql</span>).</p>
         </div>
         <div class="decision-card">
           <h3>알러지·의사코멘트는 별도 테이블</h3>
@@ -663,7 +640,7 @@ erDiagram
         </div>
         <div class="decision-card">
           <h3>비밀번호 재설정/변경 전용 테이블 없음 <span class="done-badge">v0.3 · 구현 완료</span></h3>
-          <p>Supabase Auth가 재설정 토큰 발급·검증·해싱을 전담. <span class="mono">phone_verifications</span>와 달리 국내 제약이 없어 자체 구현 불필요.</p>
+          <p>Supabase Auth가 재설정 토큰 발급·검증·해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요.</p>
         </div>
       </div>
     </section>
@@ -684,6 +661,21 @@ erDiagram
         </table>
       </div>
       <p class="note">이미 001·002·003 순서로 적용된 프로젝트 기준이다. 아직 마이그레이션을 실행하지 않은 다른 환경(예: 신규 클론)이라면 <span class="mono">server/db/migrations/*.sql</span>을 001부터 순서대로 Supabase SQL Editor(또는 <span class="mono">supabase db push</span>)로 실행하면 된다.</p>
+    </section>
+
+    <section id="v04remove">
+      <h2>전화번호 SMS 인증 제거 <span class="tag">004</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/004_remove_phone_verification.sql</span> — 국내 SMS 업체 연동이 MVP 범위 밖으로 확정되며 관련 스키마를 걷어냈다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>변경</th><th>대상</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>테이블 삭제</td><td class="mono">public.phone_verifications</td><td>OTP 코드 해시·오입력 횟수 저장용이었던 독립 테이블</td></tr>
+            <tr><td>컬럼 삭제</td><td class="mono">profiles.phone_verified_at</td><td><span class="mono">phone</span> 컬럼 자체와 unique 제약은 유지</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">이 마이그레이션은 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.</p>
     </section>
 
     <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.5 기준 · db-schema v0.3 · 2026-08-05</footer>

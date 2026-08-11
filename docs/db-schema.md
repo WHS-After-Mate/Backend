@@ -1,6 +1,6 @@
 # WHS After Mate — DB 스키마 (v0.3)
 
-기준: `api-spec.md` v0.5. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 Supabase의 phone-auth 기능을 쓰지 않고 `phone_verifications` 테이블로 직접 구현한다(국내 SMS 업체 연동 때문).
+기준: `api-spec.md` v0.5. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
 
 v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하는 스키마 변경. `profiles`에 컬럼 2개 추가, `care_records`에 컬럼 4개 추가, `membership_usages` 신규 테이블 1개. **마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`)이 Supabase 프로젝트에 실제 적용됐고, 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 확인했다.** 자세한 내용은 하단 "v0.3에서 추가된 항목" 절 참고.
 
@@ -12,9 +12,9 @@ v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하�
 
 이메일/비밀번호 계정 생성, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 Supabase Auth가 처리한다. 우리 테이블은 `auth.users.id`를 FK로 참조만 한다.
 
-**가입 흐름**: `POST /auth/signup/verify-phone/request` → 서버가 국내 SMS API 호출 → `phone_verifications`에 코드 해시 저장 → `/confirm`으로 검증 → `phoneVerifiedToken` 발급 → `POST /auth/signup` 호출 시 토큰 검증 후 `supabase.auth.signUp()` → 생성된 `user.id`로 `profiles` 행 insert.
+**가입 흐름** *(전화인증 제거 후, `004_remove_phone_verification.sql`)*: `POST /auth/signup` 호출 → `supabase.auth.admin.createUser()` → 생성된 `user.id`로 `profiles` 행 insert(`phone`은 연락처 값, `birth_date`는 signup 입력값 그대로 저장). 별도 인증 단계 없음.
 
-**비밀번호 재설정/변경** *(v0.3, `api-spec.md` v0.5 신규 — 구현 완료, DB 마이그레이션 불필요)*: 가입 흐름과 마찬가지로 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`, `POST /auth/password/reset-confirm`은 이메일 링크의 recovery 토큰을 `supabaseAnon.auth.verifyOtp({ type: "recovery" })`로 검증한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`). `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
+**비밀번호 재설정/변경** *(v0.3, `api-spec.md` v0.5 신규 — 구현 완료, DB 마이그레이션 불필요)*: 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`, `POST /auth/password/reset-confirm`은 Supabase 기본 "Reset Password" 메일 템플릿이 리다이렉트 URL 해시로 실어 보내는 이미 검증된 `access_token`(recoveryToken)을 `supabaseAnon.auth.getUser(recoveryToken)`으로 재확인한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`). `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
 
 ---
 
@@ -40,7 +40,6 @@ create table public.profiles (
   name text not null,
   birth_date date,
   phone text unique,
-  phone_verified_at timestamptz,
   interest_goals text[] not null default '{}',
   push_enabled boolean not null default true,
   aftercare_reminder boolean not null default true,
@@ -60,28 +59,11 @@ create table public.profiles (
 | `marketing_alert` | *(v0.3 신규)* 설정 화면의 "마케팅 알림" 토글. 기본값 `false`(옵트인) |
 
 → `GET/PATCH /profile`, `PUT /profile/interests`, `GET/PATCH /notifications/settings` 모두 이 한 테이블로 처리.
-→ `phone`은 기존부터 있던 컬럼(가입 시 인증한 번호)이며, `GET /profile` 응답에 `phone` 필드로 노출하는 것 자체는 v0.5에서 새로 추가된 것이지 컬럼 자체는 신규가 아니다.
+→ `phone`은 기존부터 있던 컬럼(가입 시 입력한 연락처)이며, `GET /profile` 응답에 `phone` 필드로 노출하는 것 자체는 v0.5에서 새로 추가된 것이지 컬럼 자체는 신규가 아니다. `phone_verified_at` 컬럼은 전화인증 기능 제거와 함께 삭제됐다(`004_remove_phone_verification.sql`).
 
-### public.phone_verifications — 독립 테이블 (가입 전 단계, 계정과 미연결)
+### ~~public.phone_verifications~~ — 제거됨
 
-```sql
-create table public.phone_verifications (
-  id uuid primary key default gen_random_uuid(),
-  phone text not null,
-  code_hash text not null,
-  expires_at timestamptz not null,
-  attempts int not null default 0,
-  verified_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index idx_phone_verifications_phone_created
-  on public.phone_verifications (phone, created_at desc);
-```
-
-- `code_hash`: OTP 코드는 평문 저장 금지, 해시만 저장
-- `attempts`: 오입력 횟수 — 초과 시 `429 TOO_MANY_ATTEMPTS`
-- 인덱스: 같은 번호로 재요청 주기 제한(`429 TOO_MANY_REQUESTS`) 체크용
+전화번호 SMS 인증 기능 자체를 MVP 범위 밖으로 확정하며 `004_remove_phone_verification.sql`로 테이블을 삭제했다. 원래는 가입 전 단계(계정과 미연결)의 OTP 코드 해시·오입력 횟수·재요청 주기 제한을 저장하던 독립 테이블이었다.
 
 ### public.care_records — 클리닉 EMR에서 동기화된 시술 이력
 
@@ -313,11 +295,11 @@ create table public.device_tokens (
 | **알림 설정은 profiles 컬럼** | 사용자당 1행이라 별도 테이블 정규화 이득 없음. 항목이 늘어나면 그때 분리 |
 | **캘린더는 집계 쿼리** | `care_records`를 월 단위로 `GROUP BY`. 별도 마커 테이블 유지 비용 없음 |
 | **하루 1회 LLM 생성은 DB 제약으로** | `aftercare_guides`의 UNIQUE로 애플리케이션 로직 실수를 DB가 방어 |
-| **전화 인증은 Supabase 기능 미사용** | 국내 SMS 업체 연동을 위해 `phone_verifications` 직접 구현 |
+| **전화 인증은 미구현으로 제거** | 국내 SMS 업체 연동 비용이 MVP 범위 밖이라 판단, `phone_verifications` 테이블·`phoneVerifiedToken` 흐름 전부 삭제(`004_remove_phone_verification.sql`) |
 | **알러지·의사코멘트는 별도 테이블(`medical_profiles`)로 분리** | `profiles`(앱 계정 데이터)와 성격이 달라 접근 권한·감사 로그를 다르게 관리하기 위함. EMR 동기화 대상이라는 점도 명확히 구분 |
 | **의료정보 접근은 감사 로그(`medical_data_access_log`) 필수** | 알러지·의사 코멘트가 민감정보라 "누가/언제/왜" 봤는지 남겨야 함. LLM이 컨텍스트로 읽을 때도 기록 |
 | **`relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` 전용 테이블 없음** *(v0.3)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, `care_type`별 사전 정의 매핑, `care_records.brand` distinct 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
-| **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. `phone_verifications`와 달리 국내 제약이 없어 자체 구현 불필요 |
+| **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요 |
 
 ## 알려진 트레이드오프
 
@@ -339,3 +321,14 @@ create table public.device_tokens (
 | 신규 테이블 없음 | 추천 상세 확장 필드 3종 | 기존 테이블 조합으로 즉석 계산 |
 
 이미 001·002·003 순서로 적용된 프로젝트 기준이다. 아직 마이그레이션을 실행하지 않은 다른 환경(예: 신규 클론)이라면 `server/db/migrations/*.sql`을 001부터 순서대로 Supabase SQL Editor(또는 `supabase db push`)로 실행하면 된다.
+
+## 전화번호 SMS 인증 제거 (004)
+
+`server/db/migrations/004_remove_phone_verification.sql` — 국내 SMS 업체 연동이 MVP 범위 밖으로 확정되며 관련 스키마를 걷어냈다.
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 테이블 삭제 | `public.phone_verifications` | OTP 코드 해시·오입력 횟수 저장용이었던 독립 테이블 |
+| 컬럼 삭제 | `profiles.phone_verified_at` | `phone` 컬럼 자체와 unique 제약은 유지 |
+
+이 마이그레이션은 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.

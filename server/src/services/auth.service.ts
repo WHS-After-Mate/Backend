@@ -1,97 +1,20 @@
 import { env } from "../config/env";
 import { supabaseAdmin, supabaseAnon } from "../config/supabase";
 import { ApiError, Errors } from "../lib/errors";
-import { generateOtpCode, hashOtpCode, isValidKrPhone } from "../lib/otp";
-import { sendSmsCode } from "../lib/sms";
-import { signToken, verifyToken } from "../lib/signedToken";
-
-const CODE_EXPIRES_IN_SECONDS = 180;
-const RESEND_COOLDOWN_SECONDS = 60;
-const MAX_ATTEMPTS = 5;
-const PHONE_VERIFIED_TOKEN_TTL_SECONDS = 600;
-
-export async function requestPhoneVerification(phone: string) {
-  if (!isValidKrPhone(phone)) throw Errors.invalidPhoneFormat();
-
-  const { data: recent } = await supabaseAdmin
-    .from("phone_verifications")
-    .select("created_at")
-    .eq("phone", phone)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (recent) {
-    const elapsedMs = Date.now() - new Date(recent.created_at).getTime();
-    if (elapsedMs < RESEND_COOLDOWN_SECONDS * 1000) throw Errors.tooManyRequests();
-  }
-
-  const code = generateOtpCode();
-  const codeHash = hashOtpCode(code);
-  const expiresAt = new Date(Date.now() + CODE_EXPIRES_IN_SECONDS * 1000).toISOString();
-
-  const { data, error } = await supabaseAdmin
-    .from("phone_verifications")
-    .insert({ phone, code_hash: codeHash, expires_at: expiresAt })
-    .select("id")
-    .single();
-
-  if (error || !data) throw Errors.internal("인증코드 발급에 실패했습니다.");
-
-  await sendSmsCode(phone, code);
-
-  return { verificationId: data.id as string, expiresIn: CODE_EXPIRES_IN_SECONDS };
-}
-
-export async function confirmPhoneVerification(verificationId: string, code: string) {
-  const { data: row, error } = await supabaseAdmin
-    .from("phone_verifications")
-    .select("id, phone, code_hash, expires_at, attempts, verified_at")
-    .eq("id", verificationId)
-    .maybeSingle();
-
-  if (error || !row) throw Errors.invalidCode();
-  if (row.verified_at) throw Errors.invalidCode();
-  if (row.attempts >= MAX_ATTEMPTS) throw Errors.tooManyAttempts();
-  if (new Date(row.expires_at).getTime() < Date.now()) throw Errors.codeExpired();
-
-  if (hashOtpCode(code) !== row.code_hash) {
-    await supabaseAdmin
-      .from("phone_verifications")
-      .update({ attempts: row.attempts + 1 })
-      .eq("id", verificationId);
-    throw Errors.invalidCode();
-  }
-
-  await supabaseAdmin
-    .from("phone_verifications")
-    .update({ verified_at: new Date().toISOString() })
-    .eq("id", verificationId);
-
-  const phoneVerifiedToken = signToken(
-    { verificationId, phone: row.phone },
-    PHONE_VERIFIED_TOKEN_TTL_SECONDS,
-  );
-
-  return { phoneVerifiedToken, expiresIn: PHONE_VERIFIED_TOKEN_TTL_SECONDS };
-}
 
 export async function signup(input: {
   email: string;
   password: string;
   name: string;
   phone: string;
-  phoneVerifiedToken: string;
+  birthDate: string;
 }) {
-  const payload = verifyToken<{ verificationId: string; phone: string }>(input.phoneVerifiedToken);
-  if (!payload || payload.phone !== input.phone) throw Errors.phoneNotVerified();
-
   const { data: existingProfile } = await supabaseAdmin
     .from("profiles")
     .select("user_id")
     .eq("phone", input.phone)
     .maybeSingle();
-  if (existingProfile) throw Errors.phoneNotVerified();
+  if (existingProfile) throw Errors.phoneAlreadyExists();
 
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email: input.email,
@@ -108,7 +31,7 @@ export async function signup(input: {
     user_id: created.user.id,
     name: input.name,
     phone: input.phone,
-    phone_verified_at: new Date().toISOString(),
+    birth_date: input.birthDate,
   });
 
   if (profileError) {

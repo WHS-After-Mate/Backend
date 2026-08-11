@@ -12,13 +12,13 @@ Android(Android Studio) 클라이언트가 호출하는 REST API 서버. Node.js
 
 ```bash
 cp .env.example .env
-# .env에 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY, APP_TOKEN_SECRET 채우기
+# .env에 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY 채우기
 npm install
 ```
 
 ## DB 마이그레이션 적용
 
-`db/migrations/*.sql`을 Supabase SQL Editor에 순서대로(001 → 002 → 003) 붙여넣어 실행한다.
+`db/migrations/*.sql`을 Supabase SQL Editor에 순서대로(001 → 002 → 003 → 004) 붙여넣어 실행한다.
 (CLI를 쓴다면 `supabase db push` 또는 `psql`로 동일 파일 실행)
 
 `003_v05_wireframe_features.sql`은 최종 와이어프레임 검토로 추가된 v0.5 항목(비밀번호 재설정 제외, DB 변경 필요분만) 대응 — `profiles`/`care_records` 컬럼 추가 + `membership_usages` 신규 테이블. 001이 먼저 적용돼 `memberships` 테이블이 존재해야 003의 FK가 성립한다.
@@ -47,7 +47,7 @@ npm run typecheck
 src/
   config/      # env, supabase, anthropic, firebase 클라이언트
   middleware/  # 인증(requireAuth), 에러 핸들러
-  lib/         # 에러 정의, 위험신호 키워드, 카테고리, 서명 토큰, OTP, SMS
+  lib/         # 에러 정의, 위험신호 키워드, 카테고리
   services/    # 도메인 로직 (DB 접근은 여기서만)
     llm/       # Claude 프롬프트 + 구조화 출력 클라이언트
   validators/  # zod 요청 스키마
@@ -67,7 +67,8 @@ db/
   - `POST /notifications/device-token` — `{ fcmToken, platform: "android" }`, 204
   - `DELETE /notifications/device-token` — `{ fcmToken }`, 204
   - 실제 발송 로직(`src/services/push.service.ts`)은 준비만 해두었고 스케줄러 연동은 MVP 범위 밖
-- **전화번호 인증(SMS) — 미구현**: 회원가입 3단계 중 `POST /auth/signup/verify-phone/request`는 실제 문자를 발송하지 않는다. 국내 SMS 중계업체(알리고, NCP SENS 등) 연동은 건당 과금 + 발신번호 사전등록이 필요한 유료 영역이라 아직 붙이지 않았고, `SMS_DEV_MODE=true`(기본값)일 때는 인증코드를 서버 콘솔에 `[SMS_DEV_MODE] <전화번호> 인증코드: <6자리>`로 출력하는 것으로 대신한다(`src/lib/sms.ts`). 실제 연동 시 `.env`의 `SMS_PROVIDER_API_KEY`/`SMS_PROVIDER_SENDER`를 채우고 `sendSmsCode` 내부 `TODO`를 구현하면 된다.
+- **전화번호 인증(SMS) — 기능 자체를 제거**: 국내 SMS 중계업체(알리고, NCP SENS 등) 연동은 건당 과금 + 발신번호 사전등록이 필요한 유료 영역이라 MVP 범위 밖으로 확정, `POST /auth/signup/verify-phone/request`·`/confirm` 엔드포인트와 `phoneVerifiedToken` 흐름을 코드에서 완전히 걷어냈다(`db/migrations/004_remove_phone_verification.sql`로 `phone_verifications` 테이블/`profiles.phone_verified_at` 컬럼도 제거). 회원가입은 이제 `phone`을 그냥 연락처 값으로만 받는다. 향후 실 연동이 필요해지면 별도 논의 후 재설계.
+- **회원가입 `birthDate` 필드 추가**: `POST /auth/signup`에 생년월일(`YYYY-MM-DD`)이 필수 필드로 추가됐고, 가입 시 입력값이 `profiles.birth_date`에 바로 저장돼 `GET /profile`의 `birthDate`로 조회된다(이전에는 회원가입엔 없고 `PATCH /profile`로만 채울 수 있었음).
 - **비밀번호 찾기(`POST /auth/password/reset-request`)**: SMS와 달리 개발용 우회 모드가 없다. Supabase Auth `resetPasswordForEmail`에 그대로 위임하기 때문에 호출 즉시 실제로 메일이 발송된다. 따라서 이 플로우를 끝까지 테스트하려면 회원가입 시 실제로 수신 가능한 이메일 주소로 가입해둔 계정이 필요하다(회원가입 자체는 `admin.createUser({ email_confirm: true })`라 가짜 이메일도 통과됨).
 - **추천 상세조회 라우팅**: `recommendationId`는 저장되지 않고 `userId` 기반 결정론적 해시로 매 요청 생성 — `GET /recommendations/next-care/{id}`는 재계산 후 id가 일치할 때만 상세를 반환
 - **v0.5 신규 항목** (최종 와이어프레임 검토 반영, `docs/api-spec.md` v0.5): 비밀번호 재설정/변경(`POST /auth/password/reset-request`·`/reset-confirm`, `POST /profile/password`), 프로필 `birthDate`/`phone`, 알림 `marketingAlert`, 이용권 `usageHistory`, 관리 상세 `status`/`daysElapsed`/`session`/`membership`, `GET /aftercare/daily-guide?elapsedDay=`, 추천 상세 `relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` — 전부 구현 완료. DB 컬럼/테이블이 필요한 항목은 `db/migrations/003_v05_wireframe_features.sql`로 이미 적용 완료됐다 (자세한 구현 위치는 `docs/server-code-guide.md` 9절 참고)
@@ -75,4 +76,3 @@ db/
 ## TODO — 프로덕션 전 처리 필요
 
 - **Supabase 커스텀 SMTP 연동**: 지금은 Supabase 기본 내장 이메일 발송을 그대로 쓰는데, 이게 **프로젝트 전체 기준 시간당 2통 제한** + **Supabase organization 멤버 이메일로만 발송 가능**이라 실제 사용자 대상 비밀번호 재설정 메일 발송에는 못 쓴다. Resend/SendGrid 등으로 커스텀 SMTP 연동 필요 (Supabase 대시보드 → Authentication → Email → SMTP Settings). 연동하면 시간당 최소 30통으로 완화됨. 로컬 개발 중엔 1시간에 몇 번 안 되는 테스트로는 기본 한도로 충분해 급하지 않음.
-- **SMS 실 연동**: 위 "전화번호 인증(SMS) — 미구현" 항목 참고. 국내 SMS 중계업체 계약 + 발신번호 등록 필요.

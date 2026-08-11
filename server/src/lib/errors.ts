@@ -14,18 +14,10 @@ export const Errors = {
   unauthorized: () => new ApiError(401, "UNAUTHORIZED", "토큰이 없거나 만료되었습니다."),
   invalidRefreshToken: () =>
     new ApiError(401, "INVALID_REFRESH_TOKEN", "리프레시 토큰이 만료되었거나 유효하지 않습니다."),
-  invalidPhoneFormat: () =>
-    new ApiError(400, "INVALID_PHONE_FORMAT", "전화번호 형식이 올바르지 않습니다."),
-  invalidCode: () => new ApiError(400, "INVALID_CODE", "인증코드가 일치하지 않습니다."),
-  codeExpired: () => new ApiError(410, "CODE_EXPIRED", "인증코드가 만료되었습니다."),
-  tooManyRequests: () =>
-    new ApiError(429, "TOO_MANY_REQUESTS", "잠시 후 다시 시도해주세요."),
-  tooManyAttempts: () =>
-    new ApiError(429, "TOO_MANY_ATTEMPTS", "인증코드 오입력 횟수를 초과했습니다."),
   emailAlreadyExists: () =>
     new ApiError(409, "EMAIL_ALREADY_EXISTS", "이미 가입된 이메일입니다."),
-  phoneNotVerified: () =>
-    new ApiError(400, "PHONE_NOT_VERIFIED", "전화번호 인증이 완료되지 않았습니다."),
+  phoneAlreadyExists: () =>
+    new ApiError(409, "PHONE_ALREADY_EXISTS", "이미 가입된 전화번호입니다."),
   invalidCredentials: () =>
     new ApiError(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."),
   noActiveCustomerProfile: () =>

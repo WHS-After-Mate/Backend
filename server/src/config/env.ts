@@ -10,22 +10,12 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_ANON_KEY: z.string().min(1),
 
-  // phoneVerifiedToken 서명용 (회원가입 단계 전용, Supabase JWT와 별개)
-  APP_TOKEN_SECRET: z.string().min(16),
-
   // 비밀번호 재설정 이메일의 딥링크 대상 (Android 앱이 이 URL을 가로채 recoveryToken을 추출).
   // 미설정 시 Supabase 프로젝트의 기본 Site URL로 전송됨 — 앱 딥링크 스킴 확정 후 채워도 됨.
   PASSWORD_RESET_REDIRECT_URL: z.string().url().optional(),
 
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
-
-  SMS_PROVIDER_API_KEY: z.string().optional(),
-  SMS_PROVIDER_SENDER: z.string().optional(),
-  SMS_DEV_MODE: z
-    .string()
-    .default("true")
-    .transform((v) => v === "true"),
 
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
   FCM_ENABLED: z

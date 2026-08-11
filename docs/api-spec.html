@@ -468,7 +468,7 @@
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 Anthropic Claude API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다), 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
       <span class="badge">v0.5</span>
-      <span class="badge outline">전화번호 인증 회원가입</span>
+      <span class="badge outline">이메일/비밀번호 회원가입</span>
       <span class="badge outline">LLM 일차별 사후관리</span>
       <span class="badge outline">API 유저플로우 기준 재정렬</span>
       <span class="badge outline">와이어프레임 검토 반영(v0.5, 구현·마이그레이션·시드 완료 9건)</span>
@@ -513,8 +513,6 @@
             <tr><th>Method</th><th>Path</th><th>설명</th><th>연관 요구사항</th><th>구현 파일</th></tr>
           </thead>
           <tbody>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup/verify-phone/request</td><td>회원가입 SMS 인증코드 발송</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup/verify-phone/confirm</td><td>인증코드 확인</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup</td><td>회원가입 (이메일/비밀번호)</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>로그인 (이메일/비밀번호)</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/refresh</td><td>accessToken 재발급</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
@@ -548,58 +546,12 @@
 
     <section id="auth">
       <h2>1. 인증 / 온보딩</h2>
-      <p class="desc">회원가입은 <b>전화번호 SMS 인증 → 이메일/비밀번호 가입</b> 순서로 진행한다. 로그인은 이후 이메일/비밀번호만 사용한다.</p>
-
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="method post">POST</span><span class="path mono">/auth/signup/verify-phone/request</span>
-          <span class="note">회원가입 본인확인 SMS 발송</span>
-        </div>
-        <div class="endpoint-body">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
-              <tbody>
-                <tr><td class="mono">phone</td><td class="mono">string</td><td>휴대폰 번호</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">{ "verificationId", "expiresIn": 180 }</span></p>
-          <div class="status-row">
-            <span class="status-chip err">400 INVALID_PHONE_FORMAT</span>
-            <span class="status-chip err">429 TOO_MANY_REQUESTS (재요청 주기 제한)</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="method post">POST</span><span class="path mono">/auth/signup/verify-phone/confirm</span>
-          <span class="note">인증코드 확인 → 검증 토큰 발급</span>
-        </div>
-        <div class="endpoint-body">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
-              <tbody>
-                <tr><td class="mono">verificationId</td><td class="mono">string</td><td>발송 응답에서 받은 ID</td></tr>
-                <tr><td class="mono">code</td><td class="mono">string</td><td>SMS로 받은 6자리 코드</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">{ "phoneVerifiedToken", "expiresIn": 600 }</span> — 이 토큰을 회원가입 요청에 함께 전달</p>
-          <div class="status-row">
-            <span class="status-chip err">400 INVALID_CODE</span>
-            <span class="status-chip err">410 CODE_EXPIRED</span>
-            <span class="status-chip err">429 TOO_MANY_ATTEMPTS</span>
-          </div>
-        </div>
-      </div>
+      <p class="desc">회원가입은 <b>이메일/비밀번호 가입</b>으로 진행한다(전화번호 SMS 인증은 미구현으로 제외 — <span class="mono">server/README.md</span> TODO 참고). 로그인은 이메일/비밀번호만 사용한다.</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method post">POST</span><span class="path mono">/auth/signup</span>
-          <span class="note">이메일/비밀번호 회원가입 · 인증된 전화번호 필요</span>
+          <span class="note">이메일/비밀번호 회원가입</span>
         </div>
         <div class="endpoint-body">
           <div class="table-wrap">
@@ -607,17 +559,17 @@
               <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">email</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>계정 이메일</td></tr>
-                <tr><td class="mono">password</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>비밀번호</td></tr>
+                <tr><td class="mono">password</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>비밀번호 (8자 이상)</td></tr>
                 <tr><td class="mono">name</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>이름</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>인증된 전화번호</td></tr>
-                <tr><td class="mono">phoneVerifiedToken</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>confirm 응답에서 받은 토큰</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>연락처</td></tr>
+                <tr><td class="mono">birthDate</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>생년월일 (YYYY-MM-DD)</td></tr>
               </tbody>
             </table>
           </div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: <span class="mono">POST /auth/login</span>과 동일 스키마</p>
           <div class="status-row">
             <span class="status-chip err">409 EMAIL_ALREADY_EXISTS</span>
-            <span class="status-chip err">400 PHONE_NOT_VERIFIED (토큰 누락/만료/phone 불일치)</span>
+            <span class="status-chip err">409 PHONE_ALREADY_EXISTS</span>
           </div>
         </div>
       </div>
@@ -1083,7 +1035,7 @@
               <tbody>
                 <tr><td class="mono">name / email</td><td class="mono">string</td><td>기본 정보</td></tr>
                 <tr><td class="mono">birthDate</td><td class="mono">date</td><td><span class="done-badge">v0.5 · 구현 완료</span> 내 정보 화면의 생년월일</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 가입 시 인증된 번호, 조회 전용</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 가입 시 입력한 번호, 조회 전용</td></tr>
                 <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td>관심 목표</td></tr>
               </tbody>
             </table>
@@ -1167,8 +1119,7 @@
         <table>
           <thead><tr><th>모델</th><th>핵심 필드</th></tr></thead>
           <tbody>
-            <tr><td class="mono">User</td><td class="mono">id, name, email, phone, phoneVerifiedAt, role(customer/expert/admin)</td></tr>
-            <tr><td class="mono">PhoneVerification</td><td class="mono">id, phone, codeHash, expiresAt, attempts, verifiedAt</td></tr>
+            <tr><td class="mono">User</td><td class="mono">id, name, email, phone, role(customer/expert/admin)</td></tr>
             <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide, <b>status, daysElapsed, session{number,total}, membership{id,productName}</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, <b>usageHistory[]</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span></td></tr>
@@ -1189,13 +1140,8 @@
           <tbody>
             <tr><td class="mono">UNAUTHORIZED</td><td>토큰 없음 / 만료</td></tr>
             <tr><td class="mono">INVALID_REFRESH_TOKEN</td><td>refreshToken 만료 / 무효</td></tr>
-            <tr><td class="mono">INVALID_PHONE_FORMAT</td><td>잘못된 전화번호 형식</td></tr>
-            <tr><td class="mono">INVALID_CODE</td><td>인증코드 불일치</td></tr>
-            <tr><td class="mono">CODE_EXPIRED</td><td>인증코드 만료</td></tr>
-            <tr><td class="mono">TOO_MANY_REQUESTS</td><td>인증코드 재요청 주기 초과</td></tr>
-            <tr><td class="mono">TOO_MANY_ATTEMPTS</td><td>인증코드 오입력 횟수 초과</td></tr>
             <tr><td class="mono">EMAIL_ALREADY_EXISTS</td><td>이미 가입된 이메일</td></tr>
-            <tr><td class="mono">PHONE_NOT_VERIFIED</td><td>전화번호 인증 미완료 / 토큰 만료</td></tr>
+            <tr><td class="mono">PHONE_ALREADY_EXISTS</td><td>이미 가입된 전화번호</td></tr>
             <tr><td class="mono">NO_ACTIVE_CUSTOMER_PROFILE</td><td>연결된 고객 프로필 없음</td></tr>
             <tr><td class="mono">CARE_RECORD_NOT_FOUND</td><td>존재하지 않는 관리 이력</td></tr>
             <tr><td class="mono">MEMBERSHIP_NOT_FOUND</td><td>존재하지 않는 이용권</td></tr>

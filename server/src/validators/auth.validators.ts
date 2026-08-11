@@ -1,20 +1,11 @@
 import { z } from "zod";
 
-export const verifyPhoneRequestSchema = z.object({
-  phone: z.string(),
-});
-
-export const verifyPhoneConfirmSchema = z.object({
-  verificationId: z.string().uuid(),
-  code: z.string().length(6),
-});
-
 export const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1),
   phone: z.string(),
-  phoneVerifiedToken: z.string(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 export const loginSchema = z.object({

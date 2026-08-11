@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-11
+최종 업데이트: 2026-08-11 15:09
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 백엔드는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM으로 확정하고 실제 구현·연동까지 완료한 상태.
@@ -13,14 +13,24 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - (08-11, 이번 세션) `.work-log/dd.txt`(사용자가 남긴 untracked 메모)를 정식 변경 요구사항으로 확인 — 전화인증 API 제거, `phone_verifications` 테이블 제거, 회원가입 비밀번호/이메일 검증 강화, 생년월일 필드 추가, `interestGoals`→추천 AI 반영, 알림설정 단순화, 가상 EMR 사이트 필요 등. Tier 0~5로 우선순위 정리 (아래 "다음 할 일" 참고)
 - (08-11) `/aftercare/questions`가 "LLM"이 아니라 진짜 AI API를 쓰는지 사용자가 재확인 요청 → `server/src/services/llm/client.ts`(`callStructuredLlm`)가 실제로 `@anthropic-ai/sdk`의 `anthropic.messages.create`를 호출함을 코드로 확인. 스펙 문서의 "LLM 기반" 표현이 헷갈릴 수 있다는 피드백에 따라 `docs/api-spec.md`/`.html`에 "실제 Anthropic Claude API를 호출하며 하드코딩된 템플릿이 아니다"라는 설명 추가, 아티팩트 재발행
 - (08-11) `server/src/examples/api-call-example.html`에 **D. 사후관리 질문(AI 답변) 실험** 섹션 신규 추가 — `POST /aftercare/questions`(카테고리 드롭다운·위험신호 차단 확인 가능)·`GET /aftercare/questions` 테스트 버튼. 로그인(B) 후 받은 `accessToken`을 재사용하도록 스크립트 최상단 공용 변수로 리팩터링
-- (08-11) 위 전체(08-05 저녁분 + 08-11 오늘분) git commit/push 진행 중
+- (08-11) 위 전체(08-05 저녁분 + 08-11 오늘분) git commit/push 완료 — `7e62ddf`, `WHS-After-Mate/Backend` main에 반영(`9eb1af2..7e62ddf`)
+- (08-11) **Tier 1 완료 — 전화인증 SMS 제거 + 회원가입 생년월일 추가**:
+  - 전화인증 완전 제거: `auth.routes.ts`의 `verify-phone/request`·`/confirm` 라우트 삭제, `auth.validators.ts`의 관련 스키마·`phoneVerifiedToken` 삭제, `auth.service.ts`의 `requestPhoneVerification`/`confirmPhoneVerification` 삭제 + `signup()`을 토큰검증 없이 바로 가입하도록 단순화, `lib/otp.ts`/`lib/sms.ts`/`lib/signedToken.ts` 파일 자체 삭제, `errors.ts`에서 관련 에러 6종 제거하고 `phoneAlreadyExists`(409) 신규 추가, `env.ts`/`.env.example`에서 `APP_TOKEN_SECRET`/`SMS_*` 제거
+  - DB 마이그레이션 `server/db/migrations/004_remove_phone_verification.sql` 신규 작성 — `phone_verifications` 테이블 삭제 + `profiles.phone_verified_at` 컬럼 삭제 (아직 Supabase에 미적용, 수동 실행 필요)
+  - `db/seed/seed.ts`에서 `phone_verified_at` insert 제거
+  - `POST /auth/signup`에 `birthDate`(필수, YYYY-MM-DD) 필드 추가 → `profiles.birth_date`에 바로 저장(기존엔 `PATCH /profile`로만 채울 수 있었음). 비밀번호 8자 이상·이메일 형식 검증은 이미 구현돼 있었음(추가 작업 불필요)
+  - `npm run typecheck` 통과 확인
+  - `server/src/examples/api-call-example.html` A섹션을 3단계 SMS 플로우 → 단일 회원가입 버튼(생년월일 필드 포함)으로 축소, `accessToken` 재사용 구조 유지
+  - 문서 전체 동기화: `docs/api-spec.md`/`.html`(엔드포인트·에러코드·데이터모델 표), `server/README.md`, `docs/db-schema.md`/`.html`(ERD·테이블 정의·트레이드오프 + 004 변경 이력 섹션 신규), `docs/server-code-guide.md`/`.html`(인증 흐름 재작성), `docs/api-user-flow.html`(다이어그램 노드·단계표), `docs/frontend-integration-guide.md`/`.html`(env 변수 표) — 관련 아티팩트 5개 전부 재발행
+  - **아직 git 미커밋** — 다음 세션에서 커밋 필요
 
 ## 현재 작업 중
-- Tier 0(밀린 커밋) 처리 중 — 커밋 완료 후 이 섹션 갱신 필요
+- Tier 0·Tier 1 완료, 전부 아직 git 미commit 상태 (Tier 1은 코드+마이그레이션+문서 전체 변경이라 다음 세션 시작 시 diff 재확인 후 커밋 권장)
+- DB 마이그레이션 004는 로컬 파일만 작성됨 — 실제 Supabase 프로젝트에는 아직 미적용 (Supabase SQL Editor에서 수동 실행 필요)
 
 ## 다음 할 일 (우선순위, 08-11 정리)
-- **Tier 1 (회원가입/인증 플로우, 한 세트로 처리)**: 전화인증 API(`verify-phone/request`·`/confirm`) 제거 + `phoneVerifiedToken` 정리 + `phone_verifications` 테이블 제거(마이그레이션) / 비밀번호 8자 이상·이메일 형식 검증 추가 / `/auth/signup` 생년월일 필드 추가
-- **Tier 2 (Tier 1 이후)**: `/profile birthDate` 회원가입 값 자동 반영 / `interestGoals`를 다음 시술 추천 AI 프롬프트에 실제 반영
+- **Tier 1 후속**: 위 변경사항 git commit/push, 마이그레이션 004를 Supabase에 실제 적용
+- **Tier 2**: `interestGoals`를 다음 시술 추천 AI 프롬프트에 실제 반영 (`/profile birthDate` 자동 반영은 Tier 1의 signup 변경으로 이미 완료됨)
 - **Tier 3**: `/notifications/settings` 푸시 관련 항목 노출 제거(단순화)
 - **Tier 5 (별도 규모, 후순위)**: 의료정보 가상 EMR 사이트/API 신규 구축
 - README TODO에 남긴 프로덕션 전 처리 항목: Supabase 커스텀 SMTP 연동(Resend/SendGrid 등), SMS 실제 연동(국내 중계업체 계약+발신번호 등록)
@@ -34,12 +44,13 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - (이월) baseUrl 상수화(`ApiConfig`/`buildConfigField`) 가이드를 `frontend-integration-guide.md`에 반영할지 결정
 
 ## 주요 파일
-- `server/src/services/auth.service.ts` — 비밀번호 재설정 로직 수정(08-05 저녁분, 이번 커밋으로 반영)
-- `docs/api-spec.md`/`.html`, `server/README.md` — 문서 동기화 + LLM 표현 명확화(이번 커밋으로 반영)
-- `server/src/examples/api-call-example.html` — A/B/C(08-05) + D 사후관리 질문 테스트(08-11) 포함, 이번 커밋으로 반영
-- `.work-log/dd.txt` — 사용자 메모 원본(untracked, 아직 git에 안 올림) — 내용은 이 파일 "다음 할 일"에 정식 반영됨. 계속 보관할지/삭제할지 사용자 확인 필요
-- `docs/frontend-integration-guide.md`/`.html` — 프론트(Android) 로컬 실행 가이드
-- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치)
+- `server/src/services/auth.service.ts`/`auth.routes.ts`/`auth.validators.ts` — 전화인증 제거 + signup에 birthDate 추가(미커밋)
+- `server/db/migrations/004_remove_phone_verification.sql` — 신규, Supabase 미적용
+- `server/src/lib/otp.ts`/`sms.ts`/`signedToken.ts` — 삭제됨
+- `docs/api-spec.md`/`.html`, `server/README.md`, `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html`, `docs/api-user-flow.html`, `docs/frontend-integration-guide.md`/`.html` — 전화인증 제거 반영해 전부 동기화(미커밋)
+- `server/src/examples/api-call-example.html` — A(회원가입 단순화)/B/C(08-05) + D 사후관리 질문 테스트(08-11) 포함, 미커밋
+- `.work-log/dd.txt` — 사용자 메모 원본(untracked) — 내용 전부 이 파일에 정식 반영됨. 계속 보관할지/삭제할지 사용자 확인 필요
+- GitHub: https://github.com/WHS-After-Mate/Backend (main 브랜치, 최신 push `7e62ddf` — Tier 1 변경은 아직 미반영)
 
 ## 특이사항 / 결정 사항
 - **재발 방지 포인트**: 세션 종료 전 `/기록저장`을 안 하면 다음 세션 자동 브리핑에서 실제로 했던 작업이 누락될 수 있음 — 08-05 저녁 작업이 6일간(08-11까지) 미커밋 상태로 방치됐던 전례가 있으니 유의

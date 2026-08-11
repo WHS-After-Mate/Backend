@@ -260,7 +260,7 @@
             <tr><td class="mono">services/</td><td>도메인 로직 + DB(Supabase) 접근. <strong>DB 접근은 반드시 이 레이어를 통해서만</strong></td></tr>
             <tr><td class="mono">services/llm/</td><td>Claude 프롬프트 정의 + 구조화 출력 호출 클라이언트</td></tr>
             <tr><td class="mono">middleware/</td><td>인증(<span class="mono">requireAuth</span>), 공통 에러 핸들러</td></tr>
-            <tr><td class="mono">lib/</td><td>상태 없는 순수 유틸 — 에러 정의, 위험신호 키워드, 서명 토큰, OTP, sanitize</td></tr>
+            <tr><td class="mono">lib/</td><td>상태 없는 순수 유틸 — 에러 정의, 위험신호 키워드, sanitize</td></tr>
             <tr><td class="mono">config/</td><td>외부 서비스 클라이언트 초기화(Supabase/Anthropic/Firebase) + 환경변수 스키마</td></tr>
           </tbody>
         </table>
@@ -295,31 +295,7 @@
 
     <section id="auth">
       <h2>3. 인증 / 온보딩 <span class="tag">routes/auth.routes.ts → services/auth.service.ts</span></h2>
-      <p class="desc">전화번호 인증과 실제 로그인 세션은 <strong>서로 다른 토큰 체계</strong>를 쓴다는 점이 핵심이다.</p>
-
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="path">POST /signup/verify-phone/request</span>
-          <span class="note">requestPhoneVerification</span>
-        </div>
-        <div class="endpoint-body">
-          <p style="margin:0;font-size:13.8px;">
-            <span class="mono">lib/otp.ts</span>의 <span class="mono">isValidKrPhone</span>으로 형식 검증 → 직전 발송 이력(<span class="mono">phone_verifications.created_at</span>)으로 60초 재요청 쿨다운 체크 → 6자리 코드 생성 → 원문은 저장하지 않고 SHA-256 해시만 저장 → <span class="mono">lib/sms.ts</span>로 발송(<span class="mono">SMS_DEV_MODE=true</span>면 콘솔 로그만, 실제 국내 SMS 업체 연동은 TODO).
-          </p>
-        </div>
-      </div>
-
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <span class="path">POST /signup/verify-phone/confirm</span>
-          <span class="note">confirmPhoneVerification</span>
-        </div>
-        <div class="endpoint-body">
-          <p style="margin:0;font-size:13.8px;">
-            이미 인증됨 / 시도 초과(<span class="mono">MAX_ATTEMPTS=5</span>) / 만료(<span class="mono">180초</span>) 순으로 검사 → 해시 불일치 시 <span class="mono">attempts</span>만 +1 → 성공하면 <span class="mono">lib/signedToken.ts</span>의 <span class="mono">signToken</span>으로 <strong>자체 서명 토큰</strong> <span class="mono">phoneVerifiedToken</span> 발급(HMAC-SHA256, <span class="mono">APP_TOKEN_SECRET</span>). 이 시점엔 아직 계정이 없어 Supabase 세션 토큰을 쓸 수 없기 때문.
-          </p>
-        </div>
-      </div>
+      <p class="desc">전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 코드에서 완전히 제거됐다(<span class="mono">server/db/migrations/004_remove_phone_verification.sql</span>) — <span class="mono">lib/otp.ts</span>/<span class="mono">lib/sms.ts</span>/<span class="mono">lib/signedToken.ts</span>도 함께 삭제됐다. 아래는 현재(전화인증 제거 후) 흐름이다.</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
@@ -328,7 +304,7 @@
         </div>
         <div class="endpoint-body">
           <p style="margin:0;font-size:13.8px;">
-            <span class="mono">verifyToken</span>으로 서명·만료·전화번호 일치 확인(불일치 시 <span class="mono">PHONE_NOT_VERIFIED</span>) → 동일 전화번호로 이미 가입된 프로필 있으면 차단 → <span class="mono">supabaseAdmin.auth.admin.createUser</span>로 계정 생성 → <span class="mono">profiles</span> insert → <strong>프로필 insert 실패 시 방금 만든 Auth 유저를 롤백</strong>(<span class="mono">deleteUser</span>)해 고아 계정 방지 → 마지막에 내부적으로 <span class="mono">login()</span> 호출해 응답 스키마를 로그인과 통일.
+            동일 전화번호로 이미 가입된 프로필 있으면 <span class="mono">PHONE_ALREADY_EXISTS</span>로 차단 → <span class="mono">supabaseAdmin.auth.admin.createUser</span>로 계정 생성 → <span class="mono">profiles</span> insert(이름/전화번호/생년월일 — <span class="mono">birthDate</span> → <span class="mono">birth_date</span>) → <strong>프로필 insert 실패 시 방금 만든 Auth 유저를 롤백</strong>(<span class="mono">deleteUser</span>)해 고아 계정 방지 → 마지막에 내부적으로 <span class="mono">login()</span> 호출해 응답 스키마를 로그인과 통일.
           </p>
         </div>
       </div>
@@ -473,7 +449,7 @@
         <table>
           <thead><tr><th>파일</th><th>역할</th></tr></thead>
           <tbody>
-            <tr><td class="mono">config/env.ts</td><td>zod로 모든 환경변수를 파싱·검증, 실패하면 서버 기동 자체를 막는다(설정 오류를 부팅 시점에 즉시 드러냄). <span class="mono">SMS_DEV_MODE</span>/<span class="mono">FCM_ENABLED</span>처럼 실 연동 전 기능은 boolean 플래그로 on/off</td></tr>
+            <tr><td class="mono">config/env.ts</td><td>zod로 모든 환경변수를 파싱·검증, 실패하면 서버 기동 자체를 막는다(설정 오류를 부팅 시점에 즉시 드러냄). <span class="mono">FCM_ENABLED</span>처럼 실 연동 전 기능은 boolean 플래그로 on/off</td></tr>
             <tr><td class="mono">config/supabase.ts</td><td><span class="mono">supabaseAdmin</span>(service-role, RLS 우회, 백엔드 전용)과 <span class="mono">supabaseAnon</span>(토큰 검증 등 사용자 컨텍스트 필요 호출용) 분리. supabaseAdmin은 RLS 우회하므로 <strong><span class="mono">user_id</span> 필터링은 항상 애플리케이션 코드가 책임</strong></td></tr>
           </tbody>
         </table>

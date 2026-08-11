@@ -28,12 +28,10 @@
   <label>Base URL</label>
   <input id="baseUrl" value="http://localhost:4000/api/v1" />
 
-  <h2 style="margin-top:32px;">A. 회원가입 실험 (전화번호 인증 → 가입 → 자동 로그인)</h2>
+  <h2 style="margin-top:32px;">A. 회원가입 실험 (가입 → 자동 로그인)</h2>
   <p class="desc">
-    3개의 버튼을 <b>순서대로</b> 눌러야 한다. 2번 버튼을 누르기 전에,
-    <code>npm run dev</code>를 실행 중인 터미널 창에서
-    <code>[SMS_DEV_MODE] ... 인증코드: 123456</code> 같은 줄을 찾아 코드를 복사해야 한다
-    (실제 SMS는 안 나가고 콘솔에만 출력되는 개발용 모드).
+    전화번호 SMS 인증은 미구현으로 제외됐다(<code>server/README.md</code> TODO 참고) — 이메일/비밀번호/생년월일만으로
+    바로 가입된다.
   </p>
 
   <label>전화번호</label>
@@ -42,31 +40,19 @@
   <label>이름</label>
   <input id="signupName" value="테스트유저" />
 
+  <label>생년월일 (YYYY-MM-DD)</label>
+  <input id="signupBirthDate" value="1995-03-14" />
+
   <label>이메일 (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
   <input id="signupEmail" />
 
-  <label>비밀번호</label>
+  <label>비밀번호 (8자 이상)</label>
   <input id="signupPassword" value="Passw0rd!2024" />
 
-  <button id="signupStep1Btn">1) 인증코드 발송 — POST /auth/signup/verify-phone/request</button>
+  <button id="signupBtn">회원가입 — POST /auth/signup (성공하면 accessToken까지 바로 발급됨)</button>
   <div class="step">
-    <span id="signupStep1Status" class="status"></span>
-    <pre id="signupStep1Result">(아직 실행 안 함)</pre>
-  </div>
-
-  <label>인증코드 (서버 콘솔에서 확인한 6자리 숫자를 여기에 입력)</label>
-  <input id="signupCode" placeholder="예: 123456" />
-
-  <button id="signupStep2Btn">2) 인증코드 확인 — POST /auth/signup/verify-phone/confirm</button>
-  <div class="step">
-    <span id="signupStep2Status" class="status"></span>
-    <pre id="signupStep2Result">(아직 실행 안 함)</pre>
-  </div>
-
-  <button id="signupStep3Btn">3) 회원가입 완료 — POST /auth/signup (성공하면 accessToken까지 바로 발급됨)</button>
-  <div class="step">
-    <span id="signupStep3Status" class="status"></span>
-    <pre id="signupStep3Result">(아직 실행 안 함)</pre>
+    <span id="signupStatus" class="status"></span>
+    <pre id="signupResult">(아직 실행 안 함)</pre>
   </div>
 
   <h2 style="margin-top:40px;">B. 기존 계정으로 로그인 (데모 계정 또는 위에서 새로 가입한 계정)</h2>
@@ -198,98 +184,22 @@
   // 이 줄은 addEventListener 안이 아니라 <script> 최상단에 바로 있으므로, 페이지 로드 즉시 실행된다.
   $("signupEmail").value = `test+${Date.now()}@example.com`;
 
-  // ────────────────────────────────────────────────────────────
-  // 세 버튼(1,2,3)이 서로 "다른 클릭 이벤트"라서, 한 함수 안의 지역변수로는 값을 못 넘긴다.
-  // 그래서 verificationId / phoneVerifiedToken을 함수 바깥(스크립트 최상단)에 let으로 선언해서
-  // "1번 버튼 결과를 2번 버튼이, 2번 버튼 결과를 3번 버튼이 이어받아 쓸 수 있게" 만든다.
-  // ────────────────────────────────────────────────────────────
-  let signupVerificationId;
-  let signupPhoneVerifiedToken;
-
   // B의 로그인 버튼이 여기에 값을 채워두면, 아래 D(사후관리 질문)에서도 그대로 재사용한다.
   // (D는 로그인이 필요한 API라 B를 먼저 실행해둬야 함)
   let accessToken;
 
   // ============================================================
-  // A-1단계: 인증코드 발송 — POST /auth/signup/verify-phone/request
-  // Request body: { phone }
-  // Response 200: { verificationId, expiresIn }
-  // ============================================================
-  $("signupStep1Btn").addEventListener("click", async () => {
-    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
-    const resultEl = $("signupStep1Result");
-    const statusEl = $("signupStep1Status");
-    try {
-      const res = await fetch(`${baseUrl}/auth/signup/verify-phone/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: $("signupPhone").value }),
-      });
-      const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
-      if (!res.ok) return;
-
-      // 응답으로 온 verificationId를 위에서 선언한 바깥 변수에 저장해둔다.
-      // 2단계(인증코드 확인) 버튼을 누를 때 이 값이 필요하다.
-      signupVerificationId = data.verificationId;
-    } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
-    }
-  });
-
-  // ============================================================
-  // A-2단계: 인증코드 확인 — POST /auth/signup/verify-phone/confirm
-  // Request body: { verificationId, code }
-  // Response 200: { phoneVerifiedToken, expiresIn }
-  // ============================================================
-  $("signupStep2Btn").addEventListener("click", async () => {
-    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
-    const resultEl = $("signupStep2Result");
-    const statusEl = $("signupStep2Status");
-
-    // 1단계를 먼저 성공시키지 않고 이 버튼부터 누르면 signupVerificationId가 비어있다.
-    // 그런 실수를 바로 알 수 있게, fetch를 보내기 전에 화면에서 미리 막아준다.
-    if (!signupVerificationId) {
-      setResult(resultEl, statusEl, false, { error: "먼저 1번 버튼(인증코드 발송)을 눌러야 한다." });
-      return;
-    }
-
-    try {
-      const res = await fetch(`${baseUrl}/auth/signup/verify-phone/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          verificationId: signupVerificationId,
-          code: $("signupCode").value,
-        }),
-      });
-      const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
-      if (!res.ok) return;
-
-      // 3단계(회원가입)에서 "이 전화번호는 인증된 게 맞다"는 증거로 제출해야 하는 토큰.
-      signupPhoneVerifiedToken = data.phoneVerifiedToken;
-    } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
-    }
-  });
-
-  // ============================================================
-  // A-3단계: 회원가입 — POST /auth/signup
-  // Request body: { email, password, name, phone, phoneVerifiedToken }
+  // A단계: 회원가입 — POST /auth/signup
+  // Request body: { email, password, name, phone, birthDate }
   // Response 200: POST /auth/login과 동일한 형식 { accessToken, refreshToken, expiresIn, user }
   // → auth.service.ts를 보면 signup() 함수 맨 마지막 줄이 return login(...) 이라서,
   //   가입에 성공하는 순간 바로 로그인까지 처리되어 토큰이 함께 내려온다.
+  // (전화번호 SMS 인증은 미구현으로 제외됨 — phone은 그냥 연락처 값으로만 저장된다)
   // ============================================================
-  $("signupStep3Btn").addEventListener("click", async () => {
+  $("signupBtn").addEventListener("click", async () => {
     const baseUrl = $("baseUrl").value.replace(/\/$/, "");
-    const resultEl = $("signupStep3Result");
-    const statusEl = $("signupStep3Status");
-
-    if (!signupPhoneVerifiedToken) {
-      setResult(resultEl, statusEl, false, { error: "먼저 2번 버튼(인증코드 확인)을 눌러야 한다." });
-      return;
-    }
+    const resultEl = $("signupResult");
+    const statusEl = $("signupStatus");
 
     try {
       const res = await fetch(`${baseUrl}/auth/signup`, {
@@ -300,7 +210,7 @@
           password: $("signupPassword").value,
           name: $("signupName").value,
           phone: $("signupPhone").value,
-          phoneVerifiedToken: signupPhoneVerifiedToken,
+          birthDate: $("signupBirthDate").value,
         }),
       });
       const data = await res.json();
