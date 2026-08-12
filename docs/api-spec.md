@@ -336,8 +336,8 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
       "careName": "브라이트닝 필링",
       "careDate": "2026-07-25",
       "partOfBody": "얼굴",
-      "brand": "AAC 청담",
-      "store": "AAC 청담점",
+      "brand": "AMRED CLINIC",
+      "store": "AMRED CLINIC 청담점",
       "practitioner": "김OO 원장",
       "status": "completed"
     }
@@ -357,8 +357,8 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "careName": "브라이트닝 필링",
   "careDate": "2026-07-25",
   "partOfBody": "얼굴",
-  "brand": "AAC 청담",
-  "store": "AAC 청담점",
+  "brand": "AMRED CLINIC",
+  "store": "AMRED CLINIC 청담점",
   "practitioner": "김OO 원장",
   "status": "completed",
   "daysElapsed": 19,

@@ -7,7 +7,13 @@
   - 신규 마이그레이션 `005_remove_notification_settings.sql` 작성(`profiles`의 4개 컬럼 삭제) — 아직 Supabase 미적용
   - `npm run typecheck`/`npm run build` 통과 확인
   - 문서 동기화: `docs/api-spec.md`/`.html`(엔드포인트 요약·상세·데이터모델·미확정사항·v0.5 이력 테이블), `docs/db-schema.md`/`.html`(CREATE TABLE·컬럼표·ERD mermaid·설계결정 카드·신규 "알림 설정 제거(005)" 절 추가), `docs/server-code-guide.md`/`.html`, `docs/api-user-flow.html`(mermaid NOTIF/NOTIFUPDATE 노드·엣지·스텝 테이블 15행 삭제), 루트 `README.md`·`server/README.md`
-  - 아직 git commit 안 함
+  - git commit/push 완료 — `fcb4361` (`501a268..fcb4361`)
+- Tier 5(EMR)를 제외한 dd.txt 요구사항 전부 완료 확인. 남은 결정 사항 두 가지 제시 — 마이그레이션 005 Supabase 적용 여부, 수정된 문서 4종의 아티팩트 재발행 여부(사용자 확인 대기)
+- work-log 최종 정리 — `/기록저장`으로 저장
+- **신규 세션 — 마이그레이션 005 적용**: 사용자가 Supabase SQL Editor에서 직접 실행 → service role key로 `profiles`의 4개 컬럼(`push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert`) 조회하는 임시 스크립트로 전부 삭제됨 확인, 스크립트는 확인 후 삭제
+- **문서 아티팩트 4종 재발행** — api-spec/db-schema/server-code-guide/api-user-flow를 Tier 3(알림설정 제거) 반영된 최신 로컬 `.html`로 재발행. 재발행 과정에서 "API 명세서" 아티팩트가 2개(중복) 존재함을 발견 — 최신본(`5cf6ed55...`)에 재발행하고, 2026-08-05 이후 갱신 안 된 구버전(`5462bb46...`, 전화인증 SMS 흐름 잔존)은 그대로 둠. 사용자 확인 후 구버전 삭제 요청 — Artifact 도구엔 삭제 기능이 없어(publish/list만 지원) 사용자가 claude.ai/code/artifacts에서 직접 삭제하도록 안내
+- **Tier 2 후속 — seed.ts 실제 AAC 브랜드명 반영**: `AAC_클리닉_자산_조사.docx`를 python-docx로 재추출해 확인 — 가상 브랜드 `"AAC 청담"`→`"AMRED CLINIC"`(청담 소재 하이엔드 리프팅 전문), `"AAC 강남"`→`"DERNA CLINIC"`(웰니스하우스서울 B1, 대중형 라인)로 교체(홍길동·이서준의 청담 시술 3건, 김민지의 강남 시술 1건 · store 값도 각각 갱신). 시술명·담당의·care_type은 이번 범위(브랜드명만) 밖이라 유지, WIM Clinic/Center는 이번 시드에 미사용. `docs/api-spec.md`/`.html` 예시 JSON도 동기화. `npm run typecheck` 통과, `npm run seed` 재실행 후 `care_records.brand/store` 직접 조회로 실제 반영 확인(검증 스크립트는 확인 후 삭제)
+- 변경분(api-spec.md/.html, seed.ts) api-spec 아티팩트 재발행 완료 후 git commit 예정
 
 ## 2026-08-11
 - 세션 시작, work-log 브리핑 후 실제 git 상태 재확인 — 08-05 저녁분이 여전히(6일째) 미커밋 상태임을 확인
