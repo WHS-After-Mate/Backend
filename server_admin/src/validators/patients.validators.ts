@@ -1,9 +1,12 @@
 import { z } from "zod";
 
+// 하이픈 없는 숫자만(seed.ts/emr_patients 저장 관례와 동일) 9~11자리 — 국내 유선(9~10자리)·휴대폰(10~11자리) 포괄
+const phoneSchema = z.string().regex(/^\d{9,11}$/);
+
 export const createPatientSchema = z.object({
   name: z.string().min(1),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  phone: z.string().min(1),
+  phone: phoneSchema,
   allergies: z.array(z.string()).default([]),
   chronicConditions: z.array(z.string()).default([]),
   doctorGeneralComment: z.string().optional(),
@@ -15,7 +18,7 @@ export const updatePatientSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  phone: z.string().min(1).optional(),
+  phone: phoneSchema.optional(),
   allergies: z.array(z.string()).optional(),
   chronicConditions: z.array(z.string()).optional(),
   doctorGeneralComment: z.string().optional(),

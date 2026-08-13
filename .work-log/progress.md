@@ -13,6 +13,11 @@
   - 과정에서 두 가지 이슈 발견/해결: ① Windows `tsx watch`가 파일 저장 후 재시작할 때 `EADDRINUSE`로 프로세스가 죽는 경우가 있어 `npm run build` + `node dist/src/server.js`(고정 프로세스)로 전환해 해결 ② 테스트용 전화번호가 사용자가 2026-08-05에 만들어둔 실제 테스트 계정과 우연히 겹쳐 `profiles_phone_key` 충돌 — 그 계정은 건드리지 않고 다른 번호로 재시도
   - 테스트로 만든 가입 계정 1개 + emr_patients 2건 + 임시 검증 스크립트 전부 정리(삭제) 완료
 - git commit은 아직 안 함(문서 동기화 여부를 먼저 사용자에게 확인 중이었음) — `/기록저장`으로 세션 정리
+- **신규 세션 — 문서 4종 동기화**: `docs/api-spec.md`/`.html`(v0.5→v0.6), `db-schema.md`/`.html`(v0.3→v0.4), `server-code-guide.md`/`.html`(v0.1→v0.2), `api-user-flow.html` 전부 환자번호+인증코드 기반 가입(가상 EMR) 흐름으로 갱신 — signup 요청/에러 스키마, EMR 스테이징 4테이블 ERD·정의, signup() 로직 설명, 플로우 다이어그램 SIGNUP 노드까지 반영
+- 문서 아티팩트 4종(api-spec/db-schema/server-code-guide/api-user-flow) claude.ai에 재발행 — 기존 발행 URL 그대로 유지, WebFetch로 최신본 확인 후 갱신
+- **EMR 관련 변경분 git commit + push 완료** — `server/` 수정분 + `server_admin/` 신규 + 마이그레이션 006 + 문서 4종을 한 커밋으로 정리(`be86a01`, "Replace signup with patient-number + verification-code flow (virtual EMR)"), `8a30963`(seed 브랜드명)와 함께 origin/main에 push(`fcb4361..be86a01`)
+- 사용자가 `admin-web` 저장소는 이 백엔드 세션에서 절대 건드리지 않는다는 점을 명시적으로 재확인 — `git show --stat`으로 이번 커밋에 admin-web 관련 파일 변경이 0건임을 검증해 답변
+- work-log 정리 — `/기록저장`으로 저장
 
 ## 2026-08-12
 - Tier 2 커밋(`501a268`) push 완료 — `WHS-After-Mate/Backend` main에 반영(`3b2ef51..501a268`)

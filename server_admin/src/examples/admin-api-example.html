@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>WHS After Mate — Admin API 호출 예시</title>
+<style>
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 20px; }
+  h2 { margin-top: 40px; }
+  p.desc { color: #666; font-size: 14px; }
+  label { display: block; margin-top: 12px; font-size: 13px; font-weight: 600; }
+  input, textarea { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+  button { margin-top: 16px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  button.danger { background: #fbeaea; border-color: #c0392b; color: #c0392b; }
+  pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+  .step { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd; }
+  .status { font-weight: 600; }
+  .status.ok { color: #0a7a3d; }
+  .status.err { color: #c0392b; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+</style>
+</head>
+<body>
+  <h1>WHS After Mate — admin-web이 호출하는 Admin API 실험용 예시 페이지</h1>
+  <p class="desc">
+    이 파일은 실제 <code>admin-web</code>(별도 저장소) 프론트가 아니다 — <code>server_admin</code> API를
+    <code>fetch()</code>로 직접 눌러보기 위한 임시 테스트 페이지일 뿐이다. 서버 코드를 import하지 않고
+    오직 HTTP 요청만 보낸다. 먼저 다른 터미널에서 <code>server_admin</code>을 <code>npm run dev</code>로
+    켜둔 상태여야 한다(기본 포트 4100). G 단계(가입 연동 테스트)를 실행하려면 <code>server</code>(포트 4000)도
+    함께 켜져 있어야 한다.
+  </p>
+
+  <label>Admin API Base URL</label>
+  <input id="adminBaseUrl" value="http://localhost:4100/api/v1" />
+
+  <label>Customer API Base URL (G 단계 회원가입 연동 테스트용)</label>
+  <input id="customerBaseUrl" value="http://localhost:4000/api/v1" />
+
+  <h2>A. 환자 등록 — POST /patients</h2>
+  <p class="desc">
+    실제 클리닉 데스크에서 환자가 처음 방문했을 때 입력하는 정보. 성공하면 서버가 환자번호(<code>patientNo</code>)를
+    자동 발급한다. 여기서 등록한 환자의 <code>id</code>는 아래 "현재 대상 환자"(C~F 단계용), <code>patientNo</code>는
+    G 단계(회원가입 연동 테스트)의 입력칸에 각각 자동으로 채워진다.
+  </p>
+
+  <label>이름</label>
+  <input id="patientName" value="테스트환자" />
+
+  <label>생년월일</label>
+  <input id="patientBirthDate" type="date" value="1990-05-20" />
+
+  <label>전화번호 (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
+  <input id="patientPhone" type="tel" inputmode="numeric" />
+
+  <label>알러지 (쉼표로 구분, 비워도 됨)</label>
+  <input id="patientAllergies" value="페니실린" />
+
+  <label>기저질환 (쉼표로 구분, 비워도 됨)</label>
+  <input id="patientChronicConditions" />
+
+  <label>의사 소견 (선택)</label>
+  <input id="patientDoctorComment" value="특이사항 없음, 정상 시술 가능" />
+
+  <button id="createPatientBtn">환자 등록 — POST /patients</button>
+  <div class="step">
+    <span id="createPatientStatus" class="status"></span>
+    <pre id="createPatientResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>현재 대상 환자 <span style="font-weight:400; font-size:14px; color:#666;">(아래 C~F 단계가 전부 이 값을 사용)</span></h2>
+  <p class="desc">
+    A에서 환자를 등록하면 자동으로 채워진다. 이미 등록해둔 다른 환자를 대상으로 C~F를 테스트하고 싶으면
+    B(환자 목록 조회) 응답의 <code>id</code> 필드 값을 여기 직접 붙여넣으면 된다 —
+    <b><code>patient_no</code>(EMR-P-XXXXXX 형태의 환자번호)가 아니라 UUID 형태의 <code>id</code></b>다.
+    <code>patient_no</code>는 아래 G 단계(실제 회원가입 연동 테스트)에서 따로 쓴다.
+  </p>
+
+  <label>patientId (id — UUID, patient_no 아님)</label>
+  <input id="patientId" placeholder="예: ff54902e-e62f-4327-8b5c-a40c52b1f7df (위 A 실행 후 자동 채워짐)" />
+
+  <h2>B. 환자 목록/검색 — GET /patients?search=</h2>
+  <p class="desc">이름·전화번호·환자번호 부분일치 검색. 비워두면 전체 목록.</p>
+
+  <label>검색어 (선택)</label>
+  <input id="searchQuery" placeholder="예: 테스트, 환자번호 일부, 전화번호 일부" />
+
+  <button id="listPatientsBtn">환자 목록 조회 — GET /patients</button>
+  <div class="step">
+    <span id="listPatientsStatus" class="status"></span>
+    <pre id="listPatientsResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>C. 환자 상세 조회 — GET /patients/:patientId</h2>
+  <p class="desc">프로필 + 시술기록 + 이용권 + 발급된 인증코드 이력을 한 번에 반환한다. 위 "현재 대상 환자" 칸의 patientId를 사용한다.</p>
+
+  <button id="getPatientBtn">환자 상세 조회 — GET /patients/:patientId</button>
+  <div class="step">
+    <span id="getPatientStatus" class="status"></span>
+    <pre id="getPatientResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>D. 시술 기록 추가 — POST /patients/:patientId/care-records</h2>
+  <p class="desc">
+    위 "현재 대상 환자"의 patientId를 대상으로 추가한다.
+    <code>careType</code>은 <code>/aftercare/daily-guide</code>가 검수 가이드를 찾는 매칭 키다.
+    현재 시드 데이터는 <code>peeling</code>/<code>laser_toning</code> 2종만 지원하므로, 나중에 이 환자로
+    가입해 daily-guide까지 테스트해보려면 둘 중 하나를 써야 한다.
+  </p>
+
+  <label>careName (관리명)</label>
+  <input id="careName" value="브라이트닝 필링" />
+
+  <label>careType (peeling / laser_toning 권장)</label>
+  <input id="careType" value="peeling" />
+
+  <label>careDate</label>
+  <input id="careDate" type="date" value="2026-08-01" />
+
+  <div class="row">
+    <div>
+      <label>brand</label>
+      <input id="careBrand" value="AMRED CLINIC" />
+    </div>
+    <div>
+      <label>store</label>
+      <input id="careStore" value="AMRED CLINIC 청담점" />
+    </div>
+  </div>
+
+  <button id="addCareRecordBtn">시술 기록 추가 — POST /patients/:patientId/care-records</button>
+  <div class="step">
+    <span id="addCareRecordStatus" class="status"></span>
+    <pre id="addCareRecordResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <button class="danger" id="deleteCareRecordBtn">방금 추가한 시술 기록 삭제 — DELETE /care-records/:careRecordId</button>
+  <div class="step">
+    <span id="deleteCareRecordStatus" class="status"></span>
+    <pre id="deleteCareRecordResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>E. 이용권 추가 — POST /patients/:patientId/memberships</h2>
+  <p class="desc">위 "현재 대상 환자"의 patientId를 대상으로 추가한다.</p>
+
+  <label>productName (상품명)</label>
+  <input id="membershipProductName" value="울쎄라 3회 이용권" />
+
+  <label>totalCount (총 횟수)</label>
+  <input id="membershipTotalCount" value="3" type="number" />
+
+  <button id="addMembershipBtn">이용권 추가 — POST /patients/:patientId/memberships</button>
+  <div class="step">
+    <span id="addMembershipStatus" class="status"></span>
+    <pre id="addMembershipResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <button class="danger" id="deleteMembershipBtn">방금 추가한 이용권 삭제 — DELETE /memberships/:membershipId</button>
+  <div class="step">
+    <span id="deleteMembershipStatus" class="status"></span>
+    <pre id="deleteMembershipResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>F. 가입 인증코드 발급 — POST /patients/:patientId/signup-code</h2>
+  <p class="desc">
+    위 "현재 대상 환자"의 patientId로 발급한다. 24시간 유효. 실제 SMS는 발송하지 않고 응답에 코드가 그대로 담겨온다(admin-web 화면에 표시해 데스크에서 안내하는 방식).
+    발급된 코드는 아래 G 단계에 자동으로 채워진다.
+  </p>
+
+  <button id="issueCodeBtn">인증코드 발급 — POST /patients/:patientId/signup-code</button>
+  <div class="step">
+    <span id="issueCodeStatus" class="status"></span>
+    <pre id="issueCodeResult">(아직 실행 안 함)</pre>
+  </div>
+
+  <h2>G. (연동 테스트) 발급된 코드로 실제 회원가입 — POST /auth/signup (server, 포트 4000)</h2>
+  <p class="desc">
+    여기부터는 <code>server_admin</code>이 아니라 고객용 <code>server</code>를 호출한다. 위 A~F에서 만든
+    환자번호+인증코드로 실제 앱 계정을 생성해, 시술기록/이용권이 <code>care_records</code>/<code>memberships</code>로
+    1회성 이관(claim)되는지까지 전체 흐름을 확인할 수 있다. 성공 후 같은 환자번호로 다시 이 버튼을 누르면
+    <code>409 PATIENT_ALREADY_CLAIMED</code>가 나는 것도 확인해볼 수 있다.
+  </p>
+
+  <label>patientNo (A에서 등록하면 자동 채워짐)</label>
+  <input id="signupPatientNo" placeholder="위 A 실행 후 자동 채워짐" />
+
+  <label>verificationCode (F에서 발급하면 자동 채워짐)</label>
+  <input id="signupVerificationCode" placeholder="위 F 실행 후 자동 채워짐" />
+
+  <label>email (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
+  <input id="signupEmail" />
+
+  <label>password (8자 이상)</label>
+  <input id="signupPassword" value="Passw0rd!2024" />
+
+  <button id="signupBtn">회원가입(claim) 실행 — POST {customer}/auth/signup</button>
+  <div class="step">
+    <span id="signupStatus" class="status"></span>
+    <pre id="signupResult">(아직 실행 안 함)</pre>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function setResult(el, statusEl, ok, data) {
+    el.textContent = JSON.stringify(data, null, 2);
+    statusEl.textContent = ok ? "성공" : "실패";
+    statusEl.className = "status " + (ok ? "ok" : "err");
+  }
+
+  function adminUrl(path) {
+    return $("adminBaseUrl").value.replace(/\/$/, "") + path;
+  }
+  function customerUrl(path) {
+    return $("customerBaseUrl").value.replace(/\/$/, "") + path;
+  }
+
+  // 전화번호/이메일은 버튼을 반복해서 눌러도 unique 제약에 안 걸리게 매번 다른 값으로 자동 채워둔다.
+  $("patientPhone").value = `010${String(Date.now()).slice(-8)}`;
+  $("signupEmail").value = `admin-test+${Date.now()}@example.com`;
+
+  // 전화번호 입력칸은 타이핑하는 즉시 숫자가 아닌 문자를 잘라낸다(하이픈 붙여넣기 등도 자동 제거됨).
+  $("patientPhone").addEventListener("input", (e) => {
+    e.target.value = e.target.value.replace(/\D/g, "");
+  });
+
+  // 최근에 만든 시술기록/이용권 id를 기억해뒀다가 삭제 버튼에서 재사용한다.
+  let lastCareRecordId, lastMembershipId;
+
+  // ============================================================
+  // A: 환자 등록 — POST /patients
+  // 성공 응답의 id는 "현재 대상 환자"(C~F용), patient_no는 G 단계 입력칸에 각각 자동으로 채워 넣는다.
+  // ============================================================
+  $("createPatientBtn").addEventListener("click", async () => {
+    const resultEl = $("createPatientResult");
+    const statusEl = $("createPatientStatus");
+    const toList = (raw) => raw.split(",").map((s) => s.trim()).filter(Boolean);
+
+    try {
+      const res = await fetch(adminUrl("/patients"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: $("patientName").value,
+          birthDate: $("patientBirthDate").value,
+          phone: $("patientPhone").value,
+          allergies: toList($("patientAllergies").value),
+          chronicConditions: toList($("patientChronicConditions").value),
+          doctorGeneralComment: $("patientDoctorComment").value || undefined,
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) {
+        $("patientId").value = data.id;
+        $("signupPatientNo").value = data.patient_no;
+      }
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // B: 환자 목록/검색 — GET /patients?search=
+  // ============================================================
+  $("listPatientsBtn").addEventListener("click", async () => {
+    const resultEl = $("listPatientsResult");
+    const statusEl = $("listPatientsStatus");
+    const search = $("searchQuery").value.trim();
+    const url = adminUrl("/patients") + (search ? `?search=${encodeURIComponent(search)}` : "");
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // C: 환자 상세 조회 — GET /patients/:patientId
+  // ============================================================
+  $("getPatientBtn").addEventListener("click", async () => {
+    const resultEl = $("getPatientResult");
+    const statusEl = $("getPatientStatus");
+    const patientId = $("patientId").value.trim();
+    if (!patientId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록하거나 patientId를 직접 입력해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/patients/${patientId}`));
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // D: 시술 기록 추가/삭제
+  // ============================================================
+  $("addCareRecordBtn").addEventListener("click", async () => {
+    const resultEl = $("addCareRecordResult");
+    const statusEl = $("addCareRecordStatus");
+    const patientId = $("patientId").value.trim();
+    if (!patientId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/patients/${patientId}/care-records`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          careName: $("careName").value,
+          careType: $("careType").value,
+          careDate: $("careDate").value,
+          brand: $("careBrand").value || undefined,
+          store: $("careStore").value || undefined,
+          basicAftercareGuide: [],
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) lastCareRecordId = data.id;
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  $("deleteCareRecordBtn").addEventListener("click", async () => {
+    const resultEl = $("deleteCareRecordResult");
+    const statusEl = $("deleteCareRecordStatus");
+    if (!lastCareRecordId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 D에서 시술 기록을 추가해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/care-records/${lastCareRecordId}`), { method: "DELETE" });
+      if (res.status === 204) {
+        setResult(resultEl, statusEl, true, { status: 204, message: "삭제됨" });
+        lastCareRecordId = undefined;
+        return;
+      }
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // E: 이용권 추가/삭제
+  // ============================================================
+  $("addMembershipBtn").addEventListener("click", async () => {
+    const resultEl = $("addMembershipResult");
+    const statusEl = $("addMembershipStatus");
+    const patientId = $("patientId").value.trim();
+    if (!patientId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/patients/${patientId}/memberships`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: $("membershipProductName").value,
+          totalCount: Number($("membershipTotalCount").value),
+          usedCount: 0,
+          availableCareNames: [],
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) lastMembershipId = data.id;
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  $("deleteMembershipBtn").addEventListener("click", async () => {
+    const resultEl = $("deleteMembershipResult");
+    const statusEl = $("deleteMembershipStatus");
+    if (!lastMembershipId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 E에서 이용권을 추가해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/memberships/${lastMembershipId}`), { method: "DELETE" });
+      if (res.status === 204) {
+        setResult(resultEl, statusEl, true, { status: 204, message: "삭제됨" });
+        lastMembershipId = undefined;
+        return;
+      }
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // F: 인증코드 발급 — POST /patients/:patientId/signup-code
+  // 발급된 code를 G 단계 입력칸에 자동으로 채워 넣는다.
+  // ============================================================
+  $("issueCodeBtn").addEventListener("click", async () => {
+    const resultEl = $("issueCodeResult");
+    const statusEl = $("issueCodeStatus");
+    const patientId = $("patientId").value.trim();
+    if (!patientId) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(adminUrl(`/patients/${patientId}/signup-code`), { method: "POST" });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) $("signupVerificationCode").value = data.code;
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // G: (연동 테스트) 발급된 코드로 실제 회원가입 — POST {server}/auth/signup
+  // server_admin이 아니라 고객용 server(포트 4000)를 호출한다.
+  // ============================================================
+  $("signupBtn").addEventListener("click", async () => {
+    const resultEl = $("signupResult");
+    const statusEl = $("signupStatus");
+    const patientNo = $("signupPatientNo").value.trim();
+    const verificationCode = $("signupVerificationCode").value.trim();
+    if (!patientNo || !verificationCode) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A(환자 등록)와 F(인증코드 발급)를 실행해야 한다." });
+      return;
+    }
+
+    try {
+      const res = await fetch(customerUrl("/auth/signup"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientNo,
+          verificationCode,
+          email: $("signupEmail").value,
+          password: $("signupPassword").value,
+        }),
+      });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
+      // 성공하면 이 환자는 claim 완료 상태가 된다 — 위 C(환자 상세 조회)를 다시 눌러
+      // claimed_user_id/claimed_at이 채워졌는지 확인해볼 수 있다.
+      // 같은 버튼을 다시 누르면 emr_patients.claimed_user_id가 이미 있어서
+      // 409 PATIENT_ALREADY_CLAIMED가 나는 것도 여기서 확인 가능하다.
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+</script>
+</body>
+</html>
