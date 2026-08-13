@@ -223,10 +223,10 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>서버 코드 설명서</h1>
-    <p class="subtitle"><code>api-spec.md</code>가 "각 엔드포인트를 호출하면 무엇을 주고받는가"를 정의한 계약서라면, 이 문서는 <strong>그 계약을 <code>server/src</code> 코드가 실제로 어떻게 구현하는가</strong>를 설명한다. 파일 경로·함수명 기준으로 작성했으므로 코드와 나란히 두고 보는 것을 전제로 한다.</p>
+    <p class="subtitle"><code>api-spec.md</code>가 "각 엔드포인트를 호출하면 무엇을 주고받는가"를 정의한 계약서라면, 이 문서는 <strong>그 계약을 <code>server/src</code> 코드가 실제로 어떻게 구현하는가</strong>를 설명한다. 파일 경로·함수명 기준으로 작성했으므로 코드와 나란히 두고 보는 것을 전제로 한다. 고객용 백엔드 <span class="mono">server/</span>만 다루며, 관리자용 <span class="mono">server_admin/</span>(포트 4100)은 별도 README 참고.</p>
     <div class="badges">
-      <span class="badge">v0.1</span>
-      <span class="badge outline">대상 커밋 16c2f5f</span>
+      <span class="badge">v0.2</span>
+      <span class="badge outline">대상 커밋 16c2f5f + v0.6 미커밋분</span>
       <span class="badge outline">코드 동작 설명 (API 계약 아님)</span>
     </div>
   </header>
@@ -295,17 +295,28 @@
 
     <section id="auth">
       <h2>3. 인증 / 온보딩 <span class="tag">routes/auth.routes.ts → services/auth.service.ts</span></h2>
-      <p class="desc">전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 코드에서 완전히 제거됐다(<span class="mono">server/db/migrations/004_remove_phone_verification.sql</span>) — <span class="mono">lib/otp.ts</span>/<span class="mono">lib/sms.ts</span>/<span class="mono">lib/signedToken.ts</span>도 함께 삭제됐다. 아래는 현재(전화인증 제거 후) 흐름이다.</p>
+      <p class="desc">전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 코드에서 완전히 제거됐다(<span class="mono">server/db/migrations/004_remove_phone_verification.sql</span>) — <span class="mono">lib/otp.ts</span>/<span class="mono">lib/sms.ts</span>/<span class="mono">lib/signedToken.ts</span>도 함께 삭제됐다. <strong>회원가입은 v0.6에서 환자번호+인증코드 기반으로 전면 재작성됐다</strong> — "환자가 앱에 가입하기 전에 의료진(<span class="mono">server_admin</span>/<span class="mono">admin-web</span>)이 먼저 시술 이력을 입력해둔다"는 실제 클리닉 흐름을 반영한 것이다.</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="path">POST /signup</span>
-          <span class="note">signup</span>
+          <span class="note">signup <span class="done-badge" style="margin-left:6px;">v0.6</span></span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0;font-size:13.8px;">
-            동일 전화번호로 이미 가입된 프로필 있으면 <span class="mono">PHONE_ALREADY_EXISTS</span>로 차단 → <span class="mono">supabaseAdmin.auth.admin.createUser</span>로 계정 생성 → <span class="mono">profiles</span> insert(이름/전화번호/생년월일 — <span class="mono">birthDate</span> → <span class="mono">birth_date</span>) → <strong>프로필 insert 실패 시 방금 만든 Auth 유저를 롤백</strong>(<span class="mono">deleteUser</span>)해 고아 계정 방지 → 마지막에 내부적으로 <span class="mono">login()</span> 호출해 응답 스키마를 로그인과 통일.
-          </p>
+          <ol class="step-list">
+            <li><span class="mono">emr_patients</span>에서 <span class="mono">patient_no</span>로 환자 조회 — 없으면 <span class="mono">patientNotFound()</span>, 이미 <span class="mono">claimed_user_id</span>가 있으면(다른 계정이 먼저 가입) <span class="mono">patientAlreadyClaimed()</span></li>
+            <li><span class="mono">signup_verification_codes</span>에서 코드 일치·<span class="mono">used_at is null</span>·미만료 확인 — 없거나 만료면 <span class="mono">invalidOrExpiredVerificationCode()</span></li>
+            <li><span class="mono">supabaseAdmin.auth.admin.createUser</span>로 계정 생성(이메일/비밀번호만 클라이언트 입력값 사용)</li>
+            <li>생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span>/<span class="mono">medical_profiles</span> insert(이름/전화/생년월일/알러지 등은 <span class="mono">emr_patients</span> 원본 값), <span class="mono">emr_care_records</span>→<span class="mono">care_records</span>, <span class="mono">emr_memberships</span>→<span class="mono">memberships</span> 매핑·insert, 인증코드 <span class="mono">used_at</span> 기록, <span class="mono">emr_patients.claimed_user_id</span> 기록 — 순서대로 처리</li>
+            <li>어느 단계든 실패하면 방금 만든 Auth 유저를 <span class="mono">deleteUser</span>로 롤백 — 하위 테이블은 CASCADE로 자동 정리되고, <span class="mono">emr_patients</span>/<span class="mono">signup_verification_codes</span>는 claim 전이라 그대로 남아 재시도 가능</li>
+            <li>마지막에 내부적으로 <span class="mono">login()</span> 호출해 응답 스키마를 로그인과 통일</li>
+          </ol>
+          <p style="margin:0;font-size:13px;color:var(--text-muted);"><strong>Supabase에 실제 트랜잭션(BEGIN/COMMIT)을 쓰지 않는다</strong> — 여러 insert를 순서대로 실행하고 실패 시 Auth 유저 롤백으로 정합성을 맞추는 애플리케이션 레벨 보정 방식이다. <span class="mono">emr_patients</span>/<span class="mono">signup_verification_codes</span>가 claim 이전까지 원본 그대로 보존되는 설계 덕에 이 방식이 안전하게 성립한다.</p>
+          <div class="status-row">
+            <span class="status-chip err">404 PATIENT_NOT_FOUND</span>
+            <span class="status-chip err">409 PATIENT_ALREADY_CLAIMED</span>
+            <span class="status-chip err">400 INVALID_OR_EXPIRED_VERIFICATION_CODE</span>
+          </div>
         </div>
       </div>
 
@@ -490,6 +501,21 @@
         </table>
       </div>
       <p class="desc">마이그레이션 003은 이미 Supabase 프로젝트에 적용됐고(001·002 위에 누적), 데모 데이터도 <span class="mono">npm run seed</span>로 재시드해 새 필드가 채워진 상태를 직접 조회로 검증했다.</p>
+
+      <h3 style="font-size:15px; margin:28px 0 4px;">v0.6 신규 항목 — 가상 EMR 기반 회원가입으로 전면 교체</h3>
+      <p class="desc" style="margin-top:4px;">실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 <strong>환자번호+인증코드 기반 가입</strong>으로 교체했다. 엔드투엔드 실측 테스트(환자 등록→시술기록/이용권 추가→인증코드 발급→가입→데이터 이관 확인→재가입 차단 확인)까지 통과했다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>항목</th><th>api-spec.md 위치</th><th>구현 위치</th><th>마이그레이션</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">POST /auth/signup 시그니처 교체</td><td>1절</td><td><span class="mono">auth.service.ts</span>의 <span class="mono">signup()</span> 전면 재작성 — <span class="mono">{patientNo,verificationCode,email,password}</span></td><td><span class="done-badge">006_add_admin_emr_staging_tables.sql · 적용 완료</span></td></tr>
+            <tr><td class="mono">PATIENT_NOT_FOUND / PATIENT_ALREADY_CLAIMED / INVALID_OR_EXPIRED_VERIFICATION_CODE</td><td>공통 에러 코드</td><td><span class="mono">lib/errors.ts</span> — <span class="mono">phoneAlreadyExists</span> 제거, 3종 신규 추가</td><td><span class="done-badge">불필요</span></td></tr>
+            <tr><td>신규 관리자용 백엔드 <span class="mono">server_admin/</span></td><td>문서 범위 밖(별도 README)</td><td>환자 CRUD, 시술기록/이용권 추가·삭제, 인증코드 발급 — <span class="mono">server/</span>와 동일 3단 컨벤션, 포트 4100, 무인증</td><td>—</td></tr>
+            <tr><td>신규 스테이징 테이블 4종</td><td><span class="mono">db-schema.md</span> "가상 EMR 스테이징 테이블(006)" 절</td><td><span class="mono">emr_patients</span>/<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>/<span class="mono">signup_verification_codes</span></td><td><span class="done-badge">006_add_admin_emr_staging_tables.sql · 적용 완료</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="desc"><strong>Windows 개발 환경 참고</strong>: <span class="mono">tsx watch</span>가 파일 저장 후 재시작할 때 이전 프로세스가 포트를 즉시 놓지 않아 <span class="mono">EADDRINUSE</span>로 죽는 경우가 관찰됐다. 로컬에서 안정적으로 띄우려면 <span class="mono">npm run build</span> 후 <span class="mono">node dist/src/server.js</span>(고정 프로세스) 권장 — 빌드 산출물은 <span class="mono">rootDir: "."</span> 설정 때문에 <span class="mono">dist/server.js</span>가 아니라 <span class="mono">dist/src/server.js</span>이다.</p>
     </section>
 
     <section id="notes">
@@ -501,6 +527,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Backend Reference · api-spec v0.5 / db-schema v0.3 / llm-prompt-design v0.1 기준 · 대상 커밋 16c2f5f + v0.5 신규 항목 9건(아직 별도 커밋 전) · 2026-08-05</footer>
+    <footer>WHS After Mate · Backend Reference · api-spec v0.6 / db-schema v0.4 / llm-prompt-design v0.1 기준 · 대상 커밋 16c2f5f + v0.6 환자번호+인증코드 회원가입(아직 별도 커밋 전) · 2026-08-13</footer>
   </main>
 </div>

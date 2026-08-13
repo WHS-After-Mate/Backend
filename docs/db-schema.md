@@ -1,6 +1,8 @@
-# WHS After Mate — DB 스키마 (v0.3)
+# WHS After Mate — DB 스키마 (v0.4)
 
-기준: `api-spec.md` v0.5. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.6. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+
+v0.4 변경: 회원가입을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체하며, 관리자용 가상 EMR 스테이징 테이블 4종(`emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes`)을 신규 추가했다(`server/db/migrations/006_add_admin_emr_staging_tables.sql`, Supabase 적용 완료). 자세한 내용은 하단 "가상 EMR 스테이징 테이블 추가 (006)" 절 참고.
 
 v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하는 스키마 변경. `profiles`에 컬럼 2개 추가, `care_records`에 컬럼 4개 추가, `membership_usages` 신규 테이블 1개. **마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`)이 Supabase 프로젝트에 실제 적용됐고, 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 확인했다.** 자세한 내용은 하단 "v0.3에서 추가된 항목" 절 참고.
 
@@ -12,7 +14,7 @@ v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하�
 
 이메일/비밀번호 계정 생성, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 Supabase Auth가 처리한다. 우리 테이블은 `auth.users.id`를 FK로 참조만 한다.
 
-**가입 흐름** *(전화인증 제거 후, `004_remove_phone_verification.sql`)*: `POST /auth/signup` 호출 → `supabase.auth.admin.createUser()` → 생성된 `user.id`로 `profiles` 행 insert(`phone`은 연락처 값, `birth_date`는 signup 입력값 그대로 저장). 별도 인증 단계 없음.
+**가입 흐름** *(v0.4 — 환자번호+인증코드 기반, `006_add_admin_emr_staging_tables.sql`)*: `POST /auth/signup({patientNo, verificationCode, email, password})` 호출 → `emr_patients`에서 `patient_no`로 환자 조회(없으면 `PATIENT_NOT_FOUND`, 이미 `claimed_user_id`가 있으면 `PATIENT_ALREADY_CLAIMED`) → `signup_verification_codes`에서 코드 일치·미사용·미만료 확인(`INVALID_OR_EXPIRED_VERIFICATION_CODE`) → `supabase.auth.admin.createUser()` → 생성된 `user.id`로 `profiles` 행 insert(이름/전화/생년월일은 클라이언트 입력이 아니라 `emr_patients` 원본 값) + `medical_profiles` insert + `emr_care_records`/`emr_memberships`를 `care_records`/`memberships`로 **1회성 이관(claim)** + 인증코드 `used_at` 기록 + `emr_patients.claimed_user_id` 기록. 이관 단계 중 하나라도 실패하면 방금 만든 Auth 유저를 롤백(`deleteUser`) — `profiles`/`medical_profiles`/`care_records`/`memberships`는 `auth.users`에 CASCADE로 걸려있어 유저 삭제 시 함께 정리되고, `emr_patients`/`signup_verification_codes`는 claim 처리 전이므로 그대로 남아 재시도 가능하다(`auth.service.ts`의 `signup()` 참고).
 
 **비밀번호 재설정/변경** *(v0.3, `api-spec.md` v0.5 신규 — 구현 완료, DB 마이그레이션 불필요)*: 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`, `POST /auth/password/reset-confirm`은 Supabase 기본 "Reset Password" 메일 템플릿이 리다이렉트 URL 해시로 실어 보내는 이미 검증된 `access_token`(recoveryToken)을 `supabaseAnon.auth.getUser(recoveryToken)`으로 재확인한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`). `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
 
@@ -24,7 +26,7 @@ v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하�
 
 - **원본(source of truth)**: 클리닉 EMR (별도 시스템, 이 저장소 범위 밖)
 - **우리 DB의 역할**: EMR에서 필요한 필드만 읽기 전용으로 동기화해 patient-facing 앱과 LLM 컨텍스트에 사용
-- **MVP 범위**: 실제 EMR 연동 대신 가상 데이터를 우리 테이블에 직접 시드(seed)한다. 다만 스키마는 나중에 실제 배치 동기화(ETL)로 교체 가능하도록 `external_*_id` / `synced_at` / `source_system` 필드를 처음부터 넣어둔다.
+- **MVP 범위**: 실제 클리닉 EMR 시스템 연동 대신, 관리자용 가상 EMR 스테이징 테이블(`emr_patients` 등, 아래 "가상 EMR 스테이징 테이블 추가 (006)" 절)에 의료진이 직접 입력한 데이터를 회원가입 시 1회성으로 이관(claim)한다. 스키마는 나중에 실제 배치 동기화(ETL)로 교체 가능하도록 `external_*_id` / `synced_at` / `source_system` 필드를 처음부터 넣어둔다. *(데모용 시드 스크립트 `server/db/seed/seed.ts`는 이 claim 흐름과 무관하게 별도로 계정을 직접 생성한다 — 아래 "가상 EMR..." 절 참고)*
 - **왜 알러지·의사코멘트가 중요한가**: `POST /aftercare/questions`(LLM 답변)와 `GET /aftercare/daily-guide`(일차별 가이드) 생성 시, 알러지·의사 코멘트를 컨텍스트에 포함시켜야 "환자가 알러지 있는 성분을 권하는" 것 같은 실수를 막을 수 있다.
 - **민감정보 취급**: 알러지·의사 코멘트는 개인정보보호법상 건강에 관한 민감정보에 해당한다. 접근 로그(`medical_data_access_log`)를 별도로 남긴다.
 
@@ -279,6 +281,95 @@ create table public.device_tokens (
 
 - Android 클라이언트가 발급받은 FCM 토큰을 `POST /notifications/device-token`으로 등록. 알림 실제 발송(아침 리마인더 등)은 MVP 범위 밖이라 발송 함수만 준비
 
+### public.emr_patients — 가상 EMR 환자 프로필 (계정 미연결 상태로 시작) *(v0.4, 마이그레이션 006)*
+
+```sql
+create table public.emr_patients (
+  id uuid primary key default gen_random_uuid(),
+  patient_no text not null unique,
+  name text not null,
+  birth_date date not null,
+  phone text not null,
+  allergies text[] not null default '{}',
+  chronic_conditions text[] not null default '{}',
+  doctor_general_comment text,
+  claimed_user_id uuid references auth.users(id) on delete set null,
+  claimed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_emr_patients_phone on public.emr_patients (phone);
+```
+
+- `auth.users`와 무관하게 독립적으로 존재 — `server_admin`(관리자 웹 백엔드)이 환자 등록 시 채우는 원본 데이터
+- `patient_no`: 병원에서 발급하는 환자번호. 앱 회원가입 시 인증코드와 함께 입력받아 신원 확인에 사용
+- `claimed_user_id`: 회원가입으로 이 환자 기록을 실제 계정에 연결(claim)한 시점의 `auth.users.id`. `null`이면 아직 미가입 상태이며, 값이 있으면 중복 가입 방지 겸 이관 완료 표시로 쓰인다
+
+### public.emr_care_records — 계정 연결 전 시술 이력 *(v0.4, 마이그레이션 006)*
+
+```sql
+create table public.emr_care_records (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.emr_patients(id) on delete cascade,
+  care_name text not null,
+  care_type text not null,
+  care_date date not null,
+  part_of_body text,
+  brand text,
+  store text,
+  practitioner text,
+  basic_aftercare_guide text[] not null default '{}',
+  doctor_comment text,
+  session_number int,
+  total_sessions int,
+  created_at timestamptz not null default now()
+);
+
+create index idx_emr_care_records_patient on public.emr_care_records (patient_id, care_date desc);
+```
+
+- 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문. `care_type`은 `reference_guides`와 매칭되는 값(현재 `peeling`/`laser_toning`)만 실제 일차별 가이드가 생성되고, 그 외 값은 클레임 후 `404 GUIDE_NOT_AVAILABLE`로 안전하게 폴백된다
+
+### public.emr_memberships — 계정 연결 전 이용권 *(v0.4, 마이그레이션 006)*
+
+```sql
+create table public.emr_memberships (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.emr_patients(id) on delete cascade,
+  product_name text not null,
+  total_count int not null default 0,
+  used_count int not null default 0,
+  expires_at date,
+  last_used_at date,
+  available_care_names text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create index idx_emr_memberships_patient on public.emr_memberships (patient_id);
+```
+
+- `public.memberships`와 동일한 형태로 claim 시 그대로 복사됨
+
+### public.signup_verification_codes — 환자번호 기반 가입 인증코드 *(v0.4, 마이그레이션 006)*
+
+```sql
+create table public.signup_verification_codes (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.emr_patients(id) on delete cascade,
+  code text not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index idx_signup_codes_patient on public.signup_verification_codes (patient_id, created_at desc);
+create index idx_signup_codes_lookup on public.signup_verification_codes (patient_id, code) where used_at is null;
+```
+
+- 데스크(`server_admin`)에서 발급 버튼을 누르면 24시간 유효한 코드가 생성됨 — 실제 SMS 발송 없이 `admin-web` 화면에 코드를 표시해 안내하는 방식(`server/README.md`의 SMS 미구현 방침과 동일한 결)
+- `POST /auth/signup`에서 `patientNo`+`code`가 일치·미사용·미만료 확인되면 `used_at`을 채워 사용 처리하고 `emr_patients`를 claim한다
+
 ---
 
 ## 설계 결정 (테이블을 일부러 안 만든 것들)
@@ -295,6 +386,7 @@ create table public.device_tokens (
 | **의료정보 접근은 감사 로그(`medical_data_access_log`) 필수** | 알러지·의사 코멘트가 민감정보라 "누가/언제/왜" 봤는지 남겨야 함. LLM이 컨텍스트로 읽을 때도 기록 |
 | **`relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` 전용 테이블 없음** *(v0.3)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, `care_type`별 사전 정의 매핑, `care_records.brand` distinct 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
 | **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요 |
+| **가상 EMR 스테이징 테이블은 `auth.users`와 완전히 분리** *(v0.4)* | `emr_patients` 등 4종은 `server_admin`이 다루는 "계정 연결 전" 데이터라 고객용 테이블(`profiles`/`care_records`/`memberships`)과 독립적으로 존재. claim(회원가입) 시점에만 1회성으로 실제 테이블로 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 동기화되지 않는다(의도적 범위 제한 — 실제 서비스라면 배치 ETL 필요) |
 
 ## 알려진 트레이드오프
 
@@ -337,3 +429,20 @@ create table public.device_tokens (
 | 컬럼 삭제 | `profiles.push_enabled`, `profiles.aftercare_reminder`, `profiles.membership_expiry_alert`, `profiles.marketing_alert` | `device_tokens` 테이블(FCM 토큰)은 실제로 쓰이므로 그대로 유지 |
 
 이 마이그레이션도 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.
+
+## 가상 EMR 스테이징 테이블 추가 (006)
+
+`server/db/migrations/006_add_admin_emr_staging_tables.sql` — **Supabase 프로젝트에 실제 적용 완료.** 실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 지원하기 위해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체하며 함께 추가된 마이그레이션이다.
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 신규 테이블 | `public.emr_patients` | 환자 프로필. `auth.users`와 무관하게 독립 존재, `claimed_user_id`로 가입 완료 여부 표시 |
+| 신규 테이블 | `public.emr_care_records` | 계정 연결 전 시술 이력. claim 시 `care_records`로 이관 |
+| 신규 테이블 | `public.emr_memberships` | 계정 연결 전 이용권. claim 시 `memberships`로 이관 |
+| 신규 테이블 | `public.signup_verification_codes` | 24시간 유효 가입 인증코드. `server_admin`이 발급, `POST /auth/signup`이 검증·소진 |
+
+**배경(설계 대안 기각 사유)**: 처음엔 "이미 가입된 계정 위에 EMR 데이터를 얹는" 방식(placeholder Auth 계정을 미리 만들어두는 안)을 검토했으나 (1) 나중에 진짜 가입 시 별개 계정이 생겨 매칭이 안 되고 (2) 기존 `PHONE_ALREADY_EXISTS` 체크가 오히려 진짜 가입을 막으며 (3) `medical_profiles.user_id`가 PK라 계정 이관 시 PK 스왑이 필요하다는 세 가지 문제로 기각됐다. "환자번호+인증코드로 신원확인 후 가입" 방식이 이 세 문제를 모두 해결한다.
+
+**관리자용 신규 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. `server_admin`은 이 4개 테이블만 다루고 `server/`의 기존 고객용 테이블은 건드리지 않는다.
+
+이 마이그레이션은 이미 Supabase 프로젝트에 적용됐다. 아직 적용하지 않은 다른 환경(신규 클론 등)이라면 Supabase SQL Editor에서 직접 실행해야 한다.

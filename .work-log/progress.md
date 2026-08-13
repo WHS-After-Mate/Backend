@@ -1,3 +1,19 @@
+## 2026-08-13
+- 사용자가 `https://github.com/WHS-After-Mate/admin-web.git`(관리자 홈페이지 예시 리포)을 알려줘 로컬 `admin-web/`로 클론 — commit 1개("initial commit")뿐인 React 19+Vite 8 기본 스캐폴드, 실제 화면 없음을 확인
+- admin-web의 목적 확인: 실제 클리닉 데스크처럼 환자 프로필(이름/생년월일/전화번호)과 시술 이력(피부 클리닉 시술 횟수 등)을 직접 입력하는 가상 EMR 데이터 입력 도구. API는 별도 `server_admin`으로 분리 요청받음
+- **아키텍처 논의** — "이미 가입된 계정 위에 EMR을 얹는 방식"(1안)의 문제를 짚음: placeholder Auth 계정을 미리 만들면 (1) 나중에 진짜 가입 시 별개 계정이 생겨 매칭 안 됨 (2) 기존 `PHONE_ALREADY_EXISTS` 체크가 오히려 진짜 가입을 막음 (3) `medical_profiles.user_id`가 PK라 이관 시 PK 스왑 필요 — 세 가지 실질적 문제로 그대로는 어렵다고 설명
+- 사용자가 "환자번호 + 24시간 유효 인증코드로 신원확인 후 가입" 방식을 역제안 → 위 세 문제를 전부 해결하는 더 나은 설계임을 확인하고 채택. "환자번호 없으면 가입 자체를 막는다", "admin-web은 인증 없이 항상 열어둔다"로 범위 확정
+- **구현**
+  - `server/db/migrations/006_add_admin_emr_staging_tables.sql` — `emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes` 4개 테이블, `auth.users`와 무관하게 독립 존재. 사용자가 Supabase SQL Editor에서 즉시 적용
+  - `server_admin/` 신규 서버(포트 4100) — `server/`와 동일 컨벤션(Express+TS+zod, routes/services/validators 3단 구조)으로 처음부터 구축. 환자 등록/목록/상세/수정, 시술기록·이용권 추가/삭제, 인증코드 발급(24시간 유효, 실제 SMS 미발송 — 응답에 코드 그대로 노출해 admin-web 화면 표시용) API 구현. 로그인 없음(요청대로)
+  - `server/src/services/auth.service.ts`의 `signup()` 전면 재작성 — `{email,password,name,phone,birthDate}` → `{patientNo,verificationCode,email,password}`로 시그니처 변경, emr_patients에서 이름/생년월일/전화번호를 가져와 profiles 생성 + medical_profiles/care_records/memberships를 1회성 이관(claim) + 인증코드 사용 처리 + emr_patients.claimed_user_id 기록. 실패 시 생성된 Auth 유저 롤백(CASCADE로 하위 테이블 자동 정리)
+  - `lib/errors.ts`: `phoneAlreadyExists` 제거, `patientNotFound`/`patientAlreadyClaimed`/`invalidOrExpiredVerificationCode` 추가
+  - `npm run typecheck`/`build` 양쪽 서버 모두 통과
+- **엔드투엔드 실측 테스트** — 두 서버(4000/4100)를 실제로 띄워 환자 등록→시술기록·이용권 추가→인증코드 발급→그 코드로 `/auth/signup`→`GET /profile`·`/care-records`·`/memberships`로 이관 데이터 확인→같은 환자번호 재가입 시도 시 `409 PATIENT_ALREADY_CLAIMED` 확인까지 전체 흐름 통과
+  - 과정에서 두 가지 이슈 발견/해결: ① Windows `tsx watch`가 파일 저장 후 재시작할 때 `EADDRINUSE`로 프로세스가 죽는 경우가 있어 `npm run build` + `node dist/src/server.js`(고정 프로세스)로 전환해 해결 ② 테스트용 전화번호가 사용자가 2026-08-05에 만들어둔 실제 테스트 계정과 우연히 겹쳐 `profiles_phone_key` 충돌 — 그 계정은 건드리지 않고 다른 번호로 재시도
+  - 테스트로 만든 가입 계정 1개 + emr_patients 2건 + 임시 검증 스크립트 전부 정리(삭제) 완료
+- git commit은 아직 안 함(문서 동기화 여부를 먼저 사용자에게 확인 중이었음) — `/기록저장`으로 세션 정리
+
 ## 2026-08-12
 - Tier 2 커밋(`501a268`) push 완료 — `WHS-After-Mate/Backend` main에 반영(`3b2ef51..501a268`)
 - **Tier 3 착수** — `/notifications/settings` 알림설정 단순화 논의
@@ -11,9 +27,10 @@
 - Tier 5(EMR)를 제외한 dd.txt 요구사항 전부 완료 확인. 남은 결정 사항 두 가지 제시 — 마이그레이션 005 Supabase 적용 여부, 수정된 문서 4종의 아티팩트 재발행 여부(사용자 확인 대기)
 - work-log 최종 정리 — `/기록저장`으로 저장
 - **신규 세션 — 마이그레이션 005 적용**: 사용자가 Supabase SQL Editor에서 직접 실행 → service role key로 `profiles`의 4개 컬럼(`push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert`) 조회하는 임시 스크립트로 전부 삭제됨 확인, 스크립트는 확인 후 삭제
-- **문서 아티팩트 4종 재발행** — api-spec/db-schema/server-code-guide/api-user-flow를 Tier 3(알림설정 제거) 반영된 최신 로컬 `.html`로 재발행. 재발행 과정에서 "API 명세서" 아티팩트가 2개(중복) 존재함을 발견 — 최신본(`5cf6ed55...`)에 재발행하고, 2026-08-05 이후 갱신 안 된 구버전(`5462bb46...`, 전화인증 SMS 흐름 잔존)은 그대로 둠. 사용자 확인 후 구버전 삭제 요청 — Artifact 도구엔 삭제 기능이 없어(publish/list만 지원) 사용자가 claude.ai/code/artifacts에서 직접 삭제하도록 안내
-- **Tier 2 후속 — seed.ts 실제 AAC 브랜드명 반영**: `AAC_클리닉_자산_조사.docx`를 python-docx로 재추출해 확인 — 가상 브랜드 `"AAC 청담"`→`"AMRED CLINIC"`(청담 소재 하이엔드 리프팅 전문), `"AAC 강남"`→`"DERNA CLINIC"`(웰니스하우스서울 B1, 대중형 라인)로 교체(홍길동·이서준의 청담 시술 3건, 김민지의 강남 시술 1건 · store 값도 각각 갱신). 시술명·담당의·care_type은 이번 범위(브랜드명만) 밖이라 유지, WIM Clinic/Center는 이번 시드에 미사용. `docs/api-spec.md`/`.html` 예시 JSON도 동기화. `npm run typecheck` 통과, `npm run seed` 재실행 후 `care_records.brand/store` 직접 조회로 실제 반영 확인(검증 스크립트는 확인 후 삭제)
-- 변경분(api-spec.md/.html, seed.ts) api-spec 아티팩트 재발행 완료 후 git commit 예정
+- **문서 아티팩트 4종 재발행** — api-spec/db-schema/server-code-guide/api-user-flow를 Tier 3(알림설정 제거) 반영된 최신 로컬 `.html`로 재발행. 재발행 과정에서 "API 명세서" 아티팩트가 2개(중복) 존재함을 발견 — 최신본(`5cf6ed55...`)에 재발행하고, 2026-08-05 이후 갱신 안 된 구버전(`5462bb46...`, 전화인증 SMS 흐름 잔존)은 그대로 둠. Artifact 도구엔 삭제 기능이 없어(publish/list만 지원) 사용자가 claude.ai/code/artifacts에서 직접 삭제 완료
+- **Tier 2 후속 — seed.ts 실제 AAC 브랜드명 반영**: `AAC_클리닉_자산_조사.docx`를 python-docx로 재추출해 확인 — 가상 브랜드 `"AAC 청담"`→`"AMRED CLINIC"`(청담 소재 하이엔드 리프팅 전문), `"AAC 강남"`→`"DERNA CLINIC"`(웰니스하우스서울 B1, 대중형 라인)로 교체(홍길동·이서준의 청담 시술 3건, 김민지의 강남 시술 1건 · store 값도 각각 갱신). 시술명·담당의·care_type은 이번 범위(브랜드명만) 밖이라 유지, WIM Clinic/Center는 이번 시드에 미사용. `docs/api-spec.md`/`.html` 예시 JSON도 동기화. `npm run typecheck` 통과, `npm run seed` 재실행 후 `care_records.brand/store` 직접 조회로 실제 반영 확인(검증 스크립트는 확인 후 삭제), api-spec 아티팩트 재발행
+- git commit 완료 — `8a30963` (seed.ts 브랜드명 교체 + api-spec.md/.html 예시 JSON 동기화 + work-log). 아직 push는 안 함(사용자 확인 대기)
+- work-log 최종 정리 — `/기록저장`으로 저장
 
 ## 2026-08-11
 - 세션 시작, work-log 브리핑 후 실제 git 상태 재확인 — 08-05 저녁분이 여전히(6일째) 미커밋 상태임을 확인

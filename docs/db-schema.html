@@ -220,12 +220,12 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.5 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.6 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목.</p>
     <div class="badges">
-      <span class="badge">v0.3</span>
+      <span class="badge">v0.4</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
-      <span class="badge outline">와이어프레임 검토 반영(v0.3, 마이그레이션 적용 완료)</span>
+      <span class="badge outline">환자번호+인증코드 기반 회원가입(v0.4)</span>
     </div>
   </header>
 
@@ -237,12 +237,13 @@
     <a href="#tables">테이블 정의</a>
     <a href="#decisions">설계 결정</a>
     <a href="#v03new">v0.3 신규 항목(적용 완료)</a>
+    <a href="#v06new">가상 EMR 스테이징 테이블(006)</a>
   </nav>
 
   <main>
     <section id="erd">
       <h2>ERD</h2>
-      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고)</p>
+      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고) <span class="mono">EMR_*</span> 4종은 <span class="mono">auth.users</span>와 완전히 독립적인 별도 도메인(가상 EMR 스테이징)이며, 회원가입(claim) 시점에만 <span class="mono">AUTH_USERS</span>와 연결된다 — <span class="mono">006_add_admin_emr_staging_tables.sql</span> 참고.</p>
 
       <div class="diagram-toolbar">
         <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
@@ -266,6 +267,10 @@ erDiagram
   CARE_RECORDS ||--o{ QUESTIONS : "0:N"
   MEMBERSHIPS ||--o{ CARE_RECORDS : "0:N (v0.3, membership_id)"
   MEMBERSHIPS ||--o{ MEMBERSHIP_USAGES : "1:N (v0.3)"
+  AUTH_USERS |o--o| EMR_PATIENTS : "0:1 claim (v0.4)"
+  EMR_PATIENTS ||--o{ EMR_CARE_RECORDS : "1:N (v0.4)"
+  EMR_PATIENTS ||--o{ EMR_MEMBERSHIPS : "1:N (v0.4)"
+  EMR_PATIENTS ||--o{ SIGNUP_VERIFICATION_CODES : "1:N (v0.4)"
 
   AUTH_USERS {
     uuid id PK
@@ -354,6 +359,40 @@ erDiagram
     text answer
     bool expert_contact_required
   }
+  EMR_PATIENTS {
+    uuid id PK
+    text patient_no
+    text name
+    date birth_date
+    text phone
+    text_array allergies
+    text_array chronic_conditions
+    uuid claimed_user_id FK "-> auth.users, nullable"
+    timestamptz claimed_at
+  }
+  EMR_CARE_RECORDS {
+    uuid id PK
+    uuid patient_id FK
+    text care_name
+    text care_type
+    date care_date
+    text_array basic_aftercare_guide
+    text doctor_comment
+  }
+  EMR_MEMBERSHIPS {
+    uuid id PK
+    uuid patient_id FK
+    text product_name
+    int total_count
+    int used_count
+  }
+  SIGNUP_VERIFICATION_CODES {
+    uuid id PK
+    uuid patient_id FK
+    text code
+    timestamptz expires_at
+    timestamptz used_at
+  }
 </pre>
         </div>
       </div>
@@ -363,7 +402,7 @@ erDiagram
       <h2>인증 (Supabase 관리) <span class="tag">직접 구현 안 함</span></h2>
       <p class="desc">이메일/비밀번호 계정, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 전부 Supabase Auth가 처리한다. 우리 스키마는 <span class="mono">auth.users.id</span>를 FK로 참조만 한다. 전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(<span class="mono">004_remove_phone_verification.sql</span>) — <span class="mono">phone</span>은 이제 조회·표시용 연락처 값일 뿐이다.</p>
       <div class="note-card">
-        <b>가입 흐름</b> <span class="tag">전화인증 제거 후</span>: <span class="mono">POST /auth/signup</span> 호출 → <span class="mono">supabase.auth.admin.createUser()</span>로 계정 생성 → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> 행 insert(<span class="mono">phone</span>은 연락처 값, <span class="mono">birth_date</span>는 signup 입력값 그대로 저장). 별도 인증 단계 없음.
+        <b>가입 흐름</b> <span class="done-badge">v0.4 · 환자번호+인증코드 기반</span>: <span class="mono">POST /auth/signup({patientNo, verificationCode, email, password})</span> → <span class="mono">emr_patients</span>에서 <span class="mono">patient_no</span>로 조회(없으면 <span class="mono">PATIENT_NOT_FOUND</span>, 이미 <span class="mono">claimed_user_id</span> 있으면 <span class="mono">PATIENT_ALREADY_CLAIMED</span>) → <span class="mono">signup_verification_codes</span>에서 코드 일치·미사용·미만료 확인(<span class="mono">INVALID_OR_EXPIRED_VERIFICATION_CODE</span>) → <span class="mono">supabase.auth.admin.createUser()</span> → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span>/<span class="mono">medical_profiles</span> insert(이름/전화/생년월일은 <span class="mono">emr_patients</span> 원본 값) + <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>를 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> + 코드 <span class="mono">used_at</span> 기록 + <span class="mono">emr_patients.claimed_user_id</span> 기록. 실패 시 Auth 유저 롤백(하위 테이블은 CASCADE로 자동 정리, <span class="mono">emr_*</span>는 claim 전이라 그대로 남아 재시도 가능).
       </div>
       <div class="note-card" style="margin-top:10px;">
         <b>비밀번호 재설정/변경</b> <span class="done-badge">v0.3 · 구현 완료</span>: 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>, <span class="mono">reset-confirm</span>은 Supabase 기본 메일 템플릿이 URL 해시로 실어 보내는 이미 검증된 <span class="mono">access_token</span>을 <span class="mono">supabaseAnon.auth.getUser()</span>로 재확인 후 <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>/<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
@@ -374,7 +413,7 @@ erDiagram
       <h2>클리닉 EMR 연동 <span class="tag">구조적 전제</span></h2>
       <p class="desc">이 서비스는 <b>클리닉(AAC)의 의료 데이터베이스(EMR)에 이미 존재하는 환자 기록</b>을 바탕으로 환자 본인에게 사후관리를 제공한다 — 환자가 자기 진료기록을 열람하는 patient-portal과 같은 구조다. <span class="mono">care_records</span>의 시술 이력, 알러지 정보, 의사 코멘트는 우리 앱이 만드는 원본 데이터가 아니라 <b>클리닉 EMR에서 동기화(sync)해온 사본</b>이다.</p>
       <div class="note-card">
-        <b>원본(source of truth)</b>은 클리닉 EMR(별도 시스템, 이 저장소 범위 밖)이고, 우리 DB는 필요한 필드만 읽기 전용으로 동기화해 patient-facing 앱과 LLM 컨텍스트에 쓴다. MVP는 실제 연동 대신 가상 데이터를 직접 시드하지만, <span class="mono">external_*_id</span> / <span class="mono">synced_at</span> / <span class="mono">source_system</span> 필드를 미리 넣어둬서 나중에 실제 배치 동기화(ETL)로 교체할 수 있게 한다. 알러지·의사 코멘트는 <span class="mono">GET /aftercare/daily-guide</span>, <span class="mono">POST /aftercare/questions</span>의 LLM 컨텍스트에 반드시 포함해 "알러지 있는 성분을 권하는" 실수를 막는다.
+        <b>원본(source of truth)</b>은 클리닉 EMR(별도 시스템, 이 저장소 범위 밖)이고, 우리 DB는 필요한 필드만 읽기 전용으로 동기화해 patient-facing 앱과 LLM 컨텍스트에 쓴다. MVP는 실제 클리닉 EMR 시스템 연동 대신, 관리자용 가상 EMR 스테이징 테이블(<span class="mono">emr_patients</span> 등, 아래 "가상 EMR 스테이징 테이블(006)" 절)에 의료진이 직접 입력한 데이터를 회원가입 시 1회성으로 이관(claim)한다. <span class="mono">external_*_id</span> / <span class="mono">synced_at</span> / <span class="mono">source_system</span> 필드는 나중에 실제 배치 동기화(ETL)로 교체할 수 있도록 미리 넣어둔 것이다. 알러지·의사 코멘트는 <span class="mono">GET /aftercare/daily-guide</span>, <span class="mono">POST /aftercare/questions</span>의 LLM 컨텍스트에 반드시 포함해 "알러지 있는 성분을 권하는" 실수를 막는다. <i>(데모용 시드 스크립트 <span class="mono">seed.ts</span>는 이 claim 흐름과 무관하게 별도로 계정을 직접 생성한다.)</i>
       </div>
     </section>
 
@@ -394,7 +433,7 @@ erDiagram
                 <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="pk">PK</span> <span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>Supabase 계정과 1:1</td></tr>
                 <tr><td class="mono">name</td><td class="mono">text</td><td>not null</td><td>이름</td></tr>
                 <tr><td class="mono">birth_date</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.3</span> 내 정보 화면 생년월일 (<span class="mono">GET /profile</span> 응답 <span class="mono">birthDate</span>)</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>연락처 (가입 시 입력값, 인증 없음)</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>연락처 (가입 시 emr_patients 원본에서 가져옴, 인증 없음)</td></tr>
                 <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
                 <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
               </tbody>
@@ -586,6 +625,101 @@ erDiagram
           </div>
         </div>
       </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.emr_patients</span>
+          <span class="owner">가상 EMR · 계정 미연결</span>
+          <span class="done-badge">v0.4 · 적용 완료</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">patient_no</td><td class="mono">text</td><td>not null, unique</td><td>병원 발급 환자번호. 가입 시 인증코드와 함께 입력받아 신원 확인</td></tr>
+                <tr><td class="mono">name / birth_date / phone</td><td class="mono">text / date / text</td><td>not null</td><td>의료진이 입력한 원본 — claim 시 그대로 <span class="mono">profiles</span>로 복사</td></tr>
+                <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">text[]</td><td>default '{}'</td><td>claim 시 <span class="mono">medical_profiles</span>로 복사</td></tr>
+                <tr><td class="mono">claimed_user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">SET NULL</span>, nullable</td><td>가입(claim) 완료 시 채워짐. null이면 미가입 상태, 중복 가입 방지 겸용</td></tr>
+                <tr><td class="mono">claimed_at</td><td class="mono">timestamptz</td><td>—</td><td>claim 시각</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">auth.users</span>와 무관하게 독립 존재 — <span class="mono">server_admin</span>(관리자 웹 백엔드)이 환자 등록 시 채우는 원본 데이터</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.emr_care_records</span>
+          <span class="owner">가상 EMR · 계정 미연결</span>
+          <span class="done-badge">v0.4 · 적용 완료</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">care_name / care_type / care_date</td><td class="mono">text / text / date</td><td>not null</td><td><span class="mono">care_type</span>은 <span class="mono">reference_guides</span> 매칭 키 (현재 peeling/laser_toning만 지원)</td></tr>
+                <tr><td class="mono">part_of_body / brand / store / practitioner</td><td class="mono">text</td><td>—</td><td>—</td></tr>
+                <tr><td class="mono">basic_aftercare_guide / doctor_comment</td><td class="mono">text[] / text</td><td>—</td><td>claim 시 그대로 <span class="mono">care_records</span>로 복사</td></tr>
+                <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컬럼 구성은 <span class="mono">public.care_records</span>와 거의 동일 — claim 시 그대로 복사되기 때문</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.emr_memberships</span>
+          <span class="owner">가상 EMR · 계정 미연결</span>
+          <span class="done-badge">v0.4 · 적용 완료</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">product_name</td><td class="mono">text</td><td>not null</td><td>—</td></tr>
+                <tr><td class="mono">total_count / used_count</td><td class="mono">int</td><td>not null, default 0</td><td>claim 시 그대로 <span class="mono">memberships</span>로 복사</td></tr>
+                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>—</td></tr>
+                <tr><td class="mono">available_care_names</td><td class="mono">text[]</td><td>default '{}'</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">public.memberships</span>와 동일한 형태로 claim 시 그대로 복사됨</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.signup_verification_codes</span>
+          <span class="owner">가입 인증코드</span>
+          <span class="done-badge">v0.4 · 적용 완료</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">code</td><td class="mono">text</td><td>not null</td><td>데스크(<span class="mono">server_admin</span>)에서 발급 버튼 클릭 시 생성</td></tr>
+                <tr><td class="mono">expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>발급 후 24시간</td></tr>
+                <tr><td class="mono">used_at</td><td class="mono">timestamptz</td><td>nullable</td><td>회원가입 완료 시 채워짐(소진 표시)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">실제 SMS 발송 없이 <span class="mono">admin-web</span> 화면에 코드를 표시해 안내하는 방식(<span class="mono">server/README.md</span>의 SMS 미구현 방침과 동일한 결). <span class="mono">POST /auth/signup</span>에서 <span class="mono">patientNo</span>+<span class="mono">code</span> 일치·미사용·미만료 확인되면 사용 처리하고 <span class="mono">emr_patients</span>를 claim한다</p>
+        </div>
+      </div>
     </section>
 
     <section id="decisions">
@@ -634,6 +768,10 @@ erDiagram
         <div class="decision-card">
           <h3>비밀번호 재설정/변경 전용 테이블 없음 <span class="done-badge">v0.3 · 구현 완료</span></h3>
           <p>Supabase Auth가 재설정 토큰 발급·검증·해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요.</p>
+        </div>
+        <div class="decision-card">
+          <h3>가상 EMR 스테이징은 auth.users와 완전 분리 <span class="done-badge">v0.4 · 구현 완료</span></h3>
+          <p><span class="mono">emr_patients</span> 등 4종은 <span class="mono">server_admin</span>이 다루는 "계정 연결 전" 데이터라 고객용 테이블과 독립적으로 존재. claim(회원가입) 시점에만 1회성 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 반영되지 않는다(의도적 범위 제한).</p>
         </div>
       </div>
     </section>
@@ -685,7 +823,27 @@ erDiagram
       <p class="note">이 마이그레이션도 아직 Supabase 프로젝트에 적용되지 않았다면 Supabase SQL Editor에서 직접 실행해야 한다.</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.5 기준 · db-schema v0.3 · 2026-08-05</footer>
+    <section id="v06new">
+      <h2>가상 EMR 스테이징 테이블 추가 <span class="tag">006</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/006_add_admin_emr_staging_tables.sql</span> — <span class="done-badge">Supabase 적용 완료</span> 실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 지원하기 위해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 <b>환자번호+인증코드 기반 가입</b>으로 교체하며 함께 추가된 마이그레이션이다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>변경</th><th>대상</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>신규 테이블</td><td class="mono">public.emr_patients</td><td>환자 프로필. auth.users와 무관하게 독립 존재, claimed_user_id로 가입 완료 여부 표시</td></tr>
+            <tr><td>신규 테이블</td><td class="mono">public.emr_care_records</td><td>계정 연결 전 시술 이력. claim 시 care_records로 이관</td></tr>
+            <tr><td>신규 테이블</td><td class="mono">public.emr_memberships</td><td>계정 연결 전 이용권. claim 시 memberships로 이관</td></tr>
+            <tr><td>신규 테이블</td><td class="mono">public.signup_verification_codes</td><td>24시간 유효 가입 인증코드. server_admin이 발급, POST /auth/signup이 검증·소진</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note-card" style="margin-top:14px;">
+        <b>배경(설계 대안 기각 사유)</b>: 처음엔 "이미 가입된 계정 위에 EMR 데이터를 얹는" 방식(placeholder Auth 계정을 미리 만들어두는 안)을 검토했으나 (1) 나중에 진짜 가입 시 별개 계정이 생겨 매칭이 안 되고 (2) 기존 <span class="mono">PHONE_ALREADY_EXISTS</span> 체크가 오히려 진짜 가입을 막으며 (3) <span class="mono">medical_profiles.user_id</span>가 PK라 계정 이관 시 PK 스왑이 필요하다는 세 가지 문제로 기각됐다. "환자번호+인증코드로 신원확인 후 가입" 방식이 이 세 문제를 모두 해결한다.
+      </div>
+      <p class="note"><b>관리자용 신규 스택</b>: 관리자 웹(<span class="mono">admin-web</span>, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 <span class="mono">server_admin/</span>(포트 4100, <span class="mono">server/</span>와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. <span class="mono">server_admin</span>은 이 4개 테이블만 다루고 <span class="mono">server/</span>의 기존 고객용 테이블은 건드리지 않는다. 이 마이그레이션은 이미 Supabase 프로젝트에 적용됐다.</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.4 · 2026-08-13</footer>
   </main>
 </div>
 

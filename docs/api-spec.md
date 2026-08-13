@@ -1,4 +1,4 @@
-# WHS After Mate — API 명세서 (v0.5, MVP)
+# WHS After Mate — API 명세서 (v0.6, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
@@ -55,24 +55,27 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 
 ## 1. 인증 / 온보딩
 
-회원가입은 **이메일/비밀번호 가입**으로 진행한다(전화번호 SMS 인증은 미구현으로 제외 — `server/README.md` TODO 참고). 로그인은 이메일/비밀번호만 사용한다.
+회원가입은 **병원(관리자용 admin-web/server_admin)에서 발급한 환자번호 + 인증코드로만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다. 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두고, 환자에게 인증코드를 발급하면 환자가 그 코드로 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
 
 ### POST /auth/signup
-이메일/비밀번호 회원가입.
+환자번호 + 인증코드 기반 회원가입. 이름/생년월일/전화번호는 요청에 포함하지 않는다 — `patientNo`로 찾은 `emr_patients` 레코드(의료진이 입력한 원본)에서 그대로 가져와 `profiles`에 채운다.
+
+가입이 성공하면 그 시점까지 `emr_patients`에 쌓여 있던 시술 이력·이용권(`emr_care_records`/`emr_memberships`)이 실제 `care_records`/`memberships`로 **1회성 이관(claim)** 된다. 이관은 가입 시 딱 한 번만 일어나며, claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 자동 반영되지 않는다(같은 환자번호로 재가입 시도 시 `409 PATIENT_ALREADY_CLAIMED`).
 
 **Request**
 ```json
 {
+  "patientNo": "P-00042",
+  "verificationCode": "483920",
   "email": "user@example.com",
-  "password": "string (8자 이상)",
-  "name": "홍길동",
-  "phone": "01012345678",
-  "birthDate": "1995-03-14"
+  "password": "string (8자 이상)"
 }
 ```
 **Response 200**: `POST /auth/login`과 동일 스키마 (accessToken, refreshToken, expiresIn, user)
+`404 PATIENT_NOT_FOUND`: 환자번호를 찾을 수 없음
+`409 PATIENT_ALREADY_CLAIMED`: 이미 가입 처리된 환자번호
+`400 INVALID_OR_EXPIRED_VERIFICATION_CODE`: 인증코드가 올바르지 않거나 만료(24시간)됨
 `409 EMAIL_ALREADY_EXISTS`
-`409 PHONE_ALREADY_EXISTS`: 이미 가입된 전화번호
 
 ### POST /auth/login
 실제 계정 로그인 (이메일/비밀번호).
@@ -421,7 +424,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 }
 ```
 - `birthDate` `(v0.5)`: 내 정보 화면의 "생년월일"
-- `phone` `(v0.5)`: 내 정보 화면의 "휴대폰 번호". 회원가입 시 입력한 번호를 그대로 조회 전용으로 노출(변경은 범위 밖 — 별도 논의 필요)
+- `phone` `(v0.5)`: 내 정보 화면의 "휴대폰 번호". 가입 시 `emr_patients`(병원 원본)에서 가져온 번호를 조회 전용으로 노출(변경은 범위 밖 — 별도 논의 필요)
 
 ### PATCH /profile
 이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·가입 시 입력값이라 이 엔드포인트로 변경 불가).
@@ -485,7 +488,9 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | `UNAUTHORIZED` | 토큰 없음/만료 |
 | `INVALID_REFRESH_TOKEN` | refreshToken 만료/무효 |
 | `EMAIL_ALREADY_EXISTS` | 이미 가입된 이메일 |
-| `PHONE_ALREADY_EXISTS` | 이미 가입된 전화번호 |
+| `PATIENT_NOT_FOUND` | 존재하지 않는 환자번호 *(v0.6 신규)* |
+| `PATIENT_ALREADY_CLAIMED` | 이미 가입 처리된 환자번호 *(v0.6 신규)* |
+| `INVALID_OR_EXPIRED_VERIFICATION_CODE` | 인증코드 불일치/만료 *(v0.6 신규)* |
 | `NO_ACTIVE_CUSTOMER_PROFILE` | 연결된 고객 프로필 없음 |
 | `CARE_RECORD_NOT_FOUND` | 존재하지 않는 관리 이력 |
 | `MEMBERSHIP_NOT_FOUND` | 존재하지 않는 이용권 |
@@ -521,3 +526,13 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | 9 | 이력 상태 칩 | 09. My Care·이력 | `CareRecord.status` (6과 동일 필드) | `careRecords.service.ts` |
 
 DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" 절, 유저플로우 변경은 `api-user-flow.html`의 비밀번호 재설정/변경 분기 참고.
+
+## v0.6 — 가상 EMR 기반 회원가입으로 전면 교체
+
+실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체했다.
+
+- **신규 관리자용 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 추가됨. 데스크에서 환자 등록, 시술기록/이용권 입력, 인증코드(24시간 유효) 발급을 수행한다. `server_admin`의 API는 이 문서(고객용 `server/`)의 범위 밖이며 `server_admin/README.md` 참고.
+- **신규 스테이징 테이블 4종**(`server/db/migrations/006_add_admin_emr_staging_tables.sql`): `emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes`. `auth.users`와 완전히 무관하게 독립 존재하며, 가입(claim) 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 `db-schema.md` 참고.
+- **`POST /auth/signup` 시그니처 전면 교체**: `{email,password,name,phone,birthDate}` → `{patientNo,verificationCode,email,password}`. 이름/전화/생년월일은 클라이언트가 입력하지 않고 `emr_patients` 원본에서 가져온다. 가입 성공 시 `emr_care_records`/`emr_memberships`가 실제 `care_records`/`memberships`로 **1회성 이관**되고, 실패 시 방금 만든 Auth 계정은 롤백된다(CASCADE로 하위 데이터 자동 정리).
+- **`PHONE_ALREADY_EXISTS` 에러 제거** — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`INVALID_OR_EXPIRED_VERIFICATION_CODE` 3종 신규 추가.
+- **claim은 1회성, 지속 동기화 아님**: claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 반영되지 않는다(의도적 범위 제한). 실제 서비스라면 배치 ETL이 필요 — `db-schema.md`의 "클리닉 EMR 연동" 절 참고.

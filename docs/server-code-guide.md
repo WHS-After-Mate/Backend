@@ -1,10 +1,12 @@
-# WHS After Mate — 서버 코드 설명서 (v0.1)
+# WHS After Mate — 서버 코드 설명서 (v0.2)
 
 `api-spec.md`가 "각 엔드포인트를 호출하면 무엇을 주고받는가"를 정의한 계약서라면,
 이 문서는 **그 계약을 `server/src` 코드가 실제로 어떻게 구현하는가**를 설명한다.
 파일 경로·함수명 기준으로 작성했으므로 코드와 나란히 두고 보는 것을 전제로 한다.
 
-대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점) + v0.5 신규 항목 9건(2026-08-05, 아직 별도 커밋 전 — 9절 "v0.5 신규 항목" 참고)
+이 문서는 고객용 백엔드 `server/`만 다룬다. 관리자용 백엔드 `server_admin/`(환자 등록, 시술기록/이용권 입력, 가입 인증코드 발급 — 포트 4100)은 `server/`와 동일한 3단 컨벤션(routes/services/validators)으로 별도 구축돼 있으며, 상세는 `server_admin/README.md` 참고.
+
+대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점) + v0.5 신규 항목 9건(2026-08-05, 9절 "v0.5 신규 항목" 참고) + v0.6 환자번호+인증코드 기반 회원가입(2026-08-13, 아직 별도 커밋 전 — 3절, 9-2절 참고)
 
 ---
 
@@ -64,14 +66,23 @@ app.ts
 
 전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 코드에서 완전히 제거됐다
 (`server/db/migrations/004_remove_phone_verification.sql`) — `lib/otp.ts`/`lib/sms.ts`/`lib/signedToken.ts`도
-함께 삭제됐다. 아래는 현재(전화인증 제거 후) 흐름이다.
+함께 삭제됐다.
 
-1. `POST /signup` → `signup`
-   - 동일 전화번호로 이미 가입된 프로필이 있으면 `PHONE_ALREADY_EXISTS`로 차단 →
-     `supabaseAdmin.auth.admin.createUser`로 계정 생성 → `profiles` 테이블에 이름/전화번호/생년월일
-     (`birthDate` → `birth_date`) insert → 프로필 insert가 실패하면 방금 만든 Auth 유저를 롤백
-     (`deleteUser`)해 고아 계정을 남기지 않는다 → 마지막으로 내부적으로 `login()`을 호출해 응답 스키마를
-     로그인과 동일하게 맞춘다.
+**회원가입은 v0.6에서 환자번호+인증코드 기반으로 전면 재작성됐다** — "환자가 앱에 가입하기 전에 의료진(`server_admin`/`admin-web`)이 먼저 시술 이력을 입력해둔다"는 실제 클리닉 흐름을 반영한 것이다.
+
+1. `POST /signup({ patientNo, verificationCode, email, password })` → `signup`
+   - `emr_patients`에서 `patient_no`로 환자를 조회한다. 없으면 `patientNotFound()`, 이미 `claimed_user_id`가 있으면(다른 계정이 먼저 가입) `patientAlreadyClaimed()`로 차단
+   - `signup_verification_codes`에서 해당 환자의 코드 중 `code` 일치·`used_at is null`·`expires_at`이 아직 안 지난 것을 조회한다. 없거나 만료됐으면 `invalidOrExpiredVerificationCode()`
+   - `supabaseAdmin.auth.admin.createUser`로 계정 생성(이메일/비밀번호만 이 단계에서 클라이언트 입력값 사용)
+   - 생성된 `user.id`로 다음을 순서대로 처리한다 — 이름/전화/생년월일은 **클라이언트 입력이 아니라 `emr_patients` 원본 값**을 그대로 사용:
+     1. `profiles` insert (`name`/`phone`/`birth_date`는 `emr_patients` 값)
+     2. `medical_profiles` insert (`allergies`/`chronic_conditions`/`doctor_general_comment`를 `emr_patients`에서 복사, `source_system: "aac_emr"`)
+     3. `emr_care_records`를 해당 `patient_id`로 전부 조회해 `care_records`로 매핑·insert (있으면)
+     4. `emr_memberships`를 동일하게 `memberships`로 매핑·insert (있으면)
+     5. `signup_verification_codes.used_at` 기록 + `emr_patients.claimed_user_id`/`claimed_at` 기록
+   - 1~5 중 하나라도 실패하면 `catch` 블록에서 방금 만든 Auth 유저를 `deleteUser`로 롤백한다. `profiles`/`medical_profiles`/`care_records`/`memberships`는 `auth.users`에 CASCADE로 걸려있어 유저 삭제 시 함께 정리되고, `emr_patients`/`signup_verification_codes`는 이 단계에서 아직 claim 처리 전(트랜잭션 밖)이라 그대로 남아 재시도 가능하다
+   - 마지막으로 내부적으로 `login()`을 호출해 응답 스키마를 로그인과 동일하게 맞춘다
+   - **Supabase에 실제 트랜잭션(BEGIN/COMMIT)을 쓰지 않는다** — 여러 insert를 순서대로 실행하고 실패 시 Auth 유저 롤백으로 정합성을 맞추는 애플리케이션 레벨 보정 방식. `emr_patients`/`signup_verification_codes`가 claim 이전까지 원본 그대로 보존되는 설계 덕에 이 방식이 안전하게 성립한다
 2. `POST /login` / `POST /refresh` / `POST /logout`
    - 이 세 개는 자체 로직 없이 **Supabase Auth를 그대로 감싸는 얇은 래퍼**다:
      `supabaseAnon.auth.signInWithPassword` / `refreshSession` / `supabaseAdmin.auth.admin.signOut(..., "global")`.
@@ -244,6 +255,19 @@ app.ts
 | 추천 상세 확장 3종(`relatedRecentCares` 등) | 2절 | `recommendations.service.ts` — `listRecentCareRecords()` + 키워드 기반 태그 매핑(`KEYWORD_GROUPS`, interestGoals 매칭과 공유) | 불필요 |
 
 마이그레이션 003은 이미 Supabase 프로젝트에 적용됐고(001·002 위에 누적), 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 직접 조회로 검증했다.
+
+### v0.6 신규 항목 — 가상 EMR 기반 회원가입으로 전면 교체
+
+실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체했다. 엔드투엔드 실측 테스트(환자 등록→시술기록/이용권 추가→인증코드 발급→가입→데이터 이관 확인→재가입 차단 확인)까지 통과했다.
+
+| 항목 | 문서(api-spec.md) 위치 | 구현 위치 | 마이그레이션 |
+|---|---|---|---|
+| `POST /auth/signup` 시그니처 교체 | 1절 | `auth.service.ts`의 `signup()` 전면 재작성 — `{patientNo,verificationCode,email,password}` | `006_add_admin_emr_staging_tables.sql` — 적용 완료 |
+| `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`INVALID_OR_EXPIRED_VERIFICATION_CODE` | 공통 에러 코드 | `lib/errors.ts` — `phoneAlreadyExists` 제거, 3종 신규 추가 | 불필요 |
+| 신규 관리자용 백엔드 `server_admin/` | 문서 범위 밖(별도 README) | 환자 CRUD, 시술기록/이용권 추가·삭제, 인증코드 발급 — `server/`와 동일 3단 컨벤션, 포트 4100, 무인증 | — |
+| 신규 스테이징 테이블 4종 | `db-schema.md` "가상 EMR 스테이징 테이블(006)" 절 | `emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes` | `006_add_admin_emr_staging_tables.sql` — 적용 완료 |
+
+**Windows 개발 환경 참고**: `tsx watch`가 파일 저장 후 재시작할 때 이전 프로세스가 포트를 즉시 놓지 않아 `EADDRINUSE`로 죽는 경우가 관찰됐다. 로컬에서 안정적으로 띄우려면 `npm run build` 후 `node dist/src/server.js`(고정 프로세스) 권장 — 빌드 산출물은 `rootDir: "."` 설정 때문에 `dist/server.js`가 아니라 `dist/src/server.js`이다.
 
 ---
 
