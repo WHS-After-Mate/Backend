@@ -1,3 +1,29 @@
+## 2026-08-15
+- admin-web 리포 업데이트 여부 확인 요청 → `git fetch`/`git log HEAD..origin/main`으로 새 커밋 없음(여전히 `initial commit` 하나뿐) 확인해 답변
+- 사용자가 `.work-log/dd.txt`에 피드백을 업데이트했다고 해서 확인 → 실제 코드와 항목별로 대조. 대부분 이미 Tier 0~5에서 완료됐고, 5개 항목만 현재 코드/기존 결정과 다르거나 미반영임을 정리해 제시(이용권 처리, brand 제거, 회원가입 관심목표, 비밀번호찾기, 관리자 인증)
+- **1번(이용권↔시술기록 통합)** — 사용자가 "환자가 가진 이용권을 토글 목록으로 보여주고 선택 시 차감, 없으면 직접입력으로 새 이용권 생성" 흐름을 구체적으로 설명 → 확인 질문(직접입력이 새 이용권도 만드는지, 기존 이용권 추가 API를 없앨지) 거쳐 설계 확정
+  - `POST /patients/:id/memberships`(E) 완전 제거, `POST /patients/:id/care-records`(D)가 `membershipId`(기존 차감) 또는 `totalSessions`(직접입력 — 새 이용권 생성+1회차 즉시 소비) 중 하나만 받도록 재설계, 응답 `{ careRecord, membership }`로 변경
+  - `emr_memberships.remaining_count` 생성 컬럼 추가(`007_emr_membership_remaining_count.sql`) — 실제 `memberships` 테이블과 동일 패턴
+  - `errors.ts`에 `membershipExhausted`(409) 추가, `admin-api-example.html` D/E 섹션을 이용권 select+직접입력 필드로 갱신
+  - 서버 실기동 + curl로 1/2/3회차 정상 차감, 4회차 시도 시 409, 옛 E엔드포인트 404, 두 필드 동시입력 400까지 검증. typecheck/build 통과
+- 사용자가 careType의 정체(피부클리닉에 실제 있는 개념인지) 질문 → 이 프로젝트가 daily-guide 매칭용으로 자체 도입한 내부 분류값이며 실제 EMR 표준 필드가 아님을 설명
+- 사용자가 "careType을 자유입력 대신 정해진 목록 중 택1로 하는 게 낫겠다" 제안 → `GET /care-types` 신규(reference_guides에 실제 검수 등록된 값만 반환), `POST .../care-records`가 목록 밖 값이면 `400 INVALID_CARE_TYPE`으로 거부하도록 변경. 테스트 페이지 careType을 자유입력 → select로 교체. 리프팅류 미지원 상태임을 사용자에게 알림 → 사용자가 "리프팅류는 일단 빼고 peeling/laser_toning만 우선 지원"으로 확정(추가 코드 변경 불필요)
+- **2번(brand 필드 제거) 논의** — 사용자가 "관리자 웹에 클리닉별 로그인 계정 3개를 만들고, 로그인하면 brand가 자동으로 채워지고 시술기록에도 자동 반영되는 구조"를 제안 → 기존 "admin-web은 무인증 데모" 결정을 뒤집는 큰 변경이라 확인 질문(데이터 공개 범위/계정 발급 방식/store 자동화 여부) 거쳐 설계 확정: 클리닉별 완전 격리, 시드 스크립트로 3계정 고정 생성, store도 계정에서 자동
+  - 사용자가 "우선 로그인 계정부터 만들자, 테스트 목적이니 확실히 알 수 있게" 요청 → 1단계로 로그인만 구현
+  - `admin_accounts` 테이블(`008_add_admin_accounts.sql`), bcrypt+jsonwebtoken 신규 도입, `server_admin/src/lib/adminAuth.ts`(해시/JWT), `POST /auth/login`, `server_admin/db/seed/seedAdmins.ts`(클리닉당 1계정 — `amred/amred1234`, `derna/derna1234`, `wim/wim1234`). `ADMIN_JWT_SECRET`은 로컬 `.env`에 임의값으로 채움
+  - 서버 실기동 + 3계정 전부 로그인 성공(각자 brand 정확히 반환), 오답 비밀번호 401 확인. typecheck/build 통과
+- 사용자가 "관리자 페이지 수정해서 로그인 단계부터 해보자"고 해서 admin-web(별도 저장소) 수정 여부를 재확인 질문 → 사용자가 "아니오, 백엔드만" "우리가 만든 테스트 웹에서만 진행"으로 명확히 재확인 — 기존 "admin-web 건드리지 않는다" 원칙 그대로 유지
+- **`/patients/*` 로그인 필수화** — `requireAdminAuth` 미들웨어 신규(`/auth/login` 제외 전부 토큰 필수), `admin-api-example.html`에 0단계 로그인 섹션 추가해 로그인 성공 시 토큰을 A~F 전체 호출에 자동 첨부하도록 갱신. 토큰 없이 401, 로그인 후 200 실측 확인
+- 사용자가 "brand/store 중 store는 클리닉당 지점이 하나뿐이라 없어도 되지 않냐" 질문 → 동의, store 전면 제거로 스코프 확장
+  - `care_records`/`emr_care_records`/`admin_accounts`에서 `store` 컬럼 삭제, `emr_patients.brand` 신규 추가(`009_drop_store_add_patient_brand.sql`)
+  - 시술기록 추가 시 `brand`도 클라이언트 입력 제거하고 로그인 토큰에서 자동 기록, 환자 등록도 동일
+  - `patients.service.ts` 전면 개편 — 환자 조회/목록/시술기록/이용권/인증코드 전부 로그인한 클리닉의 brand와 일치할 때만 접근 가능(다른 클리닉 데이터는 404로 통일, 존재 자체를 숨김)
+  - `server/`(고객용) 쪽 `auth.service.ts`(claim 로직)·`careRecords.service.ts`·`seed.ts`에서도 store 참조 제거
+  - 서버 실기동 + curl로 amred 로그인→환자 등록(brand 자동 "AMRED CLINIC")→amred 목록엔 보임→**derna 로그인 시 목록 비어있음, ID 직접조회 404**→amred가 시술기록 추가(brand 자동, 정상 차감)→**derna가 같은 환자에 쓰기 시도 시 404**까지 전부 검증. 양쪽 서버 typecheck/build 통과
+- brand 추가로 소속 클리닉이 없어진 레거시 테스트 환자 2명(모두 "테스트환자", 그중 1명은 이미 claim 완료 상태)을 발견 → 사용자 확인 후 삭제(claim된 계정 자체는 별개 테이블이라 영향 없음을 확인)
+- 이번 세션 내내 서버 종료 시 매번 `netstat`으로 포트별 정확한 PID를 찾아 `taskkill /PID`로만 종료(세션 초반 한 번 `taskkill /IM node.exe`로 전체 node 프로세스를 죽인 적이 있어 이후 교정)
+- git commit은 아직 안 함 — `/기록저장`으로 세션 정리
+
 ## 2026-08-13
 - 사용자가 `https://github.com/WHS-After-Mate/admin-web.git`(관리자 홈페이지 예시 리포)을 알려줘 로컬 `admin-web/`로 클론 — commit 1개("initial commit")뿐인 React 19+Vite 8 기본 스캐폴드, 실제 화면 없음을 확인
 - admin-web의 목적 확인: 실제 클리닉 데스크처럼 환자 프로필(이름/생년월일/전화번호)과 시술 이력(피부 클리닉 시술 횟수 등)을 직접 입력하는 가상 EMR 데이터 입력 도구. API는 별도 `server_admin`으로 분리 요청받음
@@ -17,6 +43,17 @@
 - 문서 아티팩트 4종(api-spec/db-schema/server-code-guide/api-user-flow) claude.ai에 재발행 — 기존 발행 URL 그대로 유지, WebFetch로 최신본 확인 후 갱신
 - **EMR 관련 변경분 git commit + push 완료** — `server/` 수정분 + `server_admin/` 신규 + 마이그레이션 006 + 문서 4종을 한 커밋으로 정리(`be86a01`, "Replace signup with patient-number + verification-code flow (virtual EMR)"), `8a30963`(seed 브랜드명)와 함께 origin/main에 push(`fcb4361..be86a01`)
 - 사용자가 `admin-web` 저장소는 이 백엔드 세션에서 절대 건드리지 않는다는 점을 명시적으로 재확인 — `git show --stat`으로 이번 커밋에 admin-web 관련 파일 변경이 0건임을 검증해 답변
+- work-log 정리 — `/기록저장`으로 저장
+- **`server_admin` API 테스트 페이지 신규 제작** — `server_admin/src/examples/admin-api-example.html`(`api-call-example.html`과 동일한 fetch 기반 방식). 환자 등록(A)→목록/상세 조회(B, C)→시술기록/이용권 추가·삭제(D, E)→인증코드 발급(F)→그 코드로 고객용 `server`에 실제 회원가입(G)까지 한 페이지에서 연쇄 테스트 가능. patientId(UUID)/patientNo 헷갈리는 지점, "어느 환자가 대상인지 안 보인다"는 사용자 피드백 반영해 "현재 대상 환자" 공용 섹션으로 재구성
+- 서버 2개(4000/4100)를 실제로 띄워 새 예시 페이지가 하는 동작을 curl로 재현해 A→G 전체 흐름 재검증(claim 데이터 확인, 재가입 시 `409 PATIENT_ALREADY_CLAIMED` 확인) — 테스트 데이터는 서비스 role key 임시 스크립트로 정리, 스크립트 삭제, 서버 종료
+- `server/src/examples/api-call-example.html`의 A단계(회원가입)를 옛날 이메일/이름/전화/생년월일 폼에서 새 `patientNo`+`verificationCode` 폼으로 갱신 — EMR 전환 이후로는 실패하는 요청이었음을 사용자가 지적해 발견
+- 사용자 UX 피드백 반영: 생년월일/시술일 입력을 `type="date"`로(수동 대시 입력 오류 방지), 전화번호 입력에 실시간 숫자 필터 추가
+- 그 과정에서 사용자가 "전화번호 형식 제한은 API 영역 아니냐"고 질문 → 확인해보니 실제로 `server_admin`의 `createPatientSchema`/`updatePatientSchema`가 `phone: z.string().min(1)`로 형식 검증을 전혀 안 하고 있었음(프론트 필터는 겉치레였음)을 인정, `phone: /^\d{9,11}$/` 정규식으로 실제 API 레벨 검증 추가
+- 사용자와 회원가입/인증 설계 문답: (1) 인증코드는 최초 신원확인 1회용, 이메일/비밀번호가 이후 로그인+비밀번호 찾기 수단이라는 이해 확인 (2) G단계에 patientNo가 별도로 필요한 이유 설명 — `signup_verification_codes.code`는 전역 유일값이 아니라(6자리 랜덤, unique 제약 없음) patientNo로 먼저 환자 1명을 좁혀야 코드 충돌/브루트포스 위험이 없음(계좌번호+OTP와 동일한 2단계 구조)
+- git commit + push 완료 — `e97b208`("Add server_admin API test page, enforce phone format, sync signup example")
+- 사용자가 `api-spec.md` 최신화 여부 질문 → `git log be86a01..HEAD`로 `server/`(고객용) API 계약에 영향 주는 변경이 없었음을 확인해 "최신 상태" 확인 답변(전화번호 검증 강화는 `server_admin` 범위라 문서화 대상 아님)
+- 사용자가 "가비아 서버가 뭐냐, 해커톤에서 무료 토큰 준다는데" 질문 → WebSearch로 가비아 클라우드(한국 도메인/호스팅 업체의 클라우드 VM 서비스, Render와 같은 역할) 설명. 해커톤 전용 크레딧 조건은 일반 검색으로 확인 불가(가비아 공식 신규고객 대상 "30만원 크레딧" 이벤트만 확인), 해커톤 주최 측 안내 재확인 필요
+- **배포 계획을 Render → 가비아 클라우드로 변경**(사용자 결정) — 아직 크레딧 지급 조건·가비아 VM 배포 절차 둘 다 미착수, work-log에 반영
 - work-log 정리 — `/기록저장`으로 저장
 
 ## 2026-08-12

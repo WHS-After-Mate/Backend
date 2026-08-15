@@ -29,6 +29,7 @@ AAC 웰니스 클리닉 고객을 위한 사후관리 앱의 백엔드 설계 �
 | [`docs/llm-prompt-design.md`](docs/llm-prompt-design.md) / `.html` | v0.1 | LLM 호출 파이프라인, 컨텍스트 주입 필드, 시스템 프롬프트 초안, 출력 스키마 |
 | [`docs/server-code-guide.md`](docs/server-code-guide.md) / `.html` | v0.1 | 위 문서들과 달리 API 계약이 아니라 **`server/src` 코드 자체의 동작**을 설명 (레이어 구조, 요청 파이프라인, LLM 파이프라인 단계별 흐름, 파일별 역할) |
 | [`docs/frontend-integration-guide.md`](docs/frontend-integration-guide.md) / `.html` | v0.1 | Android(프론트) 담당자용 — 리포 clone, `.env` 설정, 서버 실행, baseUrl(에뮬레이터/실기기), 데모 계정, Retrofit 호출 예시, 자주 막히는 지점 |
+| [`docs/admin-api-spec.md`](docs/admin-api-spec.md) / `.html` | v0.1 | `admin-web`이 호출하는 `server_admin`(포트 4100) API 명세 — 클리닉 로그인, 환자 등록/조회, 시술기록·이용권 처리, 브랜드별 데이터 격리 정책 |
 
 `.html` 파일은 브라우저로 직접 열면 표·다이어그램이 렌더링된 문서로 보입니다 (외부 의존성 없이 단일 파일로 동작). `.md` 파일은 실제 구현 시 복붙할 SQL/JSON을 포함한 원본입니다.
 

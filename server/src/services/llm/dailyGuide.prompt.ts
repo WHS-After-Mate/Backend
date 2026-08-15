@@ -5,7 +5,7 @@ export interface DailyGuideContext {
   careName: string;
   careDate: string;
   daysElapsed: number;
-  partOfBody: string | null;
+  partOfBody: string[];
   brand: string | null;
   doctorComment: string | null;
   medicalProfile: MedicalProfile;

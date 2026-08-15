@@ -10,6 +10,9 @@ const envSchema = z.object({
   // 회원가입 시 claim 대상인 profiles/care_records 등이 전부 같은 DB에 있다.
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  // 클리닉 관리자 로그인 토큰 서명용. server/의 Supabase Auth와 무관한 별도 발급 체계.
+  ADMIN_JWT_SECRET: z.string().min(16),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,10 +1,12 @@
 import { z } from "zod";
 
-// 이름/전화번호/생년월일은 클라이언트 입력이 아니라 patientNo로 찾은 emr_patients 레코드에서 그대로 가져온다
-// (의료진이 입력한 값이 원본이므로, 가입 폼에서 다시 받으면 오타/불일치가 생길 수 있어 신뢰하지 않는다).
+// 인증코드 발송을 없애고, patientNo + name + birthDate 조합으로 신원을 확인한다 — 셋 다
+// emr_patients에 등록된 값과 정확히 일치해야 가입이 진행된다(전화번호는 신원확인에 안 씀).
+// phone은 여전히 client 입력이 아니라 patientNo로 찾은 emr_patients 레코드에서 그대로 가져온다.
 export const signupSchema = z.object({
   patientNo: z.string().min(1),
-  verificationCode: z.string().min(1),
+  name: z.string().min(1),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   email: z.string().email(),
   password: z.string().min(8),
 });

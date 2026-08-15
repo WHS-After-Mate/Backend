@@ -1,15 +1,15 @@
 import { z } from "zod";
+import { BODY_PARTS } from "../lib/bodyParts";
 
 // 하이픈 없는 숫자만(seed.ts/emr_patients 저장 관례와 동일) 9~11자리 — 국내 유선(9~10자리)·휴대폰(10~11자리) 포괄
 const phoneSchema = z.string().regex(/^\d{9,11}$/);
 
+// 알러지/기저질환/의사소견은 별도 필드로 나누지 않고 notes(기타사항) 하나로 합쳐서 받는다.
 export const createPatientSchema = z.object({
   name: z.string().min(1),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   phone: phoneSchema,
-  allergies: z.array(z.string()).default([]),
-  chronicConditions: z.array(z.string()).default([]),
-  doctorGeneralComment: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export const updatePatientSchema = z.object({
@@ -19,43 +19,38 @@ export const updatePatientSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   phone: phoneSchema.optional(),
-  allergies: z.array(z.string()).optional(),
-  chronicConditions: z.array(z.string()).optional(),
-  doctorGeneralComment: z.string().optional(),
+  notes: z.string().optional(),
 });
 
-// brand는 실제 AAC 브랜드(AMRED CLINIC/DERNA CLINIC/WIM Clinic/WIM Center) 기준으로 admin-web에서
-// select로 제공할 예정이라 여기선 자유 문자열로만 검증한다(신규 브랜드 추가 시 서버 배포 없이 대응 가능).
-export const createCareRecordSchema = z.object({
-  careName: z.string().min(1),
-  // /aftercare/daily-guide가 reference_guides에서 찾는 키. 목록 밖 값도 저장은 되지만
-  // claim 이후 daily-guide 조회 시 404 GUIDE_NOT_AVAILABLE로 폴백된다(server-code-guide.html 참고).
-  careType: z.string().min(1),
-  careDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  partOfBody: z.string().optional(),
-  brand: z.string().optional(),
-  store: z.string().optional(),
-  practitioner: z.string().optional(),
-  basicAftercareGuide: z.array(z.string()).default([]),
-  doctorComment: z.string().optional(),
-  sessionNumber: z.number().int().positive().optional(),
-  totalSessions: z.number().int().positive().optional(),
-});
-
-export const createMembershipSchema = z.object({
-  productName: z.string().min(1),
-  totalCount: z.number().int().nonnegative(),
-  usedCount: z.number().int().nonnegative().default(0),
-  expiresAt: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  lastUsedAt: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  availableCareNames: z.array(z.string()).default([]),
-});
+// brand는 더 이상 여기서 받지 않는다 — 로그인한 클리닉 계정(req.admin.brand)에서 그대로 가져온다
+// (수동 선택 시 실수로 다른 클리닉을 고를 여지를 없애기 위함). store는 클리닉당 지점이 1곳뿐이라
+// brand와 항상 1:1이었던 중복 정보라 제거했다(009 마이그레이션).
+//
+// 시술과 이용권은 항상 1:1로 묶인다(별도 "이용권 추가" API 없음) — 시술기록을 추가할 때 라디오로
+// (1) 이미 갖고 있는 이용권 중 하나를 골라 그 자리에서 1회 차감(membershipId)하거나
+// (2) 새 이용권 자체를 여기서 만들면서 그 1회차를 바로 소비(totalSessions)하는 것, 둘 중 하나만 고른다.
+export const createCareRecordSchema = z
+  .object({
+    careName: z.string().min(1),
+    // /aftercare/daily-guide가 reference_guides에서 찾는 키. 목록 밖 값도 저장은 되지만
+    // claim 이후 daily-guide 조회 시 404 GUIDE_NOT_AVAILABLE로 폴백된다(server-code-guide.html 참고).
+    careType: z.string().min(1),
+    careDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // 관리 상세 화면(와이어프레임 11번)처럼 한 시술에 여러 부위가 동시에 해당할 수 있어 중복 선택 가능.
+    // 고정 목록(GET /body-parts) 밖의 값은 거부한다.
+    partOfBody: z.array(z.enum(BODY_PARTS)).default([]),
+    practitioner: z.string().optional(),
+    basicAftercareGuide: z.array(z.string()).default([]),
+    doctorComment: z.string().optional(),
+    // 라디오: 기존 이용권에서 차감
+    membershipId: z.string().uuid().optional(),
+    // 라디오: 직접 입력(새 이용권을 이 총 횟수로 생성하고 1회차를 바로 사용 처리)
+    totalSessions: z.number().int().positive().optional(),
+  })
+  .refine((data) => (data.membershipId ? !data.totalSessions : !!data.totalSessions), {
+    message: "membershipId(기존 이용권 선택)와 totalSessions(직접 입력) 중 하나만 입력해야 합니다.",
+    path: ["membershipId"],
+  });
 
 export const listPatientsQuerySchema = z.object({
   search: z.string().optional(),

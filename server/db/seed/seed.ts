@@ -30,9 +30,8 @@ interface PatientSeed {
     careName: string;
     careType: string;
     daysAgo: number;
-    partOfBody: string;
+    partOfBody: string[];
     brand: string;
-    store: string;
     practitioner: string;
     basicAftercareGuide: string[];
     doctorComment: string | null;
@@ -70,9 +69,8 @@ const PATIENTS: PatientSeed[] = [
         careName: "브라이트닝 필링",
         careType: "peeling",
         daysAgo: 5,
-        partOfBody: "얼굴",
+        partOfBody: ["얼굴 전체"],
         brand: "AMRED CLINIC",
-        store: "AMRED CLINIC 청담점",
         practitioner: "김OO 원장",
         basicAftercareGuide: ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"],
         doctorComment: "각질 상태 양호, 3일 후 각질 제거 제품 재개 가능",
@@ -84,9 +82,8 @@ const PATIENTS: PatientSeed[] = [
         careName: "레이저 토닝",
         careType: "laser_toning",
         daysAgo: 30,
-        partOfBody: "얼굴",
+        partOfBody: ["얼굴 전체"],
         brand: "AMRED CLINIC",
-        store: "AMRED CLINIC 청담점",
         practitioner: "이OO 원장",
         basicAftercareGuide: ["당일 메이크업 금지", "냉찜질 권장"],
         doctorComment: null,
@@ -128,9 +125,8 @@ const PATIENTS: PatientSeed[] = [
         careName: "레이저 토닝",
         careType: "laser_toning",
         daysAgo: 2,
-        partOfBody: "얼굴",
+        partOfBody: ["얼굴 전체"],
         brand: "DERNA CLINIC",
-        store: "DERNA CLINIC (웰니스하우스서울 B1)",
         practitioner: "박OO 원장",
         basicAftercareGuide: ["당일 메이크업 금지", "냉찜질 권장"],
         doctorComment: "초기 진정 관리 중, 자극 성분 접촉 주의",
@@ -169,9 +165,8 @@ const PATIENTS: PatientSeed[] = [
         careName: "브라이트닝 필링",
         careType: "peeling",
         daysAgo: 25,
-        partOfBody: "얼굴",
+        partOfBody: ["얼굴 전체"],
         brand: "AMRED CLINIC",
-        store: "AMRED CLINIC 청담점",
         practitioner: "김OO 원장",
         basicAftercareGuide: ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"],
         doctorComment: null,
@@ -330,7 +325,6 @@ async function seedPatient(patient: PatientSeed) {
           care_date: daysAgo(record.daysAgo),
           part_of_body: record.partOfBody,
           brand: record.brand,
-          store: record.store,
           practitioner: record.practitioner,
           basic_aftercare_guide: record.basicAftercareGuide,
           doctor_comment: record.doctorComment,

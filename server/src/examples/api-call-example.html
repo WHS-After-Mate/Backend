@@ -30,17 +30,21 @@
 
   <h2 style="margin-top:32px;">A. 회원가입 실험 (가입 → 자동 로그인)</h2>
   <p class="desc">
-    회원가입은 환자번호(patientNo)+인증코드 기반이다(<code>server/README.md</code> 참고) — 이름/전화번호/생년월일은
-    이 화면에서 입력받지 않고 <code>emr_patients</code> 원본에서 그대로 채워진다. 먼저 <code>server_admin</code>의
-    <code>server_admin/src/examples/admin-api-example.html</code>에서 환자를 등록하고 인증코드를 발급받은 뒤,
-    그 patientNo/verificationCode를 아래 칸에 붙여넣어야 한다.
+    회원가입은 환자번호(patientNo)+이름+생년월일 일치 기반이다(<code>server/README.md</code> 참고, 인증코드 없음) —
+    전화번호는 이 화면에서 입력받지 않고 <code>emr_patients</code> 원본에서 그대로 채워진다. 먼저
+    <code>server_admin</code>의 <code>server_admin/src/examples/admin-api-example.html</code>에서 환자를
+    등록한 뒤, 그때 등록한 patientNo/이름/생년월일을 아래 칸에 그대로 붙여넣어야 한다(하나라도 다르면
+    <code>400 PATIENT_IDENTITY_MISMATCH</code>).
   </p>
 
   <label>patientNo (server_admin 예시 페이지의 A 단계에서 발급받은 값)</label>
   <input id="signupPatientNo" placeholder="예: EMR-P-A1B2C3" />
 
-  <label>verificationCode (server_admin 예시 페이지의 F 단계에서 발급받은 값)</label>
-  <input id="signupVerificationCode" placeholder="예: 483920" />
+  <label>이름 (server_admin 예시 페이지의 A 단계에서 등록한 값과 정확히 일치해야 함)</label>
+  <input id="signupName" placeholder="예: 테스트환자" />
+
+  <label>생년월일 (server_admin 예시 페이지의 A 단계에서 등록한 값과 정확히 일치해야 함)</label>
+  <input id="signupBirthDate" type="date" />
 
   <label>이메일 (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
   <input id="signupEmail" />
@@ -189,12 +193,13 @@
 
   // ============================================================
   // A단계: 회원가입 — POST /auth/signup
-  // Request body: { patientNo, verificationCode, email, password }
+  // Request body: { patientNo, name, birthDate, email, password }
   // Response 200: POST /auth/login과 동일한 형식 { accessToken, refreshToken, expiresIn, user }
   // → auth.service.ts를 보면 signup() 함수 맨 마지막 줄이 return login(...) 이라서,
   //   가입(claim)에 성공하는 순간 바로 로그인까지 처리되어 토큰이 함께 내려온다.
-  // 이름/전화번호/생년월일은 여기서 입력받지 않는다 — patientNo로 찾은 emr_patients 원본 값을 그대로 쓴다.
-  // (전화번호 SMS 인증은 여전히 미구현 — phone은 emr_patients에서 온 연락처 값으로만 저장된다)
+  // 인증코드는 없다 — name/birthDate가 patientNo로 찾은 emr_patients 원본 값과 정확히 일치해야
+  // 가입이 진행된다(하나라도 다르면 400 PATIENT_IDENTITY_MISMATCH). 전화번호는 여기서 입력받지
+  // 않는다 — emr_patients에서 온 연락처 값으로만 저장된다.
   // ============================================================
   $("signupBtn").addEventListener("click", async () => {
     const baseUrl = $("baseUrl").value.replace(/\/$/, "");
@@ -207,7 +212,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientNo: $("signupPatientNo").value,
-          verificationCode: $("signupVerificationCode").value,
+          name: $("signupName").value,
+          birthDate: $("signupBirthDate").value,
           email: $("signupEmail").value,
           password: $("signupPassword").value,
         }),

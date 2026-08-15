@@ -6,9 +6,8 @@ export interface CareRecordRow {
   care_name: string;
   care_type: string | null;
   care_date: string;
-  part_of_body: string | null;
+  part_of_body: string[];
   brand: string | null;
-  store: string | null;
   practitioner: string | null;
   status: string;
   basic_aftercare_guide: string[];
@@ -19,7 +18,7 @@ export interface CareRecordRow {
 }
 
 const LIST_COLUMNS =
-  "id, care_name, care_type, care_date, part_of_body, brand, store, practitioner, status, basic_aftercare_guide, doctor_comment";
+  "id, care_name, care_type, care_date, part_of_body, brand, practitioner, status, basic_aftercare_guide, doctor_comment";
 
 // 상세 화면 전용 — 회차·연결 이용권까지 조회 (v0.5). memberships FK(membership_id)로 상품명을 조인한다.
 const DETAIL_COLUMNS = `${LIST_COLUMNS}, session_number, total_sessions, membership:memberships(id, product_name)`;
@@ -31,7 +30,6 @@ export function toCareRecordSummary(row: CareRecordRow) {
     careDate: row.care_date,
     partOfBody: row.part_of_body,
     brand: row.brand,
-    store: row.store,
     practitioner: row.practitioner,
     status: row.status,
   };
@@ -110,7 +108,7 @@ export async function listCareRecords(
 
   if (params.dateFrom) query = query.gte("care_date", params.dateFrom);
   if (params.dateTo) query = query.lte("care_date", params.dateTo);
-  if (params.partOfBody) query = query.eq("part_of_body", params.partOfBody);
+  if (params.partOfBody) query = query.contains("part_of_body", [params.partOfBody]);
   if (params.brand) query = query.eq("brand", params.brand);
 
   const from = (params.page - 1) * params.size;

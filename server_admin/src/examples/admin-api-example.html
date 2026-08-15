@@ -19,6 +19,11 @@
   .status.err { color: #c0392b; }
   .row { display: flex; gap: 12px; }
   .row > div { flex: 1; }
+  .scroll-box { max-height: 280px; overflow-y: auto; }
+  table.patient-list { width: 100%; border-collapse: collapse; font-size: 13px; background: #f4f4f4; }
+  table.patient-list th, table.patient-list td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #ddd; }
+  table.patient-list th { background: #ececec; position: sticky; top: 0; }
+  table.patient-list td.empty { color: #999; }
 </style>
 </head>
 <body>
@@ -27,21 +32,58 @@
     이 파일은 실제 <code>admin-web</code>(별도 저장소) 프론트가 아니다 — <code>server_admin</code> API를
     <code>fetch()</code>로 직접 눌러보기 위한 임시 테스트 페이지일 뿐이다. 서버 코드를 import하지 않고
     오직 HTTP 요청만 보낸다. 먼저 다른 터미널에서 <code>server_admin</code>을 <code>npm run dev</code>로
-    켜둔 상태여야 한다(기본 포트 4100). G 단계(가입 연동 테스트)를 실행하려면 <code>server</code>(포트 4000)도
+    켜둔 상태여야 한다(기본 포트 4100). E 단계(가입 연동 테스트)를 실행하려면 <code>server</code>(포트 4000)도
     함께 켜져 있어야 한다.
   </p>
 
   <label>Admin API Base URL</label>
   <input id="adminBaseUrl" value="http://localhost:4100/api/v1" />
 
-  <label>Customer API Base URL (G 단계 회원가입 연동 테스트용)</label>
+  <label>Customer API Base URL (E 단계 회원가입 연동 테스트용)</label>
   <input id="customerBaseUrl" value="http://localhost:4000/api/v1" />
+
+  <h2>0. 관리자 로그인 — POST /auth/login</h2>
+  <p class="desc">
+    아래 A~E는 이제 전부 로그인 토큰이 있어야 호출된다. 클리닉 3곳 중 하나로 로그인하면
+    이후 요청에 <code>Authorization: Bearer &lt;token&gt;</code>이 자동으로 실린다.
+    테스트 계정(<code>npm run seed:admins</code>로 생성): <code>amred/amred1234</code>,
+    <code>derna/derna1234</code>, <code>wim/wim1234</code>.
+  </p>
+
+  <label>username</label>
+  <select id="loginUsername">
+    <option value="amred">amred (AMRED CLINIC)</option>
+    <option value="derna">derna (DERNA CLINIC)</option>
+    <option value="wim">wim (WIM Clinic)</option>
+  </select>
+
+  <label>password</label>
+  <input id="loginPassword" value="amred1234" />
+
+  <button id="loginBtn">로그인 — POST /auth/login</button>
+  <div class="step">
+    <span id="loginStatus" class="status"></span>
+    <pre id="loginResult">(아직 로그인 안 함)</pre>
+  </div>
+
+  <p style="margin-top:16px; padding:10px 14px; background:#eef6ff; border-radius:6px; font-weight:600;">
+    현재 로그인 클리닉: <span id="currentBrandBanner">(로그인 필요)</span>
+  </p>
 
   <h2>A. 환자 등록 — POST /patients</h2>
   <p class="desc">
-    실제 클리닉 데스크에서 환자가 처음 방문했을 때 입력하는 정보. 성공하면 서버가 환자번호(<code>patientNo</code>)를
-    자동 발급한다. 여기서 등록한 환자의 <code>id</code>는 아래 "현재 대상 환자"(C~F 단계용), <code>patientNo</code>는
-    G 단계(회원가입 연동 테스트)의 입력칸에 각각 자동으로 채워진다.
+    실제 클리닉 데스크에서 환자가 처음 방문했을 때 입력하는 정보. 성공하면 서버가 환자번호(<code>patientNo</code>)만
+    발급한다(인증코드는 없음 — 회원가입은 이 patientNo+이름+생년월일 일치로 신원확인). 여기서 등록한 환자의
+    <code>id</code>는 아래 "현재 대상 환자"(C~E 단계용), <code>patientNo</code>·이름·생년월일은
+    E 단계(회원가입 연동 테스트)의 입력칸에 각각 자동으로 채워진다.
+  </p>
+  <p class="desc">
+    이름+생년월일+전화번호가 전부 같은 환자가 이 클리닉에 이미 있으면 새로 만들지 않고 그 환자를 그대로
+    재사용한다 — 에러가 아니라 <code>200</code> + <code>duplicate: true</code>로 응답한다(<code>201</code>이면
+    새로 만든 것, <code>200</code>+<code>duplicate</code>면 기존 환자였다는 뜻). 이때 기타사항이 바뀌었으면
+    그 값으로 갱신까지 해준다. 전화번호칸은 버튼 누를 때마다 자동으로 새로 채워지므로 평소엔 새 환자로
+    등록되는데, 아래 이름·생년월일·전화번호를 방금 등록한 값과 똑같이 맞추고(기타사항은 다르게 바꿔서)
+    다시 누르면 이 동작을 직접 볼 수 있다.
   </p>
 
   <label>이름</label>
@@ -53,14 +95,8 @@
   <label>전화번호 (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
   <input id="patientPhone" type="tel" inputmode="numeric" />
 
-  <label>알러지 (쉼표로 구분, 비워도 됨)</label>
-  <input id="patientAllergies" value="페니실린" />
-
-  <label>기저질환 (쉼표로 구분, 비워도 됨)</label>
-  <input id="patientChronicConditions" />
-
-  <label>의사 소견 (선택)</label>
-  <input id="patientDoctorComment" value="특이사항 없음, 정상 시술 가능" />
+  <label>기타사항 (알러지·기저질환·의사소견 등을 한 칸에 자유롭게, 비워도 됨)</label>
+  <input id="patientNotes" value="페니실린 알러지, 특이사항 외엔 정상 시술 가능" />
 
   <button id="createPatientBtn">환자 등록 — POST /patients</button>
   <div class="step">
@@ -68,31 +104,35 @@
     <pre id="createPatientResult">(아직 실행 안 함)</pre>
   </div>
 
-  <h2>현재 대상 환자 <span style="font-weight:400; font-size:14px; color:#666;">(아래 C~F 단계가 전부 이 값을 사용)</span></h2>
+  <h2>현재 대상 환자 <span style="font-weight:400; font-size:14px; color:#666;">(아래 C~E 단계가 전부 이 값을 사용)</span></h2>
   <p class="desc">
-    A에서 환자를 등록하면 자동으로 채워진다. 이미 등록해둔 다른 환자를 대상으로 C~F를 테스트하고 싶으면
+    A에서 환자를 등록하면 자동으로 채워진다. 이미 등록해둔 다른 환자를 대상으로 C~E를 테스트하고 싶으면
     B(환자 목록 조회) 응답의 <code>id</code> 필드 값을 여기 직접 붙여넣으면 된다 —
     <b><code>patient_no</code>(EMR-P-XXXXXX 형태의 환자번호)가 아니라 UUID 형태의 <code>id</code></b>다.
-    <code>patient_no</code>는 아래 G 단계(실제 회원가입 연동 테스트)에서 따로 쓴다.
+    <code>patient_no</code>는 아래 E 단계(실제 회원가입 연동 테스트)에서 따로 쓴다.
   </p>
 
   <label>patientId (id — UUID, patient_no 아님)</label>
   <input id="patientId" placeholder="예: ff54902e-e62f-4327-8b5c-a40c52b1f7df (위 A 실행 후 자동 채워짐)" />
 
   <h2>B. 환자 목록/검색 — GET /patients?search=</h2>
-  <p class="desc">이름·전화번호·환자번호 부분일치 검색. 비워두면 전체 목록.</p>
+  <p class="desc">
+    로그인하면 자동으로 전체 목록을 불러온다. 검색어를 입력하면 버튼 없이 실시간(입력 300ms 후)으로
+    다시 조회해서 목록이 그때그때 바뀐다. 이름·전화번호·환자번호 부분일치 검색, 비워두면 전체 목록.
+    목록이 길어지면 아래 박스 안에서만 스크롤된다.
+  </p>
 
-  <label>검색어 (선택)</label>
+  <label>검색어 (실시간 필터)</label>
   <input id="searchQuery" placeholder="예: 테스트, 환자번호 일부, 전화번호 일부" />
 
-  <button id="listPatientsBtn">환자 목록 조회 — GET /patients</button>
+  <button id="listPatientsBtn">지금 바로 조회 — GET /patients</button>
   <div class="step">
     <span id="listPatientsStatus" class="status"></span>
-    <pre id="listPatientsResult">(아직 실행 안 함)</pre>
+    <div id="listPatientsResult" class="scroll-box">(로그인하면 자동으로 채워짐)</div>
   </div>
 
   <h2>C. 환자 상세 조회 — GET /patients/:patientId</h2>
-  <p class="desc">프로필 + 시술기록 + 이용권 + 발급된 인증코드 이력을 한 번에 반환한다. 위 "현재 대상 환자" 칸의 patientId를 사용한다.</p>
+  <p class="desc">프로필 + 시술기록 + 이용권을 한 번에 반환한다. 위 "현재 대상 환자" 칸의 patientId를 사용한다.</p>
 
   <button id="getPatientBtn">환자 상세 조회 — GET /patients/:patientId</button>
   <div class="step">
@@ -102,31 +142,39 @@
 
   <h2>D. 시술 기록 추가 — POST /patients/:patientId/care-records</h2>
   <p class="desc">
-    위 "현재 대상 환자"의 patientId를 대상으로 추가한다.
+    위 "현재 대상 환자"의 patientId를 대상으로 추가한다. 이용권 추가 API는 따로 없다 — 시술과 이용권은
+    항상 1:1이라, 아래 라디오로 <b>① 이미 갖고 있는 이용권에서 1회 차감</b>하거나
+    <b>② 직접 입력으로 새 이용권을 만들면서 1회차를 바로 소비</b>하는 것 중 하나만 고른다(실제 admin-web
+    화면은 라디오 버튼 UI지만, 이 테스트 페이지는 같은 의미를 select로 단순화했다).
     <code>careType</code>은 <code>/aftercare/daily-guide</code>가 검수 가이드를 찾는 매칭 키다.
     현재 시드 데이터는 <code>peeling</code>/<code>laser_toning</code> 2종만 지원하므로, 나중에 이 환자로
     가입해 daily-guide까지 테스트해보려면 둘 중 하나를 써야 한다.
+    이 환자가 이미 회원가입(claim)한 상태여도 추가할 수 있다 — 그 경우 <code>emr_care_records</code>가
+    아니라 실제 <code>care_records</code>/<code>memberships</code>에 바로 기록된다(응답의
+    <code>source</code> 필드로 <code>"emr"</code>/<code>"app"</code> 어느 쪽인지 확인 가능).
   </p>
 
   <label>careName (관리명)</label>
-  <input id="careName" value="브라이트닝 필링" />
+  <input id="careName" value="울쎄라 300샷" />
 
-  <label>careType (peeling / laser_toning 권장)</label>
-  <input id="careType" value="peeling" />
+  <label>careType (reference_guides에 검수 등록된 값만 선택 가능 — GET /care-types로 채워짐)</label>
+  <select id="careType"></select>
 
   <label>careDate</label>
   <input id="careDate" type="date" value="2026-08-01" />
 
-  <div class="row">
-    <div>
-      <label>brand</label>
-      <input id="careBrand" value="AMRED CLINIC" />
-    </div>
-    <div>
-      <label>store</label>
-      <input id="careStore" value="AMRED CLINIC 청담점" />
-    </div>
-  </div>
+  <label>관리 부위 (중복 선택 가능 — GET /body-parts로 채워짐)</label>
+  <div id="bodyPartsBox" style="display:flex; flex-wrap:wrap; gap:8px 16px; padding:8px 0;"></div>
+
+  <p class="desc">brand는 더 이상 여기서 입력하지 않는다 — 위에서 로그인한 클리닉으로 자동 기록된다.</p>
+
+  <label>이용권 선택 (위 C를 먼저 눌러야 목록이 채워짐)</label>
+  <select id="careMembershipSelect">
+    <option value="">— 직접 입력(새 이용권 생성) —</option>
+  </select>
+
+  <label>totalSessions (직접 입력을 골랐을 때만 사용 — 새 이용권 총 횟수, 이번이 1회차)</label>
+  <input id="careTotalSessions" value="3" type="number" />
 
   <button id="addCareRecordBtn">시술 기록 추가 — POST /patients/:patientId/care-records</button>
   <div class="step">
@@ -135,57 +183,33 @@
   </div>
 
   <button class="danger" id="deleteCareRecordBtn">방금 추가한 시술 기록 삭제 — DELETE /care-records/:careRecordId</button>
+  <p class="desc">
+    이용권도 함께 정리된다 — 방금 직접입력으로 새로 만든 이용권이었으면 통째로 삭제되고,
+    기존 이용권에서 차감한 거였으면 그 차감만 1 되돌아간다(이용권을 따로 지우는 API는 없음).
+  </p>
   <div class="step">
     <span id="deleteCareRecordStatus" class="status"></span>
     <pre id="deleteCareRecordResult">(아직 실행 안 함)</pre>
   </div>
 
-  <h2>E. 이용권 추가 — POST /patients/:patientId/memberships</h2>
-  <p class="desc">위 "현재 대상 환자"의 patientId를 대상으로 추가한다.</p>
-
-  <label>productName (상품명)</label>
-  <input id="membershipProductName" value="울쎄라 3회 이용권" />
-
-  <label>totalCount (총 횟수)</label>
-  <input id="membershipTotalCount" value="3" type="number" />
-
-  <button id="addMembershipBtn">이용권 추가 — POST /patients/:patientId/memberships</button>
-  <div class="step">
-    <span id="addMembershipStatus" class="status"></span>
-    <pre id="addMembershipResult">(아직 실행 안 함)</pre>
-  </div>
-
-  <button class="danger" id="deleteMembershipBtn">방금 추가한 이용권 삭제 — DELETE /memberships/:membershipId</button>
-  <div class="step">
-    <span id="deleteMembershipStatus" class="status"></span>
-    <pre id="deleteMembershipResult">(아직 실행 안 함)</pre>
-  </div>
-
-  <h2>F. 가입 인증코드 발급 — POST /patients/:patientId/signup-code</h2>
+  <h2>E. (연동 테스트) patientNo+이름+생년월일로 실제 회원가입 — POST /auth/signup (server, 포트 4000)</h2>
   <p class="desc">
-    위 "현재 대상 환자"의 patientId로 발급한다. 24시간 유효. 실제 SMS는 발송하지 않고 응답에 코드가 그대로 담겨온다(admin-web 화면에 표시해 데스크에서 안내하는 방식).
-    발급된 코드는 아래 G 단계에 자동으로 채워진다.
-  </p>
-
-  <button id="issueCodeBtn">인증코드 발급 — POST /patients/:patientId/signup-code</button>
-  <div class="step">
-    <span id="issueCodeStatus" class="status"></span>
-    <pre id="issueCodeResult">(아직 실행 안 함)</pre>
-  </div>
-
-  <h2>G. (연동 테스트) 발급된 코드로 실제 회원가입 — POST /auth/signup (server, 포트 4000)</h2>
-  <p class="desc">
-    여기부터는 <code>server_admin</code>이 아니라 고객용 <code>server</code>를 호출한다. 위 A~F에서 만든
-    환자번호+인증코드로 실제 앱 계정을 생성해, 시술기록/이용권이 <code>care_records</code>/<code>memberships</code>로
-    1회성 이관(claim)되는지까지 전체 흐름을 확인할 수 있다. 성공 후 같은 환자번호로 다시 이 버튼을 누르면
-    <code>409 PATIENT_ALREADY_CLAIMED</code>가 나는 것도 확인해볼 수 있다.
+    여기부터는 <code>server_admin</code>이 아니라 고객용 <code>server</code>를 호출한다. 인증코드는 없다 —
+    patientNo+이름+생년월일이 위 A에서 등록한 값과 정확히 일치해야 가입이 진행된다. 성공하면 실제 앱 계정이
+    생성되고, 시술기록/이용권이 <code>care_records</code>/<code>memberships</code>로 1회성 이관(claim)되는지까지
+    전체 흐름을 확인할 수 있다. 성공 후 같은 환자번호로 다시 이 버튼을 누르면
+    <code>409 PATIENT_ALREADY_CLAIMED</code>가 나는 것도, 이름/생년월일을 일부러 틀리게 바꾸면
+    <code>400 PATIENT_IDENTITY_MISMATCH</code>가 나는 것도 확인해볼 수 있다.
   </p>
 
   <label>patientNo (A에서 등록하면 자동 채워짐)</label>
   <input id="signupPatientNo" placeholder="위 A 실행 후 자동 채워짐" />
 
-  <label>verificationCode (F에서 발급하면 자동 채워짐)</label>
-  <input id="signupVerificationCode" placeholder="위 F 실행 후 자동 채워짐" />
+  <label>이름 (A에서 등록하면 자동 채워짐 — emr_patients와 정확히 일치해야 함)</label>
+  <input id="signupName" placeholder="위 A 실행 후 자동 채워짐" />
+
+  <label>생년월일 (A에서 등록하면 자동 채워짐 — emr_patients와 정확히 일치해야 함)</label>
+  <input id="signupBirthDate" type="date" placeholder="위 A 실행 후 자동 채워짐" />
 
   <label>email (버튼 누를 때마다 자동으로 겹치지 않게 새로 채워짐)</label>
   <input id="signupEmail" />
@@ -199,61 +223,229 @@
     <pre id="signupResult">(아직 실행 안 함)</pre>
   </div>
 
+  <h2>F. 방문 고객수 — GET /visit-stats</h2>
+  <p class="desc">
+    오늘/어제/이틀 전, 로그인한 클리닉에 방문(시술기록이 있는)한 고객 수(중복 제거). 회원가입 전
+    고객(<code>emr_care_records</code>)과 회원가입 후 고객(<code>care_records</code>)을 합쳐서 센다.
+  </p>
+
+  <button id="visitStatsBtn">방문 고객수 조회 — GET /visit-stats</button>
+  <div class="step">
+    <span id="visitStatsStatus" class="status"></span>
+    <pre id="visitStatsResult">(아직 실행 안 함)</pre>
+  </div>
+
 <script>
+  // ================================================================================
+  // 이 페이지 전체의 동작 원리 (처음 보는 사람을 위한 요약)
+  //
+  // 이 파일은 "화면"이 아니라 그냥 API를 눌러보는 버튼 모음이다. 버튼을 누르면
+  // JS의 fetch() 함수가 server_admin(또는 server)에 HTTP 요청을 보내고, 서버가 돌려준
+  // JSON 응답을 화면에 그대로 찍어 보여줄 뿐이다. 즉:
+  //
+  //   버튼 클릭(사용자 행동) → fetch(주소, {method, headers, body}) 실행
+  //     → 서버가 처리 → JSON 응답 → 화면에 표시
+  //
+  // fetch()의 두 번째 인자(옵션 객체)가 요청의 전부를 결정한다:
+  //   - method: "GET"(조회, 기본값이라 생략 가능) / "POST"(생성) / "PATCH"(수정) / "DELETE"(삭제)
+  //   - headers: 부가 정보. 로그인 토큰(Authorization)이나 "이 요청은 JSON이다"(Content-Type)를 여기 담는다
+  //   - body: 서버로 보낼 실제 데이터. JSON.stringify()로 JS 객체를 문자열로 바꿔서 넣는다
+  //
+  // GET 요청은 버튼 클릭에만 반응하는 게 아니다 — 이 페이지에선 로그인 성공 직후에도,
+  // 검색창에 타이핑할 때도 똑같은 fetch(GET ...)이 코드에서 그냥 호출된다(아래 loadPatients 참고).
+  // "어떤 이벤트가 이 코드를 실행시키는가"만 다를 뿐, fetch 자체는 항상 똑같이 동작한다.
+  // ================================================================================
+
+  // document.getElementById(id)를 매번 치기 귀찮아서 만든 축약 함수. $("loginBtn")은
+  // <button id="loginBtn">...</button> 엘리먼트를 찾아준다(jQuery의 $ 흉내, 라이브러리 아님).
   const $ = (id) => document.getElementById(id);
 
+  // 어떤 API를 호출하든 "성공/실패 표시 + 응답 JSON을 예쁘게 출력"하는 패턴이 반복되니 공용 함수로 뺐다.
+  // el: 결과를 보여줄 <pre> 태그, statusEl: "성공"/"실패" 라벨을 보여줄 <span>
   function setResult(el, statusEl, ok, data) {
-    el.textContent = JSON.stringify(data, null, 2);
+    el.textContent = JSON.stringify(data, null, 2); // 객체를 들여쓰기된 JSON 문자열로 변환
     statusEl.textContent = ok ? "성공" : "실패";
-    statusEl.className = "status " + (ok ? "ok" : "err");
+    statusEl.className = "status " + (ok ? "ok" : "err"); // CSS로 초록/빨강 색 입힘
   }
 
+  // 맨 위 "Admin API Base URL" 입력칸 값 + 경로를 합쳐서 완전한 요청 주소를 만든다.
+  // 예: adminUrl("/patients") → "http://localhost:4100/api/v1/patients"
   function adminUrl(path) {
     return $("adminBaseUrl").value.replace(/\/$/, "") + path;
   }
+  // 위와 동일하되 "Customer API Base URL"(고객용 server, 포트 4000) 기준 — E단계 회원가입 테스트 전용.
   function customerUrl(path) {
     return $("customerBaseUrl").value.replace(/\/$/, "") + path;
   }
 
-  // 전화번호/이메일은 버튼을 반복해서 눌러도 unique 제약에 안 걸리게 매번 다른 값으로 자동 채워둔다.
+  // 로그인(0단계) 성공 시 발급받은 JWT 토큰을 이 변수 하나에 저장해두고, 이후 모든 admin API
+  // 호출에서 재사용한다. server_admin은 /auth/login 딱 하나만 빼고 전부 이 토큰이 있어야
+  // 응답해준다(없으면 401 UNAUTHORIZED) — 서버가 "이 요청을 보낸 게 누구인지" 알아야
+  // 어느 클리닉(brand) 데이터인지 판단할 수 있기 때문이다.
+  let adminToken;
+
+  // fetch()의 headers 옵션에 넣을 객체를 만들어주는 헬퍼.
+  // "Authorization: Bearer <토큰>" 형태가 로그인 인증의 업계 표준 방식이다.
+  // extra(예: {"Content-Type": "application/json"})가 있으면 같이 합쳐서 반환한다.
+  // 로그인 전에 호출되면 여기서 바로 에러를 던져서, 개발자가 "로그인부터 해야 한다"는 걸 바로 알게 한다.
+  function authHeaders(extra) {
+    if (!adminToken) throw new Error("먼저 위 0단계에서 로그인해야 한다.");
+    return { Authorization: `Bearer ${adminToken}`, ...extra };
+  }
+
+  // 아이디를 고르면 비밀번호도 그 클리닉 기본값으로 맞춰준다(테스트 계정이 아이디=비밀번호 패턴이라).
+  // "change" 이벤트: <select>에서 선택값이 바뀔 때마다 자동으로 실행되는 콜백(버튼 없이도 동작).
+  $("loginUsername").addEventListener("change", (e) => {
+    $("loginPassword").value = `${e.target.value}1234`;
+  });
+
+  // GET /care-types 호출 → 응답의 careTypes 배열로 D 화면의 <select id="careType"> 옵션을 채운다.
+  // 로그인 직후 자동으로 한 번 실행된다(아래 0단계 로그인 성공 콜백에서 호출).
+  async function loadCareTypes() {
+    try {
+      // GET 요청은 method를 안 써도 된다(fetch 기본값이 GET) — headers만 넘긴다.
+      const res = await fetch(adminUrl("/care-types"), { headers: authHeaders() });
+      const data = await res.json(); // 응답 body(JSON 문자열)를 JS 객체로 파싱
+      const select = $("careType");
+      select.innerHTML = ""; // 기존 옵션 비우고
+      for (const type of data.careTypes ?? []) {
+        // <option value="peeling">peeling</option> 같은 요소를 코드로 하나씩 만들어 넣는다
+        const opt = document.createElement("option");
+        opt.value = type;
+        opt.textContent = type;
+        select.appendChild(opt);
+      }
+    } catch (err) {
+      console.error("careType 목록 로드 실패:", err);
+    }
+  }
+
+  // GET /body-parts 호출 → 관리 부위 고정 목록으로 체크박스를 동적으로 만든다(중복 선택 가능이라
+  // <select>가 아니라 체크박스 여러 개로 구현했다). loadCareTypes와 흐름은 완전히 동일하고,
+  // <option> 대신 "체크박스+글자" 한 쌍(<label>)을 반복해서 만든다는 점만 다르다.
+  async function loadBodyParts() {
+    try {
+      const res = await fetch(adminUrl("/body-parts"), { headers: authHeaders() });
+      const data = await res.json();
+      const box = $("bodyPartsBox");
+      box.innerHTML = "";
+      for (const part of data.bodyParts ?? []) {
+        const label = document.createElement("label");
+        label.style.cssText = "display:flex; align-items:center; gap:4px; font-weight:400; margin-top:0;";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = part; // 체크됐을 때 이 값("이마" 등)이 서버로 전송될 값
+        checkbox.className = "body-part-checkbox"; // D 단계에서 체크된 것만 골라낼 때 이 클래스로 검색함
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(part)); // 체크박스 옆에 부위 이름 글자 표시
+        box.appendChild(label);
+      }
+    } catch (err) {
+      console.error("관리 부위 목록 로드 실패:", err);
+    }
+  }
+
+  // ============================================================
+  // 0: 관리자 로그인 — POST /auth/login
+  // 성공하면 이후 모든 호출에 실릴 토큰을 저장하고, careType/관리부위/환자목록까지 미리 불러와서
+  // 로그인하자마자 D·B 화면이 바로 쓸 수 있는 상태로 준비해둔다.
+  // ============================================================
+  // "click" 이벤트: 이 버튼을 실제로 마우스로 눌러야만(또는 키보드 Enter로 포커스된 버튼을 눌러야만)
+  // 아래 함수가 실행된다. 즉 로그인은 오직 버튼 클릭으로만 트리거된다(자동 로그인 없음).
+  $("loginBtn").addEventListener("click", async () => {
+    const resultEl = $("loginResult");   // 응답 JSON을 보여줄 <pre>
+    const statusEl = $("loginStatus");   // "성공"/"실패" 라벨을 보여줄 <span>
+
+    try {
+      // POST 요청 = 서버에 새로운 걸 만들어달라고 요청(여기선 "로그인 세션"을 만들어달라는 의미).
+      // method를 명시적으로 "POST"라고 써야 한다(안 쓰면 기본값인 GET이 되어버려 서버가 다르게 처리함).
+      const res = await fetch(adminUrl("/auth/login"), {
+        method: "POST",
+        // "이 요청의 body는 JSON 형식이다"라고 서버에 알려주는 헤더. 이게 없으면 서버가
+        // body를 어떻게 해석해야 할지 몰라서 파싱에 실패할 수 있다.
+        headers: { "Content-Type": "application/json" },
+        // body는 문자열이어야 하므로, JS 객체({username, password})를 JSON.stringify로 직렬화한다.
+        body: JSON.stringify({
+          username: $("loginUsername").value,
+          password: $("loginPassword").value,
+        }),
+      });
+      const data = await res.json();
+      // res.ok: HTTP 상태코드가 200번대(성공)면 true, 아니면(401 등) false — fetch는 401이 와도
+      // 예외를 던지지 않으므로 이 값을 직접 확인해야 성공/실패를 구분할 수 있다.
+      setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) {
+        adminToken = data.token; // 앞으로 모든 요청에 이 토큰을 실어 보낸다(authHeaders 참고)
+        $("currentBrandBanner").textContent = `${data.brand} (${data.username})`;
+        // 로그인 성공 직후 세 가지를 한꺼번에 미리 불러온다 — 사용자가 D/B 섹션까지 스크롤했을 때
+        // 이미 데이터가 채워져 있도록. 세 함수 다 fetch가 끝날 때까지 안 기다리고(await 없음)
+        // 그냥 실행만 시켜두는 "fire and forget" 방식이다(로그인 자체를 지연시키지 않으려는 의도).
+        loadCareTypes();
+        loadBodyParts();
+        loadPatients();
+      }
+    } catch (err) {
+      // 네트워크 자체가 끊겼거나 서버가 아예 안 떠있는 경우 등, fetch가 완전히 실패하면 여기로 온다.
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // 이 두 줄은 버튼 클릭과 무관하게 페이지가 열리자마자 스크립트가 위에서 아래로 실행되면서
+  // 딱 한 번 실행된다(이벤트 리스너가 아니라 그냥 평범한 코드). 전화번호/이메일은 버튼을
+  // 반복해서 눌러도 unique 제약(같은 값 중복 저장 금지)에 안 걸리게, Date.now()(현재 시각을
+  // 숫자로 나타낸 값)를 이용해 매번 다른 값으로 자동 채워둔다.
   $("patientPhone").value = `010${String(Date.now()).slice(-8)}`;
   $("signupEmail").value = `admin-test+${Date.now()}@example.com`;
 
   // 전화번호 입력칸은 타이핑하는 즉시 숫자가 아닌 문자를 잘라낸다(하이픈 붙여넣기 등도 자동 제거됨).
+  // \D는 정규식에서 "숫자가 아닌 모든 문자"를 뜻한다 — replace(/\D/g, "")는 그런 문자를 전부
+  // 빈 문자열로 바꿔서(=지워서) 결과적으로 숫자만 남긴다.
   $("patientPhone").addEventListener("input", (e) => {
     e.target.value = e.target.value.replace(/\D/g, "");
   });
 
-  // 최근에 만든 시술기록/이용권 id를 기억해뒀다가 삭제 버튼에서 재사용한다.
-  let lastCareRecordId, lastMembershipId;
+  // 최근에 만든 시술기록 id를 기억해뒀다가 D의 삭제 버튼에서 재사용한다(어떤 걸 지울지
+  // 서버에 알려주려면 그 시술기록의 id가 있어야 하는데, 화면에 별도 입력칸이 없으니
+  // "방금 D에서 추가한 것"을 자동으로 기억해뒀다가 쓰는 방식).
+  let lastCareRecordId;
 
   // ============================================================
   // A: 환자 등록 — POST /patients
-  // 성공 응답의 id는 "현재 대상 환자"(C~F용), patient_no는 G 단계 입력칸에 각각 자동으로 채워 넣는다.
+  // 성공 응답의 id는 "현재 대상 환자"(C~E용), patient_no·이름·생년월일은 E 단계 입력칸에 자동으로 채워 넣는다
+  // (E에서 실제 회원가입할 때 이 값들이 emr_patients와 정확히 일치해야 하기 때문).
+  // authHeaders(...)를 headers 자리에 직접 넣은 것도 눈여겨볼 점: authHeaders({"Content-Type": ...})는
+  // {Authorization: "Bearer ...", "Content-Type": ...} 객체를 즉석에서 만들어 반환하므로,
+  // "로그인 토큰을 실은 헤더 + JSON 요청임을 알리는 헤더"를 한 번에 준비하는 셈이다.
   // ============================================================
   $("createPatientBtn").addEventListener("click", async () => {
     const resultEl = $("createPatientResult");
     const statusEl = $("createPatientStatus");
-    const toList = (raw) => raw.split(",").map((s) => s.trim()).filter(Boolean);
 
     try {
       const res = await fetch(adminUrl("/patients"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", // 새 환자 레코드를 "생성"하는 요청이라 POST
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        // 화면의 입력칸(input) 값들을 그대로 읽어와 JSON body로 보낸다.
+        // notes가 빈 문자열이면 undefined로 바꿔서 보내는데, JSON.stringify는 값이 undefined인
+        // 필드를 아예 생략해버리므로 결과적으로 "notes 필드 자체를 안 보낸 것"과 같아진다
+        // (서버 쪽 zod 스키마에서 notes는 optional이라 이렇게 해도 문제없음).
         body: JSON.stringify({
           name: $("patientName").value,
           birthDate: $("patientBirthDate").value,
           phone: $("patientPhone").value,
-          allergies: toList($("patientAllergies").value),
-          chronicConditions: toList($("patientChronicConditions").value),
-          doctorGeneralComment: $("patientDoctorComment").value || undefined,
+          notes: $("patientNotes").value || undefined,
         }),
       });
       const data = await res.json();
       setResult(resultEl, statusEl, res.ok, data);
       if (res.ok) {
+        // 서버가 돌려준 값들을 다른 입력칸에도 자동으로 복사해 넣어서, 아래 C~E 단계를
+        // 손으로 다시 타이핑할 필요 없이 이어서 테스트할 수 있게 한다.
         $("patientId").value = data.id;
         $("signupPatientNo").value = data.patient_no;
+        $("signupName").value = data.name;
+        $("signupBirthDate").value = data.birth_date;
+        loadPatients(); // 새로 등록한 환자가 B 목록에 바로 나타나도록 새로고침(아래 B 섹션 함수)
       }
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
@@ -262,24 +454,86 @@
 
   // ============================================================
   // B: 환자 목록/검색 — GET /patients?search=
+  //
+  // 이 섹션이 "GET은 버튼 눌러야만 나가는 게 아니다"를 가장 잘 보여주는 예시다.
+  // 아래 loadPatients()라는 함수 하나를 세 군데 다른 이벤트에서 각각 호출한다:
+  //   1) 0단계 로그인 성공 직후(위 참고) — 화면이 열리자마자 자동으로
+  //   2) "지금 바로 조회" 버튼 클릭 시 — 사용자가 수동으로
+  //   3) 검색창에 타이핑할 때마다(아래 input 이벤트, 300ms 디바운스) — 자동으로
+  // 셋 다 결국 똑같은 "GET /patients?search=..." 요청을 보내는 것뿐이고, 차이는
+  // "무엇이 이 함수를 실행시켰는가"뿐이다.
   // ============================================================
-  $("listPatientsBtn").addEventListener("click", async () => {
+
+  // 서버가 돌려준 환자 이름 등을 화면에 <td>로 그대로 끼워 넣기 전에 특수문자(<, > 등)를
+  // 무해한 문자열로 바꿔주는 함수. 이게 없으면 환자 이름에 우연히 "<" 같은 문자가 들어있을 때
+  // 화면이 깨지거나(HTML 인젝션) 이상하게 렌더링될 수 있어서 방어적으로 넣어둔다.
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // 원시 JSON 대신 환자이름/클리닉/최근 받은 시술 3열짜리 <table> HTML 문자열을 만든다.
+  // 최근 받은 시술이 없는 환자는 그 칸을 "—"(빈칸 표시)로 채운다.
+  // 이 함수는 fetch를 하지 않는다 — 이미 받아온 데이터(patients 배열)를 화면용 HTML로
+  // "변환"만 하는 순수 함수다.
+  function renderPatientList(patients) {
+    if (patients.length === 0) return "(등록된 환자가 없습니다)";
+    const rows = patients
+      .map((p) => {
+        const care = p.latestCareName
+          ? `<td>${escapeHtml(p.latestCareName)}</td>`
+          : `<td class="empty">—</td>`;
+        return `<tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.brand ?? "")}</td>${care}</tr>`;
+      })
+      .join("");
+    return `<table class="patient-list"><thead><tr><th>환자이름</th><th>클리닉</th><th>최근 받은 시술</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  // 실제로 서버에 요청을 보내는 함수. 검색창에 값이 있으면 쿼리스트링(?search=...)을 붙이고,
+  // 없으면 그냥 GET /patients만 호출해 전체 목록을 받아온다.
+  // encodeURIComponent: 검색어에 한글·공백·특수문자가 있어도 URL에 안전하게 실을 수 있도록 인코딩.
+  async function loadPatients() {
     const resultEl = $("listPatientsResult");
     const statusEl = $("listPatientsStatus");
     const search = $("searchQuery").value.trim();
     const url = adminUrl("/patients") + (search ? `?search=${encodeURIComponent(search)}` : "");
 
     try {
-      const res = await fetch(url);
+      // GET이라 method 생략, body도 없음(GET 요청은 원래 body를 안 보낸다) — headers만 실어 보낸다.
+      const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
+      statusEl.textContent = res.ok ? "성공" : "실패";
+      statusEl.className = "status " + (res.ok ? "ok" : "err");
+      // 성공하면 표로 렌더링, 실패하면 에러 JSON을 그냥 텍스트로 보여준다.
+      resultEl.innerHTML = res.ok ? renderPatientList(data.patients ?? []) : escapeHtml(JSON.stringify(data));
     } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
+      statusEl.textContent = "실패";
+      statusEl.className = "status err";
+      resultEl.textContent = String(err);
     }
+  }
+
+  // 위 "1) 버튼 클릭" 트리거 — 함수를 그대로 이벤트 핸들러로 넘긴다(loadPatients() 대신 loadPatients,
+  // 괄호 없이! 괄호를 붙이면 "지금 당장 실행한 결과"를 넘기는 게 되어버려 클릭할 때마다가 아니라
+  // 페이지 로드 시 한 번만 실행되는 버그가 생긴다).
+  $("listPatientsBtn").addEventListener("click", loadPatients);
+
+  // 위 "3) 타이핑할 때마다" 트리거 — 이른바 "디바운스(debounce)" 패턴.
+  // 글자를 한 자 한 자 칠 때마다 바로바로 서버에 요청을 보내면 요청이 너무 잦아지므로,
+  // "마지막 입력 후 300ms 동안 더 이상 입력이 없으면 그때 딱 한 번 요청"하도록 만든다.
+  // 방법: 입력이 들어올 때마다 이전에 걸어둔 타이머(setTimeout)를 clearTimeout으로 취소하고
+  // 새로 300ms 타이머를 다시 건다 — 그래서 타이핑이 이어지는 동안은 타이머가 계속 리셋되다가,
+  // 타이핑이 멈춘 시점부터 300ms 뒤에야 실제로 loadPatients()가 실행된다.
+  let searchDebounceTimer;
+  $("searchQuery").addEventListener("input", () => {
+    clearTimeout(searchDebounceTimer);
+    if (!adminToken) return; // 로그인 전엔 조용히 무시(버튼을 누르면 authHeaders()가 에러로 알려줌)
+    searchDebounceTimer = setTimeout(loadPatients, 300);
   });
 
   // ============================================================
   // C: 환자 상세 조회 — GET /patients/:patientId
+  // 경로 자체에 patientId를 끼워 넣는 방식(path parameter)이다 — B처럼 ?search= 쿼리스트링이 아니라
+  // /patients/abc-123 처럼 URL 경로의 일부로 들어간다. 템플릿 리터럴(`...${patientId}`)로 조립한다.
   // ============================================================
   $("getPatientBtn").addEventListener("click", async () => {
     const resultEl = $("getPatientResult");
@@ -291,16 +545,30 @@
     }
 
     try {
-      const res = await fetch(adminUrl(`/patients/${patientId}`));
+      const res = await fetch(adminUrl(`/patients/${patientId}`), { headers: authHeaders() });
       const data = await res.json();
       setResult(resultEl, statusEl, res.ok, data);
+      if (res.ok) {
+        // 이 응답에 딸려온 이용권 목록(memberships)으로, 아래 D 섹션의 "이용권 선택" 드롭다운을
+        // 지금 막 채워 넣는다 — 그래야 D에서 "기존 이용권에서 차감"을 고를 때 실제로 이 환자가
+        // 가진 이용권들이 보인다. C를 먼저 눌러야 D의 select가 채워지는 이유가 이거다.
+        const select = $("careMembershipSelect");
+        select.innerHTML = '<option value="">— 직접 입력(새 이용권 생성) —</option>';
+        for (const m of data.memberships ?? []) {
+          const remaining = m.remaining_count ?? m.total_count - m.used_count;
+          const opt = document.createElement("option");
+          opt.value = m.id; // 실제로 서버에 보낼 값(이용권의 UUID)
+          opt.textContent = `${m.product_name} (${m.used_count}/${m.total_count}회 사용, ${remaining}회 남음)`; // 화면에 보이는 글자
+          select.appendChild(opt);
+        }
+      }
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
     }
   });
 
   // ============================================================
-  // D: 시술 기록 추가/삭제
+  // D: 시술 기록 추가/삭제 — 이용권 선택 시 그 자리에서 1회 차감, 직접 입력 시 새 이용권 생성
   // ============================================================
   $("addCareRecordBtn").addEventListener("click", async () => {
     const resultEl = $("addCareRecordResult");
@@ -311,22 +579,39 @@
       return;
     }
 
+    // C에서 채워둔 select에서 사용자가 고른 이용권 id. 아무것도 안 골랐으면 빈 문자열("")이라
+    // 아래 삼항연산자에서 "직접 입력" 쪽으로 분기하게 된다.
+    const membershipId = $("careMembershipSelect").value;
+    // document.querySelectorAll(".body-part-checkbox:checked")로 "체크된 것만" 찾아서
+    // (배열이 아니라 NodeList라 [...]로 감싸 진짜 배열로 바꾼 뒤) 각 체크박스의 value만 뽑아낸다.
+    // 예: 이마·미간 체크 → ["이마", "미간"]
+    const partOfBody = [...document.querySelectorAll(".body-part-checkbox:checked")].map((el) => el.value);
+
     try {
       const res = await fetch(adminUrl(`/patients/${patientId}/care-records`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           careName: $("careName").value,
           careType: $("careType").value,
           careDate: $("careDate").value,
-          brand: $("careBrand").value || undefined,
-          store: $("careStore").value || undefined,
+          partOfBody,
           basicAftercareGuide: [],
+          // membershipId가 있으면(트루시) {membershipId: "..."}만 전개해 넣고,
+          // 없으면 {totalSessions: 숫자}만 넣는다 — 서버는 둘 중 정확히 하나만 받아야 하기 때문에
+          // 여기서도 둘 중 하나만 body에 실리도록 삼항연산자 + 스프레드(...)로 분기한다.
+          ...(membershipId
+            ? { membershipId }
+            : { totalSessions: Number($("careTotalSessions").value) }),
         }),
       });
       const data = await res.json();
       setResult(resultEl, statusEl, res.ok, data);
-      if (res.ok) lastCareRecordId = data.id;
+      if (res.ok) {
+        // 방금 만든 시술기록 id를 기억해뒀다가, 바로 아래 "삭제" 버튼에서 재사용한다.
+        lastCareRecordId = data.careRecord.id;
+        loadPatients(); // B 목록의 "최근 받은 시술" 칸도 바로 갱신되도록 새로고침
+      }
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
     }
@@ -341,12 +626,20 @@
     }
 
     try {
-      const res = await fetch(adminUrl(`/care-records/${lastCareRecordId}`), { method: "DELETE" });
+      // DELETE 요청은 body가 없다 — 지울 대상은 URL 경로 안의 id(/care-records/{id})만으로 특정된다.
+      const res = await fetch(adminUrl(`/care-records/${lastCareRecordId}`), {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      // 204 No Content: "성공했지만 돌려줄 내용이 없다"는 상태코드. 이 경우 res.json()을 호출하면
+      // 본문이 비어있어서 에러가 나므로, 상태코드만 보고 성공 처리를 따로 분기한다.
       if (res.status === 204) {
         setResult(resultEl, statusEl, true, { status: 204, message: "삭제됨" });
         lastCareRecordId = undefined;
+        loadPatients(); // 이용권까지 함께 정리됐으니 B의 "최근 받은 시술" 칸도 새로고침
         return;
       }
+      // 204가 아니면(보통 404 등 에러) 이때는 본문에 에러 JSON이 있으므로 파싱해서 보여준다.
       const data = await res.json();
       setResult(resultEl, statusEl, res.ok, data);
     } catch (err) {
@@ -355,102 +648,34 @@
   });
 
   // ============================================================
-  // E: 이용권 추가/삭제
-  // ============================================================
-  $("addMembershipBtn").addEventListener("click", async () => {
-    const resultEl = $("addMembershipResult");
-    const statusEl = $("addMembershipStatus");
-    const patientId = $("patientId").value.trim();
-    if (!patientId) {
-      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
-      return;
-    }
-
-    try {
-      const res = await fetch(adminUrl(`/patients/${patientId}/memberships`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productName: $("membershipProductName").value,
-          totalCount: Number($("membershipTotalCount").value),
-          usedCount: 0,
-          availableCareNames: [],
-        }),
-      });
-      const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
-      if (res.ok) lastMembershipId = data.id;
-    } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
-    }
-  });
-
-  $("deleteMembershipBtn").addEventListener("click", async () => {
-    const resultEl = $("deleteMembershipResult");
-    const statusEl = $("deleteMembershipStatus");
-    if (!lastMembershipId) {
-      setResult(resultEl, statusEl, false, { error: "먼저 위 E에서 이용권을 추가해야 한다." });
-      return;
-    }
-
-    try {
-      const res = await fetch(adminUrl(`/memberships/${lastMembershipId}`), { method: "DELETE" });
-      if (res.status === 204) {
-        setResult(resultEl, statusEl, true, { status: 204, message: "삭제됨" });
-        lastMembershipId = undefined;
-        return;
-      }
-      const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
-    } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
-    }
-  });
-
-  // ============================================================
-  // F: 인증코드 발급 — POST /patients/:patientId/signup-code
-  // 발급된 code를 G 단계 입력칸에 자동으로 채워 넣는다.
-  // ============================================================
-  $("issueCodeBtn").addEventListener("click", async () => {
-    const resultEl = $("issueCodeResult");
-    const statusEl = $("issueCodeStatus");
-    const patientId = $("patientId").value.trim();
-    if (!patientId) {
-      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
-      return;
-    }
-
-    try {
-      const res = await fetch(adminUrl(`/patients/${patientId}/signup-code`), { method: "POST" });
-      const data = await res.json();
-      setResult(resultEl, statusEl, res.ok, data);
-      if (res.ok) $("signupVerificationCode").value = data.code;
-    } catch (err) {
-      setResult(resultEl, statusEl, false, { error: String(err) });
-    }
-  });
-
-  // ============================================================
-  // G: (연동 테스트) 발급된 코드로 실제 회원가입 — POST {server}/auth/signup
-  // server_admin이 아니라 고객용 server(포트 4000)를 호출한다.
+  // E: (연동 테스트) patientNo+이름+생년월일로 실제 회원가입 — POST {server}/auth/signup
+  // server_admin이 아니라 고객용 server(포트 4000)를 호출한다 — 그래서 adminUrl(...) 대신
+  // customerUrl(...)을 쓴다는 게 핵심 차이. 인증코드는 없다.
+  // 이 요청엔 authHeaders()를 안 쓴다는 점도 주목 — customer server의 /auth/signup은
+  // "아직 로그인하기 전" 사람이 호출하는 API라서 관리자 토큰이 필요 없다(애초에 별개의 서버·인증체계).
   // ============================================================
   $("signupBtn").addEventListener("click", async () => {
     const resultEl = $("signupResult");
     const statusEl = $("signupStatus");
     const patientNo = $("signupPatientNo").value.trim();
-    const verificationCode = $("signupVerificationCode").value.trim();
-    if (!patientNo || !verificationCode) {
-      setResult(resultEl, statusEl, false, { error: "먼저 위 A(환자 등록)와 F(인증코드 발급)를 실행해야 한다." });
+    const name = $("signupName").value.trim();
+    const birthDate = $("signupBirthDate").value;
+    if (!patientNo || !name || !birthDate) {
+      setResult(resultEl, statusEl, false, { error: "먼저 위 A에서 환자를 등록해야 한다." });
       return;
     }
 
     try {
       const res = await fetch(customerUrl("/auth/signup"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }, // 여기선 authHeaders() 대신 이 헤더만 씀(위 설명 참고)
+        // { patientNo, name, birthDate }는 { patientNo: patientNo, name: name, birthDate: birthDate }의
+        // 줄임 표기(변수명과 속성명이 같을 때 JS가 지원하는 문법) — 위에서 만든 변수 3개를
+        // 그대로 같은 이름의 필드로 body에 담는다는 뜻이다.
         body: JSON.stringify({
           patientNo,
-          verificationCode,
+          name,
+          birthDate,
           email: $("signupEmail").value,
           password: $("signupPassword").value,
         }),
@@ -461,6 +686,22 @@
       // claimed_user_id/claimed_at이 채워졌는지 확인해볼 수 있다.
       // 같은 버튼을 다시 누르면 emr_patients.claimed_user_id가 이미 있어서
       // 409 PATIENT_ALREADY_CLAIMED가 나는 것도 여기서 확인 가능하다.
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // F: 방문 고객수 — GET /visit-stats
+  // ============================================================
+  $("visitStatsBtn").addEventListener("click", async () => {
+    const resultEl = $("visitStatsResult");
+    const statusEl = $("visitStatsStatus");
+
+    try {
+      const res = await fetch(adminUrl("/visit-stats"), { headers: authHeaders() });
+      const data = await res.json();
+      setResult(resultEl, statusEl, res.ok, data);
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
     }
