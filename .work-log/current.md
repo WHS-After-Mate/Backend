@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-16 06:10
+최종 업데이트: 2026-08-16 07:20
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
@@ -18,6 +18,11 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 
 - **`docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html`, `docs/llm-prompt-design.md`/`.html` 전면 재동기화** — 마이그레이션 007~012(이용권 잔여횟수 생성컬럼/클리닉 관리자 로그인·`admin_accounts`/`store`컬럼 제거+`emr_patients.brand`/인증코드 절차 제거(회원가입을 환자번호+이름+생년월일 대조로)/`emr_care_records`↔`emr_memberships` 연결/관리부위 배열화)까지 전부 문서에 반영. `db-schema.md`는 특히 회원가입 흐름·`emr_patients`/`emr_care_records`/`emr_memberships` 테이블 정의가 여전히 옛 인증코드 방식으로 남아있던 걸 발견해 전면 재작성, `signup_verification_codes` 제거 이력·`admin_accounts` 신규 테이블 추가. `llm-prompt-design`은 LLM 파이프라인/프롬프트 자체는 변경 없음을 확인하고 stale 버전 각주만 정정. 아티팩트 3종(DB 스키마/서버 코드 설명서/LLM 프롬프트 설계) 재발행
 - 위 문서 동기화분 commit+push 완료 (`815667b`)
+- **와이어프레임(`docs/After_Mate.png`, 14개 화면) vs server API 전수 대조** — 사용자 요청으로 필드 단위 비교. `home/AI 추천/My Care 3탭/관리 상세/AI 챗봇/내 정보`는 전부 구현 확인. 실질적 미구현 1건 발견: **13. 설정 화면의 "사후관리 알림"/"마케팅 알림" 토글** — 대응 API가 마이그레이션 005에서 완전히 삭제된 상태(발송 스케줄러 없는 placeholder였다는 이유였음). 사용자 판단으로 **이 항목은 보류(불필요)** 확정
+- **05. 비밀번호 찾기 화면 재검토** — 와이어프레임이 "인증번호 발송"→"인증번호 확인"→"비밀번호 변경하기" 3버튼인데 반해, 구현은 코드검증+비밀번호변경을 `reset-confirm` 하나로 합쳐뒀던 걸 발견. 사용자가 "와이어프레임대로 가자"고 결정 → **`POST /auth/password/reset-verify` 신규 구현**(코드만 검증해 `resetToken` 발급, Supabase recovery OTP는 검증 시 1회성 소진되므로 재사용 불가 — 실측 확인) + `reset-confirm`을 `{resetToken, newPassword}`로 시그니처 변경(더 이상 email/code 직접 안 받음). `passwordResetVerifySchema`/`passwordResetConfirmSchema`(validators), `verifyPasswordResetCode`/`confirmPasswordReset`(service), 라우트 추가(routes), 테스트 페이지 3버튼 흐름(`api-call-example.html`)까지 전부 반영
+- 발송→확인(resetToken 발급)→변경→새 비밀번호 로그인 4단계 전체를 `yongsang0615@gmail.com` 실계정으로 라이브 검증, 코드 재사용 시도 시 거부되는 것도 확인
+- `docs/api-spec.md`/`.html`, `docs/server-code-guide.md`/`.html`, `server/README.md` 갱신, 아티팩트 2종(API 명세서/서버 코드 설명서) 재발행
+- commit+push 완료 (`df377e9`)
 
 ## 현재 작업 중
 - (없음 — 이번 세션 작업 전부 커밋+푸시+아티팩트 재발행까지 완료)
@@ -39,8 +44,9 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - `docs/api-spec.md`/`.html` — 고객용 server/ API 명세, 이번 세션에 SMTP 전환 문구 갱신
 - `server_admin/README.md`, `server/README.md` — 각각 엔드포인트 요약 및 구현 노트, 이번 세션 SMTP TODO 항목 갱신
 - Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
-- `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 반영해 재동기화
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `815667b`)
+- `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 + reset-verify 반영해 재동기화
+- `server/src/services/auth.service.ts` — `verifyPasswordResetCode`(신규)/`confirmPasswordReset`(resetToken 방식으로 변경)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `df377e9`)
 
 ## 특이사항 / 결정 사항
 - **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서, Google이 이상 발송으로 계정을 잠그더라도 개인 계정에 영향이 없도록 격리함

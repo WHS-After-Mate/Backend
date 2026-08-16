@@ -16,6 +16,17 @@
   - `.html` 3종도 동일 내용으로 동기화(ERD mermaid, 테이블 카드, 마이그레이션 이력 섹션 007~012 신규 추가)
   - 아티팩트 3종(DB 스키마 `f152ff3e`, 서버 코드 설명서 `65b8c9b6`, LLM 프롬프트 설계 `48a5799c`) WebFetch로 최신본 확인 후 재발행
   - commit+push (`815667b`)
+- 사용자가 남은 이월 항목(가비아 배포/Collaborator 초대/.env 전달/위험신호 검수/refreshToken 정책/docx 커밋 여부) 일괄 진행 요청 → 대부분 사용자 결정·외부 액션·의료진 검수가 필요해 대신 처리 불가함을 짚고, 대신 요청에 포함된 "와이어프레임(`docs/After_Mate.png`) vs server API 비교"부터 진행
+- `docs/After_Mate.png`(2742x4900, 14개 화면)를 Read로 로드 후 PIL로 세부 크롭(회원가입/비밀번호찾기/홈/AI추천/관리상세/AI챗봇/설정/내정보 등)해 필드 단위로 api-spec.md와 대조
+  - **13. 설정 화면의 "사후관리 알림"/"마케팅 알림" 토글**이 마이그레이션 005에서 완전히 삭제된 API(`GET`/`PATCH /notifications/settings`)에 대응한다는 걸 발견해 보고 → 사용자가 "알람은 필요없다"고 확정, 보류
+  - **05. 비밀번호 찾기 화면**이 "인증번호 발송"/"인증번호 확인"/"비밀번호 변경하기" 3버튼인데, 구현은 코드검증+비밀번호변경이 `reset-confirm` 하나로 합쳐져 있어 "인증번호 확인"에 대응하는 API가 없다고 보고 → 사용자가 "인증번호만 먼저 확인하는 API가 뭐냐" 질문 → 설명 후 사용자가 "와이어프레임대로 하자"고 결정
+- **`POST /auth/password/reset-verify` 신규 구현** — `{email, code}`를 받아 `verifyOtp(type:"recovery")`로 코드만 검증하고 그 recovery 세션의 `access_token`을 `resetToken`으로 응답(`auth.service.ts`의 `verifyPasswordResetCode`). Supabase recovery OTP가 검증 시점에 1회성으로 소진된다는 걸 실측으로 확인(재검증 시도 시 즉시 거부됨) — 이 성질 덕에 `reset-confirm`에서 email/code를 다시 받을 필요가 없어짐
+  - `reset-confirm`을 `{resetToken, newPassword}`로 시그니처 변경(기존 `{email, code, newPassword}`에서) — `resetToken`을 `getUser()`로 재확인 후 `updateUserById()`로 비밀번호 갱신(이전 recoveryToken 링크 방식과 사실상 동일한 검증 패턴을 코드 기반으로 재현)
+  - `passwordResetVerifySchema`/`passwordResetConfirmSchema`(validators), 라우트 2개(routes) typecheck/build 통과 확인
+  - `yongsang0615@gmail.com` 실계정으로 발송→확인(resetToken 발급)→변경→새 비밀번호 로그인 4단계 전체 라이브 검증, 코드 재사용 시도 시 `INVALID_OR_EXPIRED_RESET_CODE`로 거부되는 것도 확인
+  - `docs/api-spec.md`/`.html`, `docs/server-code-guide.md`/`.html`, `server/README.md`, `server/src/examples/api-call-example.html`(3버튼 흐름 + resetToken 변수 공유) 전부 갱신
+  - 아티팩트 2종(API 명세서 `5cf6ed55`, 서버 코드 설명서 `65b8c9b6`) 재발행
+  - commit+push (`df377e9`)
 - work-log 정리
 
 ## 2026-08-16
