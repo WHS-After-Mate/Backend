@@ -171,18 +171,28 @@ export async function requestPasswordReset(email: string) {
   }
 }
 
-// 이메일로 받은 6자리 코드를 검증하고, 그 자리에서 바로 새 비밀번호까지 설정한다(코드 확인과 비밀번호
-// 설정을 별도 화면/API로 나누지 않음 — 코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로 한 번에 처리).
-// verifyOtp가 성공하면 Supabase가 그 코드를 발급한 계정에 대한 recovery 세션을 돌려준다.
-export async function confirmPasswordReset(email: string, code: string, newPassword: string) {
+// 와이어프레임 05번(비밀번호 찾기)은 "인증번호 확인"과 "비밀번호 변경하기"를 별도 버튼으로 분리해
+// 두고 있어, 코드 검증 단계를 독립 API로 뺐다. verifyOtp(type: "recovery")는 성공하면 그 코드를
+// 발급한 계정에 대한 1회성 recovery 세션을 돌려주는데(코드 자체는 이 호출로 소진됨), 그 세션의
+// access_token을 resetToken으로 그대로 클라이언트에 내려주고 confirmPasswordReset에서 재확인한다.
+export async function verifyPasswordResetCode(email: string, code: string) {
   const { data, error } = await supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" });
-  if (error || !data.session || !data.user) throw Errors.invalidOrExpiredResetToken();
+  if (error || !data.session) throw Errors.invalidOrExpiredResetToken();
+  return data.session.access_token;
+}
+
+// verifyPasswordResetCode가 내려준 resetToken(recovery 세션의 access_token)을 getUser로 재확인한 뒤
+// 비밀번호를 갱신한다. resetToken은 코드 검증 시점에 이미 소진된 코드를 대신하는 짧은 유효기간의
+// 위임 토큰이라, 여기서 email/code를 다시 받지 않는다.
+export async function confirmPasswordReset(resetToken: string, newPassword: string) {
+  const { data, error } = await supabaseAnon.auth.getUser(resetToken);
+  if (error || !data.user) throw Errors.invalidOrExpiredResetToken();
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
     password: newPassword,
   });
   if (updateError) throw Errors.invalidOrExpiredResetToken();
 
-  // 재설정 과정에서 발급된 recovery 세션을 포함해 기존 세션 전체를 무효화(탈취된 코드 무력화)
-  await supabaseAdmin.auth.admin.signOut(data.session.access_token, "global").catch(() => {});
+  // 재설정 과정에서 발급된 recovery 세션을 포함해 기존 세션 전체를 무효화(탈취된 토큰 무력화)
+  await supabaseAdmin.auth.admin.signOut(resetToken, "global").catch(() => {});
 }

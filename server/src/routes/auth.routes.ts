@@ -6,6 +6,7 @@ import {
   loginSchema,
   passwordResetConfirmSchema,
   passwordResetRequestSchema,
+  passwordResetVerifySchema,
   refreshSchema,
   signupSchema,
 } from "../validators/auth.validators";
@@ -67,12 +68,23 @@ authRouter.post(
   }),
 );
 
-// 이메일로 받은 6자리 인증코드 + 새 비밀번호 제출
+// 이메일로 받은 인증코드만 먼저 확인 (와이어프레임 05번의 "인증번호 확인" 버튼) — 성공 시 다음
+// 단계(reset-confirm)에서 쓸 resetToken 발급. 코드 자체는 이 호출로 소진되므로 재사용 불가.
+authRouter.post(
+  "/password/reset-verify",
+  asyncHandler(async (req, res) => {
+    const { email, code } = passwordResetVerifySchema.parse(req.body);
+    const resetToken = await authService.verifyPasswordResetCode(email, code);
+    res.status(200).json({ resetToken });
+  }),
+);
+
+// reset-verify에서 받은 resetToken + 새 비밀번호 제출
 authRouter.post(
   "/password/reset-confirm",
   asyncHandler(async (req, res) => {
-    const { email, code, newPassword } = passwordResetConfirmSchema.parse(req.body);
-    await authService.confirmPasswordReset(email, code, newPassword);
+    const { resetToken, newPassword } = passwordResetConfirmSchema.parse(req.body);
+    await authService.confirmPasswordReset(resetToken, newPassword);
     res.status(204).send();
   }),
 );

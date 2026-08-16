@@ -31,7 +31,8 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 | POST | `/auth/refresh` | `auth.routes.ts` |
 | POST | `/auth/logout` | `auth.routes.ts` |
 | POST | `/auth/password/reset-request` | `auth.routes.ts` *(v0.5)* |
-| POST | `/auth/password/reset-confirm` | `auth.routes.ts` *(v0.5)* |
+| POST | `/auth/password/reset-verify` | `auth.routes.ts` *(v0.6)* |
+| POST | `/auth/password/reset-confirm` | `auth.routes.ts` *(v0.5, v0.6에서 요청 스키마 변경)* |
 | GET | `/home/summary` | `home.routes.ts` |
 | GET | `/recommendations/next-care` | `recommendations.routes.ts` |
 | GET | `/recommendations/next-care/{recommendationId}` | `recommendations.routes.ts` |
@@ -123,16 +124,30 @@ accessToken 재발급.
 **Response 204** — 가입 여부와 무관하게 항상 204 (계정 존재 여부를 노출하지 않기 위한 의도적 설계)
 - Supabase Auth `resetPasswordForEmail(email, { redirectTo: env.PASSWORD_RESET_REDIRECT_URL })`에 위임. 이 호출 한 번으로 Supabase가 재설정 링크와 숫자 OTP를 함께 발급하는데, 이메일에 실제로 코드가 보이려면 Supabase 대시보드의 **Authentication > Email Templates > Reset Password** 템플릿에 `{{ .Token }}`이 포함돼 있어야 한다(기본 템플릿은 링크만 노출 — 대시보드에서 한 번 설정해야 하는 항목, 코드로 바꿀 수 없음). OTP 자리수는 고정 스펙이 아니라 프로젝트 설정에 따라 달라진다 — **실측으로 8자리**임을 확인했다(흔히 알려진 "6자리"가 아님, `passwordResetConfirmSchema`도 6~10자리를 느슨하게 허용하도록 되어 있음).
 
-### POST /auth/password/reset-confirm `(v0.5)`
-이메일로 받은 숫자 인증코드 + 새 비밀번호를 한 번에 제출. 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로).
+### POST /auth/password/reset-verify `(v0.6)`
+와이어프레임(05. 비밀번호를 잊으셨나요?)이 "인증번호 발송"과 "인증번호 확인"을 별도 버튼으로 분리해 두고 있어, 코드 검증을 `reset-confirm`과 독립된 단계로 뺐다. 성공하면 다음 단계에서 쓸 `resetToken`을 내려준다.
 
 **Request**
 ```json
-{ "email": "user@example.com", "code": "48392017", "newPassword": "string (8자 이상)" }
+{ "email": "user@example.com", "code": "48392017" }
+```
+**Response 200**
+```json
+{ "resetToken": "string" }
+```
+`400 INVALID_OR_EXPIRED_RESET_CODE`
+- 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담). 검증에 성공하면 Supabase가 그 코드를 발급한 계정에 대한 1회성 recovery 세션을 돌려주는데 — **코드 자체는 이 호출로 소진되어 재사용 불가** — 그 세션의 `access_token`을 `resetToken`으로 그대로 클라이언트에 내려준다(`auth.service.ts`의 `verifyPasswordResetCode` 참고).
+
+### POST /auth/password/reset-confirm `(v0.6)`
+`reset-verify`에서 받은 `resetToken` + 새 비밀번호를 제출. 여기서 `email`/`code`를 다시 받지 않는다.
+
+**Request**
+```json
+{ "resetToken": "string", "newPassword": "string (8자 이상)" }
 ```
 **Response 204**
-`400 INVALID_OR_EXPIRED_RESET_CODE`
-- 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담, `auth.service.ts`의 `confirmPasswordReset` 참고). 검증이 성공하면 그 자리에서 바로 비밀번호를 갱신하고, 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.
+`400 INVALID_OR_EXPIRED_RESET_CODE` — `resetToken`이 잘못됐거나 유효기간이 지난 경우
+- 서버는 `resetToken`을 `auth.getUser(resetToken)`으로 재확인한 뒤 `auth.admin.updateUserById()`로 비밀번호를 갱신한다(`auth.service.ts`의 `confirmPasswordReset` 참고). 갱신 후 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 인증번호 확인, 새 비밀번호 로그인까지 3단계 전체를 라이브로 실측 검증 완료(코드 재사용 시 거부되는 것도 함께 확인).
 
 ---
 
@@ -500,7 +515,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | `GUIDE_GENERATION_FAILED` | LLM 일차별 가이드 생성 실패 |
 | `ANSWER_GENERATION_FAILED` | LLM Q&A 답변 생성 실패 |
 | `UNSUPPORTED_CATEGORY` | 미지원 질문 카테고리 |
-| `INVALID_OR_EXPIRED_RESET_CODE` | 비밀번호 재설정 인증코드 무효/만료 *(v0.5 신규, 이메일 링크 대신 숫자 코드 방식으로 전환)* |
+| `INVALID_OR_EXPIRED_RESET_CODE` | 비밀번호 재설정 인증코드/`resetToken` 무효·만료 *(v0.5 신규, 이메일 링크 대신 숫자 코드 방식으로 전환. v0.6에서 코드 검증(`reset-verify`)과 비밀번호 변경(`reset-confirm`)을 분리하며 `resetToken` 오류에도 동일 코드 재사용)* |
 | `INVALID_CURRENT_PASSWORD` | 비밀번호 변경 시 현재 비밀번호 불일치 *(v0.5 신규)* |
 
 ## 미확정 사항 (기획팀 확인 필요)
@@ -517,7 +532,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 
 | # | 항목 | 화면(와이어프레임) | 엔드포인트/필드 | 구현 위치 |
 |---|---|---|---|---|
-| 1 | 비밀번호 찾기 | 05. 비밀번호를 잊으셨나요? | `POST /auth/password/reset-request`, `POST /auth/password/reset-confirm` | `auth.routes.ts`/`auth.service.ts` |
+| 1 | 비밀번호 찾기 | 05. 비밀번호를 잊으셨나요? | `POST /auth/password/reset-request`, `POST /auth/password/reset-verify`(v0.6 신규), `POST /auth/password/reset-confirm` | `auth.routes.ts`/`auth.service.ts` |
 | 2 | 비밀번호 변경 | 14. 내 정보 | `POST /profile/password` | `profile.routes.ts`/`profile.service.ts` |
 | 3 | ~~마케팅 알림 토글~~ | 13. 설정 | *(제거됨 — 실제로 읽어 분기하는 발송 로직이 없는 placeholder였음. `GET`/`PATCH /notifications/settings` 자체를 삭제, `db/migrations/005_remove_notification_settings.sql`)* | — |
 | 4 | 프로필 확장 | 14. 내 정보 | `Profile.birthDate`, `Profile.phone` | `profile.service.ts` |
@@ -538,3 +553,4 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 - **`POST /auth/signup` 시그니처 전면 교체**: `{email,password,name,phone,birthDate}` → `{patientNo,name,birthDate,email,password,interestGoals}`. 이름/생년월일은 클라이언트가 자유 입력하는 게 아니라 신원 확인용으로 `emr_patients` 원본과 대조되고, 전화번호는 아예 요청에 없이 원본에서 그대로 가져온다. 가입 성공 시 `emr_care_records`/`emr_memberships`가 실제 `care_records`/`memberships`로 **1회성 이관**되고, 실패 시 방금 만든 Auth 계정은 롤백된다(CASCADE로 하위 데이터 자동 정리). (인증코드 발급 방식은 처음에 이렇게 설계했다가 마이그레이션 010에서 patientNo+이름+생년월일 대조 방식으로 대체됨 — `signup_verification_codes` 테이블은 제거됨)
 - **`PHONE_ALREADY_EXISTS` 에러 제거** — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`PATIENT_IDENTITY_MISMATCH` 3종 신규 추가.
 - **claim은 1회성, 지속 동기화 아님**: claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 반영되지 않는다(의도적 범위 제한). 실제 서비스라면 배치 ETL이 필요 — `db-schema.md`의 "클리닉 EMR 연동" 절 참고.
+- **비밀번호 재설정을 코드 검증 단계와 비밀번호 변경 단계로 재분리**: 와이어프레임(05번)이 "인증번호 발송" → "인증번호 확인" → "새 비밀번호 저장"을 별도 버튼 3개로 그리고 있는데, 기존 구현은 코드 검증과 비밀번호 변경을 `reset-confirm` 하나로 합쳐뒀었다. 신규 `POST /auth/password/reset-verify`가 코드만 검증해 `resetToken`을 내려주고, `reset-confirm`은 이제 `{resetToken, newPassword}`만 받는다(더 이상 `email`/`code`를 직접 받지 않음). 코드는 `verifyOtp` 호출 시점에 이미 소진되므로 재사용 불가 — 라이브 테스트로 확인 완료.

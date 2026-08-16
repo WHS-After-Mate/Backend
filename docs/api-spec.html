@@ -518,8 +518,9 @@
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>로그인 (이메일/비밀번호)</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/refresh</td><td>accessToken 재발급</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/logout</td><td>로그아웃</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-request</td><td>비밀번호 재설정 요청</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-confirm</td><td>비밀번호 재설정 확정</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-request</td><td>비밀번호 재설정 요청(인증코드 발송)</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-verify</td><td>인증코드만 먼저 확인 → resetToken 발급</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.6</span></td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/password/reset-confirm</td><td>resetToken + 새 비밀번호로 재설정 확정</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5, v0.6에서 스키마 변경</span></td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/home/summary</td><td>홈 요약(최근 관리·주의사항·이용권·추천)</td><td>R-USXPEM, R-QGENNK</td><td class="mono">home.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care</td><td>다음 관리 추천 후보 + 이유</td><td>R-QGENNK</td><td class="mono">recommendations.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/recommendations/next-care/{id}</td><td>추천 상세 보기</td><td>R-QGENNK</td><td class="mono">recommendations.routes.ts</td></tr>
@@ -654,18 +655,39 @@
 
       <div class="endpoint-card">
         <div class="endpoint-head">
-          <span class="method post">POST</span><span class="path mono">/auth/password/reset-confirm</span>
-          <span class="done-badge">v0.5 · 구현 완료</span>
-          <span class="note">인증코드 + 새 비밀번호 제출</span>
+          <span class="method post">POST</span><span class="path mono">/auth/password/reset-verify</span>
+          <span class="done-badge">v0.6 · 구현 완료</span>
+          <span class="note">인증번호만 먼저 확인</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">이메일로 받은 숫자 인증코드와 새 비밀번호를 한 번에 제출한다 — 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로). 서버는 <span class="mono">code</span>를 Supabase의 <span class="mono">auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아님). 성공하면 그 자리에서 비밀번호를 갱신하고, 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">와이어프레임(05. 비밀번호를 잊으셨나요?)이 "인증번호 발송"과 "인증번호 확인"을 별도 버튼으로 분리해 두고 있어, 코드 검증을 <span class="mono">reset-confirm</span>과 독립된 단계로 뺐다. 서버는 <span class="mono">code</span>를 Supabase의 <span class="mono">auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 넘겨 검증한다. 성공하면 Supabase가 그 코드를 발급한 계정에 대한 1회성 recovery 세션을 돌려주는데 — <b>코드 자체는 이 호출로 소진되어 재사용 불가</b> — 그 세션의 <span class="mono">access_token</span>을 <span class="mono">resetToken</span>으로 그대로 내려준다.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">email</td><td class="mono">string</td><td>reset-request에 넣은 이메일과 동일해야 함</td></tr>
                 <tr><td class="mono">code</td><td class="mono">string</td><td>이메일로 받은 숫자 인증코드(자리수는 프로젝트 설정에 따라 다름 — 실측 8자리)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200 — <span class="mono">{ "resetToken": "string" }</span></p>
+          <div class="status-row"><span class="status-chip err">400 INVALID_OR_EXPIRED_RESET_CODE</span></div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/auth/password/reset-confirm</span>
+          <span class="done-badge">v0.6 · 구현 완료</span>
+          <span class="note">resetToken + 새 비밀번호 제출</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">reset-verify</span>에서 받은 <span class="mono">resetToken</span> + 새 비밀번호를 제출한다 — 더 이상 <span class="mono">email</span>/<span class="mono">code</span>를 직접 받지 않는다. 서버는 <span class="mono">resetToken</span>을 <span class="mono">auth.getUser(resetToken)</span>으로 재확인한 뒤 <span class="mono">auth.admin.updateUserById()</span>로 비밀번호를 갱신한다. 갱신 후 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 인증번호 확인, 새 비밀번호 로그인까지 3단계 전체를 라이브로 실측 검증 완료(코드 재사용 거부도 함께 확인).</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">resetToken</td><td class="mono">string</td><td>reset-verify 응답값 그대로</td></tr>
                 <tr><td class="mono">newPassword</td><td class="mono">string</td><td>새 비밀번호 (8자 이상)</td></tr>
               </tbody>
             </table>
@@ -1130,7 +1152,7 @@
             <tr><td class="mono">GUIDE_GENERATION_FAILED</td><td>LLM 일차별 가이드 생성 실패</td></tr>
             <tr><td class="mono">ANSWER_GENERATION_FAILED</td><td>LLM Q&amp;A 답변 생성 실패</td></tr>
             <tr><td class="mono">UNSUPPORTED_CATEGORY</td><td>미지원 질문 카테고리</td></tr>
-            <tr><td class="mono">INVALID_OR_EXPIRED_RESET_CODE</td><td>비밀번호 재설정 인증코드 무효/만료 <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">INVALID_OR_EXPIRED_RESET_CODE</td><td>비밀번호 재설정 인증코드/resetToken 무효·만료 <span class="done-badge">v0.5, v0.6에서 resetToken 오류에도 재사용</span></td></tr>
             <tr><td class="mono">INVALID_CURRENT_PASSWORD</td><td>비밀번호 변경 시 현재 비밀번호 불일치 <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
@@ -1144,7 +1166,7 @@
         <table>
           <thead><tr><th>#</th><th>항목</th><th>화면(와이어프레임)</th><th>엔드포인트/필드</th><th>구현 위치</th></tr></thead>
           <tbody>
-            <tr><td>1</td><td>비밀번호 찾기</td><td>05. 비밀번호를 잊으셨나요?</td><td class="mono">POST /auth/password/reset-request, /reset-confirm</td><td class="mono">auth.service.ts</td></tr>
+            <tr><td>1</td><td>비밀번호 찾기</td><td>05. 비밀번호를 잊으셨나요?</td><td class="mono">POST /auth/password/reset-request, /reset-verify(v0.6), /reset-confirm</td><td class="mono">auth.service.ts</td></tr>
             <tr><td>2</td><td>비밀번호 변경</td><td>14. 내 정보</td><td class="mono">POST /profile/password</td><td class="mono">profile.service.ts</td></tr>
             <tr><td>3</td><td><s>마케팅 알림 토글</s></td><td>13. 설정</td><td class="mono">제거됨 — 발송 로직 없는 placeholder였음. 005 마이그레이션</td><td>—</td></tr>
             <tr><td>4</td><td>프로필 확장</td><td>14. 내 정보</td><td class="mono">Profile.birthDate, phone</td><td class="mono">profile.service.ts</td></tr>
@@ -1168,6 +1190,7 @@
         <li><b><span class="mono">POST /auth/signup</span> 시그니처 전면 교체</b> — <span class="mono">{email,password,name,phone,birthDate}</span> → <span class="mono">{patientNo,name,birthDate,email,password,interestGoals}</span>. 이름/생년월일은 자유 입력이 아니라 신원 확인용으로 <span class="mono">emr_patients</span> 원본과 대조되고, 전화번호는 요청에 아예 없이 원본에서 그대로 가져온다. 가입 성공 시 <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>가 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관</b>되고, 실패 시 방금 만든 Auth 계정은 롤백(CASCADE로 하위 데이터 자동 정리)된다. (처음엔 인증코드 발급 방식으로 설계했다가 마이그레이션 010에서 이름+생년월일 대조 방식으로 대체 — <span class="mono">signup_verification_codes</span> 테이블은 제거됨)</li>
         <li><b><span class="mono">PHONE_ALREADY_EXISTS</span> 에러 제거</b> — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 <span class="mono">PATIENT_NOT_FOUND</span>/<span class="mono">PATIENT_ALREADY_CLAIMED</span>/<span class="mono">PATIENT_IDENTITY_MISMATCH</span> 3종 신규 추가.</li>
         <li><b>claim 시점의 이관은 1회성이지만, claim 이후에도 병원 쪽 기록은 계속 가능</b> — claim 순간 그때까지의 <span class="mono">emr_*</span> 데이터만 앱 테이블로 복사되는 건 맞지만, 그 이후 <span class="mono">server_admin</span>에서 이 환자에게 새 시술기록을 추가하면 스테이징이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 기록된다 — <span class="mono">docs/admin-api-spec.md</span>의 관련 절 참고.</li>
+        <li><b>비밀번호 재설정을 코드 검증 단계와 비밀번호 변경 단계로 재분리</b> — 와이어프레임(05번)이 "인증번호 발송" → "인증번호 확인" → "새 비밀번호 저장"을 별도 버튼 3개로 그리고 있는데, 기존 구현은 코드 검증과 비밀번호 변경을 <span class="mono">reset-confirm</span> 하나로 합쳐뒀었다. 신규 <span class="mono">POST /auth/password/reset-verify</span>가 코드만 검증해 <span class="mono">resetToken</span>을 내려주고, <span class="mono">reset-confirm</span>은 이제 <span class="mono">{resetToken, newPassword}</span>만 받는다(더 이상 <span class="mono">email</span>/<span class="mono">code</span>를 직접 받지 않음). 코드는 <span class="mono">verifyOtp</span> 호출 시점에 이미 소진되므로 재사용 불가 — 라이브 테스트로 확인 완료.</li>
       </ul>
     </section>
 

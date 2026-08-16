@@ -109,13 +109,24 @@
   <label>code (메일로 받은 인증코드, 자리수는 메일에 온 그대로)</label>
   <input id="resetCode" inputmode="numeric" maxlength="10" placeholder="예: 48392017" />
 
-  <label>새 비밀번호</label>
-  <input id="newPassword" value="NewPassw0rd!2024" />
-
-  <button id="resetStep2Btn">2) 새 비밀번호로 재설정 — POST /auth/password/reset-confirm</button>
+  <button id="resetStep2Btn">2) 인증코드 확인 — POST /auth/password/reset-verify</button>
   <div class="step">
     <span id="resetStep2Status" class="status"></span>
     <pre id="resetStep2Result">(아직 실행 안 함)</pre>
+  </div>
+
+  <p class="desc">
+    코드는 이 확인 요청 한 번으로 소진된다 — 다시 확인하려면 위 1단계부터 새 코드를 받아야 한다.
+    성공하면 resetToken이 발급되고, 아래 3단계는 그 값을 자동으로 재사용한다(따로 입력할 필요 없음).
+  </p>
+
+  <label>새 비밀번호</label>
+  <input id="newPassword" value="NewPassw0rd!2024" />
+
+  <button id="resetStep3Btn">3) 새 비밀번호로 재설정 — POST /auth/password/reset-confirm</button>
+  <div class="step">
+    <span id="resetStep3Status" class="status"></span>
+    <pre id="resetStep3Result">(아직 실행 안 함)</pre>
   </div>
 
   <h2 style="margin-top:40px;">D. 사후관리 질문(AI 답변) 실험</h2>
@@ -372,22 +383,54 @@
     }
   });
 
+  // C단계 전체에서 공유하는 resetToken — 2단계(reset-verify)가 채우고, 3단계(reset-confirm)가 그대로 쓴다.
+  let resetToken;
+
   // ============================================================
-  // C-2단계: 인증코드 + 새 비밀번호로 재설정 — POST /auth/password/reset-confirm
-  // Request body: { email, code, newPassword }
-  // Response: 성공하면 204 No Content, 실패하면 400 INVALID_OR_EXPIRED_RESET_CODE + body
+  // C-2단계: 인증코드만 먼저 확인 — POST /auth/password/reset-verify
+  // Request body: { email, code }
+  // Response 200: { resetToken } — 코드는 이 호출로 소진돼 재사용 불가
   // ============================================================
   $("resetStep2Btn").addEventListener("click", async () => {
     const baseUrl = $("baseUrl").value.replace(/\/$/, "");
     const resultEl = $("resetStep2Result");
     const statusEl = $("resetStep2Status");
     try {
-      const res = await fetch(`${baseUrl}/auth/password/reset-confirm`, {
+      const res = await fetch(`${baseUrl}/auth/password/reset-verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: $("resetConfirmEmail").value,
           code: $("resetCode").value,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) resetToken = data.resetToken;
+      setResult(resultEl, statusEl, res.ok, data);
+    } catch (err) {
+      setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // C-3단계: resetToken + 새 비밀번호로 재설정 — POST /auth/password/reset-confirm
+  // Request body: { resetToken, newPassword } — email/code는 여기서 다시 보내지 않는다.
+  // Response: 성공하면 204 No Content, 실패하면 400 INVALID_OR_EXPIRED_RESET_CODE + body
+  // ============================================================
+  $("resetStep3Btn").addEventListener("click", async () => {
+    const baseUrl = $("baseUrl").value.replace(/\/$/, "");
+    const resultEl = $("resetStep3Result");
+    const statusEl = $("resetStep3Status");
+    if (!resetToken) {
+      setResult(resultEl, statusEl, false, { error: "먼저 2단계(인증코드 확인)를 성공시켜야 resetToken이 채워진다." });
+      return;
+    }
+    try {
+      const res = await fetch(`${baseUrl}/auth/password/reset-confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resetToken,
           newPassword: $("newPassword").value,
         }),
       });

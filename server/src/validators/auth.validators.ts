@@ -27,10 +27,15 @@ export const passwordResetRequestSchema = z.object({
   email: z.string().email(),
 });
 
-export const passwordResetConfirmSchema = z.object({
+export const passwordResetVerifySchema = z.object({
   email: z.string().email(),
   // Supabase 대시보드 설정에 따라 OTP 자리수가 달라질 수 있어(이 프로젝트는 실측 결과 8자리) 정확한
   // 자리수로 고정하지 않고 숫자로만 구성됐는지만 느슨하게 검증한다.
   code: z.string().regex(/^\d{6,10}$/, "6~10자리 숫자"),
+});
+
+export const passwordResetConfirmSchema = z.object({
+  // reset-verify 응답으로 받은 값을 그대로 넘긴다 — 여기서 email/code를 다시 받지 않는다.
+  resetToken: z.string().min(1),
   newPassword: z.string().min(8),
 });

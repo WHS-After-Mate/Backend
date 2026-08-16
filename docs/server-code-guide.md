@@ -88,9 +88,10 @@ app.ts
      `supabaseAnon.auth.signInWithPassword` / `refreshSession` / `supabaseAdmin.auth.admin.signOut(..., "global")`.
      accessToken/refreshToken의 실제 발급·검증·만료 정책은 Supabase 쪽 설정을 따른다
      (→ "미확정 사항": refreshToken 만료 정책은 Supabase 기본값 그대로 사용 중).
-3. `POST /password/reset-request` / `POST /password/reset-confirm`
+3. `POST /password/reset-request` / `POST /password/reset-verify` / `POST /password/reset-confirm`
    - `reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`에 그대로 위임 — 가입 여부와 무관하게 항상 204
-   - `reset-confirm`은 `{email, code, newPassword}`를 받아 `code`를 `supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" })`로 검증한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다 — 실패 시 `invalidOrExpiredResetToken()`(에러 코드는 `INVALID_OR_EXPIRED_RESET_CODE`로 개명됨). 이전엔 이메일 링크의 `access_token`(recoveryToken)을 `getUser()`로 재확인하는 방식이었으나, Supabase 이메일 템플릿의 `{{ .Token }}` 숫자 코드를 그대로 쓰는 방식으로 전환됐다. 코드 자릿수는 "6자리"가 표준이 아니라 Supabase 프로젝트 설정에 따라 다르다(이 프로젝트는 실측 8자리) — `passwordResetConfirmSchema`는 6~10자리를 느슨하게 허용
+   - `reset-verify`(신규)는 `{email, code}`를 받아 `code`를 `supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" })`로 검증하고, 성공하면 그 recovery 세션의 `access_token`을 `resetToken`으로 응답한다(`auth.service.ts`의 `verifyPasswordResetCode`). **코드는 이 호출 시점에 소진되어 재사용 불가** — 와이어프레임(`docs/After_Mate.png` 05번)이 "인증번호 확인"을 "비밀번호 변경"과 별도 버튼으로 그려서 코드 검증을 독립 단계로 뺐다
+   - `reset-confirm`은 이제 `{resetToken, newPassword}`만 받는다(더 이상 `email`/`code`를 직접 받지 않음) — `resetToken`을 `supabaseAnon.auth.getUser(resetToken)`으로 재확인한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`의 `confirmPasswordReset`) — 실패 시 `invalidOrExpiredResetToken()`(에러 코드는 `INVALID_OR_EXPIRED_RESET_CODE`). 코드 자릿수는 "6자리"가 표준이 아니라 Supabase 프로젝트 설정에 따라 다르다(이 프로젝트는 실측 8자리) — `passwordResetVerifySchema`는 6~10자리를 느슨하게 허용. 발송→확인→변경→새 비밀번호 로그인까지 라이브 실측 검증 완료(코드 재사용 거부도 확인)
 
 ---
 
@@ -248,7 +249,7 @@ app.ts
 
 | 항목 | api-spec.md 위치 | 구현 위치 | 마이그레이션 |
 |---|---|---|---|
-| `POST /auth/password/reset-request`, `/reset-confirm` | 1절 | `auth.routes.ts`/`auth.service.ts` — `supabaseAnon.auth.resetPasswordForEmail`/`verifyOtp` + `supabaseAdmin.auth.admin.updateUserById` | 불필요 |
+| `POST /auth/password/reset-request`, `/reset-confirm` | 1절 | `auth.routes.ts`/`auth.service.ts` — `supabaseAnon.auth.resetPasswordForEmail`/`verifyOtp` + `supabaseAdmin.auth.admin.updateUserById` (v0.6에서 `/reset-verify`로 코드 검증 단계 분리, 3절 참고) | 불필요 |
 | `POST /profile/password` | 5절 | `profile.routes.ts`/`profile.service.ts` — `signInWithPassword` 재검증 후 `updateUserById` | 불필요 |
 | ~~`NotificationSettings.marketingAlert`~~ | 5절 | *(제거됨 — `GET`/`PATCH /notifications/settings` 자체를 삭제. 실제로 읽는 발송 로직이 없는 placeholder였음)* | `db/migrations/005_remove_notification_settings.sql` |
 | `Profile.birthDate`/`phone` | 5절 | `profile.service.ts` | `profiles.birth_date` — 적용 완료 |
@@ -267,7 +268,7 @@ app.ts
 |---|---|---|---|
 | `POST /auth/signup` 시그니처 | 1절 | `auth.service.ts`의 `signup()` — 현재 `{patientNo,name,birthDate,email,password,interestGoals}`(2026-08-13엔 `verificationCode` 방식이었으나 010에서 대체) | `006_add_admin_emr_staging_tables.sql`(신설) → `010_signup_identity_check_and_patient_notes.sql`(현재 방식으로 대체) |
 | `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`PATIENT_IDENTITY_MISMATCH` | 공통 에러 코드 | `lib/errors.ts` — `phoneAlreadyExists` 제거, 3종 추가(`invalidOrExpiredVerificationCode`는 010에서 함께 제거) | 불필요 |
-| 비밀번호 재설정 숫자코드화 | 1절 | `auth.service.ts`의 `confirmPasswordReset` — `verifyOtp(type:"recovery")`로 전환(3절 참고) | 불필요, Supabase 이메일 템플릿 `{{ .Token }}` 수동 설정 필요 |
+| 비밀번호 재설정 숫자코드화 + 검증/변경 단계 분리 | 1절 | `auth.service.ts`의 `verifyPasswordResetCode`(신규)/`confirmPasswordReset` — `verifyOtp(type:"recovery")`로 코드만 먼저 검증해 `resetToken` 발급, `reset-confirm`은 `resetToken`+새 비밀번호만 받음(3절 참고) | 불필요, Supabase 이메일 템플릿 `{{ .Token }}` 수동 설정 필요 |
 | `interestGoals` 회원가입 시 저장 | 1절 | `auth.service.ts`의 `signup()` — `profiles.interest_goals`에 즉시 저장 | 불필요(기존 컬럼 재사용) |
 | 신규 관리자용 백엔드 `server_admin/` | 문서 범위 밖(별도 README) | 환자 CRUD, 시술기록/이용권 추가·삭제, 클리닉 로그인(JWT), 브랜드별 격리 — `server/`와 동일 3단 컨벤션, 포트 4100 | `007`~`012`(`server_admin/README.md` 참고) |
 | 스테이징 테이블 | `db-schema.md` "가상 EMR 스테이징 테이블(006)" 절 | `emr_patients`/`emr_care_records`/`emr_memberships` (`signup_verification_codes`는 010에서 삭제) | `006` 신설 → `007`~`012`에서 컬럼 개편 |
