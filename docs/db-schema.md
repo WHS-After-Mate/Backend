@@ -1,8 +1,10 @@
-# WHS After Mate — DB 스키마 (v0.4)
+# WHS After Mate — DB 스키마 (v0.6)
 
 기준: `api-spec.md` v0.6. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
 
-v0.4 변경: 회원가입을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체하며, 관리자용 가상 EMR 스테이징 테이블 4종(`emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes`)을 신규 추가했다(`server/db/migrations/006_add_admin_emr_staging_tables.sql`, Supabase 적용 완료). 자세한 내용은 하단 "가상 EMR 스테이징 테이블 추가 (006)" 절 참고.
+v0.6 변경: 관리자용 가상 EMR 스택이 클리닉별 로그인 기반으로 확장됐다 — 회원가입 인증코드 발급 절차를 없애고 **환자번호+이름+생년월일 일치**로 신원을 확인하는 방식으로 단순화(`signup_verification_codes` 테이블 삭제, 010), 클리닉 관리자 로그인(`admin_accounts`, 008)과 클리닉별 데이터 격리(`store` 컬럼 제거+`emr_patients.brand` 추가, 009), 시술기록↔이용권 연결(`emr_care_records.membership_id`, 011), 관리 부위 배열화(`part_of_body text[]`, 012), 이용권 잔여횟수 생성 컬럼(`emr_memberships.remaining_count`, 007)이 전부 이 범위에서 추가됐다. 비밀번호 재설정도 이메일 링크에서 숫자 인증코드(Supabase `verifyOtp`) 방식으로 바뀌었다(DB 마이그레이션 없음). 자세한 내용은 하단 007~012 절 참고.
+
+v0.4 변경: 회원가입을 이메일/비밀번호 자유 가입에서 환자번호+인증코드 기반 가입으로 교체하며, 관리자용 가상 EMR 스테이징 테이블 4종(`emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes`)을 신규 추가했다(`server/db/migrations/006_add_admin_emr_staging_tables.sql`). **이후 v0.6(010)에서 인증코드 절차 자체가 이름+생년월일 대조로 대체되며 `signup_verification_codes`는 삭제됐다** — 아래 테이블 정의는 현재(v0.6) 기준으로 갱신했다.
 
 v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하는 스키마 변경. `profiles`에 컬럼 2개 추가, `care_records`에 컬럼 4개 추가, `membership_usages` 신규 테이블 1개. **마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`)이 Supabase 프로젝트에 실제 적용됐고, 데모 데이터도 `npm run seed`로 재시드해 새 필드가 채워진 상태를 확인했다.** 자세한 내용은 하단 "v0.3에서 추가된 항목" 절 참고.
 
@@ -14,9 +16,9 @@ v0.3 변경: `api-spec.md` v0.5(와이어프레임 검토 반영)에 대응하�
 
 이메일/비밀번호 계정 생성, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 Supabase Auth가 처리한다. 우리 테이블은 `auth.users.id`를 FK로 참조만 한다.
 
-**가입 흐름** *(v0.4 — 환자번호+인증코드 기반, `006_add_admin_emr_staging_tables.sql`)*: `POST /auth/signup({patientNo, verificationCode, email, password})` 호출 → `emr_patients`에서 `patient_no`로 환자 조회(없으면 `PATIENT_NOT_FOUND`, 이미 `claimed_user_id`가 있으면 `PATIENT_ALREADY_CLAIMED`) → `signup_verification_codes`에서 코드 일치·미사용·미만료 확인(`INVALID_OR_EXPIRED_VERIFICATION_CODE`) → `supabase.auth.admin.createUser()` → 생성된 `user.id`로 `profiles` 행 insert(이름/전화/생년월일은 클라이언트 입력이 아니라 `emr_patients` 원본 값) + `medical_profiles` insert + `emr_care_records`/`emr_memberships`를 `care_records`/`memberships`로 **1회성 이관(claim)** + 인증코드 `used_at` 기록 + `emr_patients.claimed_user_id` 기록. 이관 단계 중 하나라도 실패하면 방금 만든 Auth 유저를 롤백(`deleteUser`) — `profiles`/`medical_profiles`/`care_records`/`memberships`는 `auth.users`에 CASCADE로 걸려있어 유저 삭제 시 함께 정리되고, `emr_patients`/`signup_verification_codes`는 claim 처리 전이므로 그대로 남아 재시도 가능하다(`auth.service.ts`의 `signup()` 참고).
+**가입 흐름** *(v0.6 — 환자번호+이름+생년월일 대조 기반, `010_signup_identity_check_and_patient_notes.sql`)*: `POST /auth/signup({patientNo, name, birthDate, email, password, interestGoals})` 호출 → `emr_patients`에서 `patient_no`로 환자 조회(없으면 `PATIENT_NOT_FOUND`, 이미 `claimed_user_id`가 있으면 `PATIENT_ALREADY_CLAIMED`) → 조회된 레코드의 `name`/`birth_date`가 요청값과 정확히 일치하는지 대조(`PATIENT_IDENTITY_MISMATCH`, 별도 인증코드 발급 절차 없음) → `supabase.auth.admin.createUser()` → 생성된 `user.id`로 `profiles` 행 insert(이름/전화/생년월일은 클라이언트 입력이 아니라 `emr_patients` 원본 값) + `medical_profiles` insert(`emr_patients.notes`를 `doctor_general_comment`로 이관) + `emr_care_records`/`emr_memberships`를 `care_records`/`memberships`로 **1회성 이관(claim)** + `emr_patients.claimed_user_id`/`claimed_at` 기록. 이관 단계 중 하나라도 실패하면 방금 만든 Auth 유저를 롤백(`deleteUser`) — `profiles`/`medical_profiles`/`care_records`/`memberships`는 `auth.users`에 CASCADE로 걸려있어 유저 삭제 시 함께 정리되고, `emr_patients`는 claim 처리 전이므로 그대로 남아 재시도 가능하다(`auth.service.ts`의 `signup()` 참고). *(v0.4 시점엔 `signup_verification_codes` 테이블로 발급하는 별도 인증코드 대조 방식이었으나 010에서 이 방식으로 대체되며 테이블 자체가 삭제됐다 — 아래 "제거됨" 절 참고.)*
 
-**비밀번호 재설정/변경** *(v0.3, `api-spec.md` v0.5 신규 — 구현 완료, DB 마이그레이션 불필요)*: 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`, `POST /auth/password/reset-confirm`은 Supabase 기본 "Reset Password" 메일 템플릿이 리다이렉트 URL 해시로 실어 보내는 이미 검증된 `access_token`(recoveryToken)을 `supabaseAnon.auth.getUser(recoveryToken)`으로 재확인한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`). `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
+**비밀번호 재설정/변경** *(구현 완료, DB 마이그레이션 불필요)*: 별도 테이블이 필요 없다. `POST /auth/password/reset-request`는 `supabaseAnon.auth.resetPasswordForEmail()`에 위임. `POST /auth/password/reset-confirm`은 `{email, code, newPassword}`를 받아 `code`를 `supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" })`로 검증한 뒤 `supabaseAdmin.auth.admin.updateUserById(userId, { password })`로 갱신한다(`auth.service.ts`) — Supabase 이메일 템플릿의 `{{ .Token }}` 숫자 코드를 그대로 쓰는 방식으로, 링크(`access_token`) 기반이었던 이전 설계에서 전환됐다. `POST /profile/password`(로그인 상태에서 변경)는 `currentPassword`로 `signInWithPassword` 재검증 후 동일하게 `updateUserById`로 처리(`profile.service.ts`) — 셋 다 Supabase Auth가 비밀번호 해싱/토큰을 전담하므로 우리 쪽 테이블 추가 없음.
 
 ---
 
@@ -71,9 +73,8 @@ create table public.care_records (
   care_name text not null,
   care_type text,
   care_date date not null,
-  part_of_body text,
+  part_of_body text[] not null default '{}',
   brand text,
-  store text,
   practitioner text,
   status text not null default 'completed',
   session_number int,
@@ -96,6 +97,8 @@ create unique index idx_care_records_external_id
 ```
 
 - `care_type`: `reference_guides.care_type`과 매칭하는 내부 정규화 키(예: `peeling`, `laser_toning`). `care_name`은 사용자에게 보여주는 표시용 문자열이라 매칭 키로 쓰기 부적절해 별도 컬럼으로 분리. API 응답에는 노출하지 않음 (서버 구현 시 추가)
+- `part_of_body` *(v0.6, 마이그레이션 012)*: 텍스트 단일값에서 배열로 변경 — 한 시술이 여러 부위에 동시에 이뤄질 수 있어(예: "이마+미간") 중복 선택 가능하게 함. `emr_care_records`도 동일하게 배열
+- `store` 컬럼은 v0.6(009)에서 제거됐다 — 클리닉당 지점이 하나뿐이라 `brand`와 항상 1:1이었던 순수 중복 컬럼
 - `status` *(v0.3, 마이그레이션 003)*: `GET /care-records`/`{id}` 응답의 `status`. 기본값 `completed`(EMR 동기화 데이터는 이미 끝난 시술 위주)
 - `session_number` / `total_sessions` *(v0.3, 마이그레이션 003)*: 관리 상세의 "관리 회차: 2/3회차". nullable — 회차 개념이 없는 단건 시술은 비워둠
 - `membership_id` *(v0.3, 마이그레이션 003)*: 이 시술이 차감한 이용권 FK. `on delete set null`로 이용권이 삭제돼도 시술 기록 자체는 보존. **마이그레이션 순서 주의**: `public.memberships`가 먼저 생성되어 있어야 하므로, 실제 적용 시 이 테이블 정의를 `memberships` 다음으로 옮기거나 `ALTER TABLE ... ADD COLUMN membership_id ...`를 memberships 생성 후 별도 스텝으로 분리해야 한다(문서 내 테이블 순서는 설명 편의상 EMR 연동 그룹을 앞에 둔 것)
@@ -281,7 +284,7 @@ create table public.device_tokens (
 
 - Android 클라이언트가 발급받은 FCM 토큰을 `POST /notifications/device-token`으로 등록. 알림 실제 발송(아침 리마인더 등)은 MVP 범위 밖이라 발송 함수만 준비
 
-### public.emr_patients — 가상 EMR 환자 프로필 (계정 미연결 상태로 시작) *(v0.4, 마이그레이션 006)*
+### public.emr_patients — 가상 EMR 환자 프로필 (계정 미연결 상태로 시작) *(v0.4 신설 006, v0.6 컬럼 개편 009/010)*
 
 ```sql
 create table public.emr_patients (
@@ -290,9 +293,8 @@ create table public.emr_patients (
   name text not null,
   birth_date date not null,
   phone text not null,
-  allergies text[] not null default '{}',
-  chronic_conditions text[] not null default '{}',
-  doctor_general_comment text,
+  notes text,
+  brand text,
   claimed_user_id uuid references auth.users(id) on delete set null,
   claimed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -303,10 +305,12 @@ create index idx_emr_patients_phone on public.emr_patients (phone);
 ```
 
 - `auth.users`와 무관하게 독립적으로 존재 — `server_admin`(관리자 웹 백엔드)이 환자 등록 시 채우는 원본 데이터
-- `patient_no`: 병원에서 발급하는 환자번호. 앱 회원가입 시 인증코드와 함께 입력받아 신원 확인에 사용
-- `claimed_user_id`: 회원가입으로 이 환자 기록을 실제 계정에 연결(claim)한 시점의 `auth.users.id`. `null`이면 아직 미가입 상태이며, 값이 있으면 중복 가입 방지 겸 이관 완료 표시로 쓰인다
+- `patient_no`: 병원에서 발급하는 환자번호. 앱 회원가입 시 이름+생년월일과 함께 대조해 신원 확인에 사용(v0.6, 010 — 별도 인증코드 발급 없음)
+- `notes` *(v0.6, 마이그레이션 010)*: 기타사항 — 원래 `allergies`/`chronic_conditions`/`doctor_general_comment` 3개 컬럼으로 구조화 입력받던 것을 자유입력 텍스트 하나로 통합. claim 시 `medical_profiles.doctor_general_comment`로 그대로 이관(`allergies`/`chronic_conditions`는 빈 배열로 시작)
+- `brand` *(v0.6, 마이그레이션 009)*: 환자를 등록한 클리닉(`admin_accounts.brand`와 매칭). 환자 등록(`POST /patients`) 시점에 로그인한 관리자의 brand를 그대로 기록 — 클리닉별 데이터 격리(다른 클리닉 환자는 조회 자체가 404)의 근거
+- `claimed_user_id`: 회원가입으로 이 환자 기록을 실제 계정에 연결(claim)한 시점의 `auth.users.id`. `null`이면 아직 미가입 상태이며, 값이 있으면 중복 가입 방지 겸 이관 완료 표시로 쓰인다. claim 이후에도 `server_admin`에서 이 환자에게 새 시술기록을 추가할 수 있으며, 이때는 스테이징이 아니라 실제 `care_records`/`memberships`에 곧바로 기록된다
 
-### public.emr_care_records — 계정 연결 전 시술 이력 *(v0.4, 마이그레이션 006)*
+### public.emr_care_records — 계정 연결 전 시술 이력 *(v0.4 신설 006, v0.6 컬럼 개편 009/011/012)*
 
 ```sql
 create table public.emr_care_records (
@@ -315,23 +319,27 @@ create table public.emr_care_records (
   care_name text not null,
   care_type text not null,
   care_date date not null,
-  part_of_body text,
+  part_of_body text[] not null default '{}',
   brand text,
-  store text,
   practitioner text,
   basic_aftercare_guide text[] not null default '{}',
   doctor_comment text,
   session_number int,
   total_sessions int,
+  membership_id uuid references public.emr_memberships(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
 create index idx_emr_care_records_patient on public.emr_care_records (patient_id, care_date desc);
+create index idx_emr_care_records_membership on public.emr_care_records (membership_id);
 ```
 
 - 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문. `care_type`은 `reference_guides`와 매칭되는 값(현재 `peeling`/`laser_toning`)만 실제 일차별 가이드가 생성되고, 그 외 값은 클레임 후 `404 GUIDE_NOT_AVAILABLE`로 안전하게 폴백된다
+- `store` 컬럼은 v0.6(009)에서 제거됐다(순수 중복 컬럼, `care_records`와 동일한 이유)
+- `part_of_body` *(v0.6, 마이그레이션 012)*: 단일 텍스트에서 배열로 변경. 값은 `server_admin`이 정해진 목록(`GET /body-parts`) 안에서만 검증
+- `membership_id` *(v0.6, 마이그레이션 011)*: 이 시술기록이 어떤 이용권을 소비했는지 연결. 시술기록을 삭제할 때 그 이용권 차감을 자동으로 되돌리기 위해 추가(`server_admin/patients.service.ts`)
 
-### public.emr_memberships — 계정 연결 전 이용권 *(v0.4, 마이그레이션 006)*
+### public.emr_memberships — 계정 연결 전 이용권 *(v0.4 신설 006, v0.6 컬럼 추가 007)*
 
 ```sql
 create table public.emr_memberships (
@@ -340,6 +348,7 @@ create table public.emr_memberships (
   product_name text not null,
   total_count int not null default 0,
   used_count int not null default 0,
+  remaining_count int generated always as (total_count - used_count) stored,
   expires_at date,
   last_used_at date,
   available_care_names text[] not null default '{}',
@@ -349,26 +358,29 @@ create table public.emr_memberships (
 create index idx_emr_memberships_patient on public.emr_memberships (patient_id);
 ```
 
-- `public.memberships`와 동일한 형태로 claim 시 그대로 복사됨
+- `public.memberships`와 동일한 형태로 claim 시 그대로 복사됨(단, `remaining_count`는 GENERATED라 claim 시 복사 대상이 아니라 자동 계산됨)
+- `remaining_count` *(v0.6, 마이그레이션 007)*: `public.memberships`와 동일한 패턴의 GENERATED 컬럼. 시술기록 추가 화면에서 "이 이용권 몇 회 남았는지" 토글 목록을 보여줄 때 프론트/서버가 직접 계산하지 않아도 됨
 
-### public.signup_verification_codes — 환자번호 기반 가입 인증코드 *(v0.4, 마이그레이션 006)*
+### public.admin_accounts — 클리닉별 관리자 로그인 계정 *(v0.6, 마이그레이션 008/009)*
 
 ```sql
-create table public.signup_verification_codes (
+create table public.admin_accounts (
   id uuid primary key default gen_random_uuid(),
-  patient_id uuid not null references public.emr_patients(id) on delete cascade,
-  code text not null,
-  expires_at timestamptz not null,
-  used_at timestamptz,
+  username text not null unique,
+  password_hash text not null,
+  brand text not null,
   created_at timestamptz not null default now()
 );
-
-create index idx_signup_codes_patient on public.signup_verification_codes (patient_id, created_at desc);
-create index idx_signup_codes_lookup on public.signup_verification_codes (patient_id, code) where used_at is null;
 ```
 
-- 데스크(`server_admin`)에서 발급 버튼을 누르면 24시간 유효한 코드가 생성됨 — 실제 SMS 발송 없이 `admin-web` 화면에 코드를 표시해 안내하는 방식(`server/README.md`의 SMS 미구현 방침과 동일한 결)
-- `POST /auth/signup`에서 `patientNo`+`code`가 일치·미사용·미만료 확인되면 `used_at`을 채워 사용 처리하고 `emr_patients`를 claim한다
+- `auth.users`와 무관 — `server_admin`이 자체적으로 bcrypt 해시 + JWT(`ADMIN_JWT_SECRET`)로 인증을 처리한다(Supabase Auth 미사용)
+- 클리닉(브랜드)당 계정 1개, 총 3개(AMRED/DERNA/WIM)를 시드 스크립트(`server_admin/db/seed/seedAdmins.ts`)로만 생성 — 가입 API는 없음(클리닉이 3개로 고정)
+- 로그인한 계정의 `brand`가 이후 환자 등록·시술기록 추가 시 자동으로 채워지고, 조회도 로그인한 계정의 `brand`로만 격리된다(다른 클리닉 환자/기록은 404로 통일 — 존재 자체를 숨김). `/patients/*` 전체 라우트가 `requireAdminAuth` 미들웨어로 토큰을 요구한다(로그인 없이 항상 열려있던 이전 결정을 뒤집음)
+- `store` 컬럼은 v0.6(009)에서 제거됐다(`brand`와 순수 중복)
+
+### ~~public.signup_verification_codes~~ — 제거됨 (v0.4 신설 006 → v0.6 삭제 010)
+
+가입 시 환자번호와 함께 대조하던 24시간 유효 인증코드를 저장하던 테이블. v0.6(010)에서 회원가입 신원확인 방식이 "인증코드 발급·대조"에서 "환자번호+이름+생년월일 일치 대조"로 단순화되며 더 이상 쓰이지 않게 되어 테이블 자체를 삭제했다.
 
 ---
 
@@ -387,6 +399,7 @@ create index idx_signup_codes_lookup on public.signup_verification_codes (patien
 | **`relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` 전용 테이블 없음** *(v0.3)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, `care_type`별 사전 정의 매핑, `care_records.brand` distinct 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
 | **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요 |
 | **가상 EMR 스테이징 테이블은 `auth.users`와 완전히 분리** *(v0.4)* | `emr_patients` 등 4종은 `server_admin`이 다루는 "계정 연결 전" 데이터라 고객용 테이블(`profiles`/`care_records`/`memberships`)과 독립적으로 존재. claim(회원가입) 시점에만 1회성으로 실제 테이블로 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 동기화되지 않는다(의도적 범위 제한 — 실제 서비스라면 배치 ETL 필요) |
+| **관리자 로그인은 Supabase Auth가 아니라 자체 bcrypt+JWT** *(v0.6, 008)* | 클리닉 계정 3개가 고정이라 가입 플로우 자체가 필요 없고(시드 스크립트로만 생성), 고객용 `auth.users`와 완전히 다른 성격의 인증(브랜드별 격리)이라 별도 테이블+토큰 체계로 분리하는 편이 단순함 |
 
 ## 알려진 트레이드오프
 
@@ -443,6 +456,43 @@ create index idx_signup_codes_lookup on public.signup_verification_codes (patien
 
 **배경(설계 대안 기각 사유)**: 처음엔 "이미 가입된 계정 위에 EMR 데이터를 얹는" 방식(placeholder Auth 계정을 미리 만들어두는 안)을 검토했으나 (1) 나중에 진짜 가입 시 별개 계정이 생겨 매칭이 안 되고 (2) 기존 `PHONE_ALREADY_EXISTS` 체크가 오히려 진짜 가입을 막으며 (3) `medical_profiles.user_id`가 PK라 계정 이관 시 PK 스왑이 필요하다는 세 가지 문제로 기각됐다. "환자번호+인증코드로 신원확인 후 가입" 방식이 이 세 문제를 모두 해결한다.
 
-**관리자용 신규 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. `server_admin`은 이 4개 테이블만 다루고 `server/`의 기존 고객용 테이블은 건드리지 않는다.
+**관리자용 신규 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. `server_admin`은 이 테이블들만 다루고 `server/`의 기존 고객용 테이블은 건드리지 않는다. *(이 시점엔 "로그인 없이 항상 열림"이 데모 범위 결정이었으나, v0.6(008)에서 클리닉별 로그인이 추가되며 뒤집혔다 — 아래 007~012 절 참고.)*
 
 이 마이그레이션은 이미 Supabase 프로젝트에 적용됐다. 아직 적용하지 않은 다른 환경(신규 클론 등)이라면 Supabase SQL Editor에서 직접 실행해야 한다.
+
+## emr_memberships 잔여횟수 생성 컬럼 추가 (007)
+
+`server/db/migrations/007_emr_membership_remaining_count.sql` — `public.memberships`와 동일한 패턴으로 `emr_memberships.remaining_count`를 GENERATED 컬럼으로 추가. 시술기록 추가 화면의 "이 이용권 몇 회 남았는지" 토글 목록에서 `total_count - used_count`를 매번 계산하지 않아도 되도록 DB가 항상 최신값을 들고 있게 한다.
+
+## 클리닉 관리자 로그인 추가 (008)
+
+`server/db/migrations/008_add_admin_accounts.sql` — admin-web에 로그인 화면을 추가하기로 결정 변경(기존 "무인증 데모" 결정을 뒤집음). `public.admin_accounts` 신규 — 클리닉(브랜드)마다 계정 1개씩 총 3개(AMRED/DERNA/WIM)를 시드 스크립트로 미리 만들어 둔다. 로그인한 계정의 brand/store가 이후 시술기록 추가 시 자동으로 채워지고, 조회도 로그인한 계정의 brand로 격리된다.
+
+## store 컬럼 제거 + emr_patients.brand 추가 (009)
+
+`server/db/migrations/009_drop_store_add_patient_brand.sql` — `store`는 클리닉당 지점이 1곳뿐이라 `brand`와 항상 1:1이었던 순수 중복 컬럼이라 판단해 `care_records`/`emr_care_records`/`admin_accounts`에서 전부 제거. 동시에 클리닉 관리자 로그인(008)으로 "로그인한 클리닉의 환자만 보인다"는 격리 규칙이 필요해져, 지금까지 소속 클리닉 정보가 없던 `emr_patients`에 `brand` 컬럼을 추가(환자 등록 시점에 로그인한 관리자의 brand를 기록).
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 컬럼 삭제 | `care_records.store`, `emr_care_records.store`, `admin_accounts.store` | `brand`와 순수 중복 |
+| 컬럼 추가 | `emr_patients.brand` | nullable로 추가(백필 필요) |
+
+## 인증코드 발송 제거 + 환자 등록 필드 통합 (010)
+
+`server/db/migrations/010_signup_identity_check_and_patient_notes.sql` — 두 가지 변경을 함께 적용:
+1. 회원가입 인증코드 발급/확인 절차를 없애고, `patientNo`+이름+생년월일 일치 여부로 신원을 확인하는 방식으로 전환. `signup_verification_codes` 테이블은 더 이상 쓰이지 않아 삭제
+2. 환자 등록 입력을 이름/생년월일/전화번호/기타사항(알러지·기저질환·의사소견을 통합한 자유입력) 4개로 단순화 — `emr_patients`의 `allergies`/`chronic_conditions`/`doctor_general_comment` 3개 컬럼을 `notes` 하나로 통합
+
+| 변경 | 대상 | 비고 |
+|---|---|---|
+| 테이블 삭제 | `public.signup_verification_codes` | 인증코드 발급 절차 자체가 없어짐 |
+| 컬럼 추가 | `emr_patients.notes` | claim 시 `medical_profiles.doctor_general_comment`로 이관 |
+| 컬럼 삭제 | `emr_patients.allergies`, `chronic_conditions`, `doctor_general_comment` | `notes`로 통합 |
+
+## emr_care_records ↔ emr_memberships 연결 (011)
+
+`server/db/migrations/011_care_record_membership_link.sql` — 시술기록과 이용권이 함께 만들어져도 서로를 가리키는 FK가 없어, 시술기록을 지울 때 이용권 차감을 되돌릴 방법이 없었다. `emr_care_records.membership_id`로 연결해 시술기록 삭제 시 이용권도 자동으로 정리(차감 취소 또는 이용권 자체 삭제)할 수 있게 했다(`server_admin/patients.service.ts`).
+
+## 관리 부위 배열화 (012)
+
+`server/db/migrations/012_care_record_body_parts_array.sql` — 관리 상세 화면(와이어프레임 11번)처럼 한 시술이 여러 부위에 동시에 이뤄질 수 있어(예: "이마+미간"), `care_records.part_of_body`/`emr_care_records.part_of_body`를 단일 텍스트에서 배열(`text[]`)로 변경. 값은 정해진 부위 목록 중에서만 고를 수 있도록 `server_admin`이 검증한다(`GET /body-parts`로 목록 노출). 데모 단계라 기존 값은 보존하지 않고 컬럼을 재생성했다(재시드 필요).

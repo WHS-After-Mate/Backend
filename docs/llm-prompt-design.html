@@ -278,7 +278,7 @@ flowchart TD
               <thead><tr><th>필드</th><th>출처</th><th>용도</th></tr></thead>
               <tbody>
                 <tr><td class="mono">care_name / care_date / days_elapsed</td><td class="mono">care_records</td><td>언제 무슨 시술을 받았는지</td></tr>
-                <tr><td class="mono">part_of_body / brand</td><td class="mono">care_records</td><td>시술 부위 맥락</td></tr>
+                <tr><td class="mono">part_of_body / brand</td><td class="mono">care_records</td><td>시술 부위(배열, 중복 선택 가능) 맥락</td></tr>
                 <tr><td class="mono">doctor_comment</td><td class="mono">care_records</td><td>해당 시술 건 의사 코멘트</td></tr>
                 <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">medical_profiles</td><td>특정 성분·행동 회피 근거</td></tr>
                 <tr><td class="mono">doctor_general_comment</td><td class="mono">medical_profiles</td><td>환자 전반 의사 코멘트</td></tr>
@@ -379,7 +379,7 @@ flowchart TD
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.4 · db-schema v0.2 기준 · 2026-07-30</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 · db-schema v0.6 기준 · LLM 호출 지점(daily-guide/questions) 파이프라인 자체는 최초 작성 이후 변경 없음 · 재확인 2026-08-16</footer>
   </main>
 </div>
 

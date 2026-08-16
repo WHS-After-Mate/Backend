@@ -220,12 +220,13 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.6 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.6 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목.</p>
     <div class="badges">
-      <span class="badge">v0.4</span>
+      <span class="badge">v0.6</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
-      <span class="badge outline">환자번호+인증코드 기반 회원가입(v0.4)</span>
+      <span class="badge outline">환자번호+이름+생년월일 기반 회원가입(v0.6)</span>
+      <span class="badge outline">클리닉별 관리자 로그인(v0.6)</span>
     </div>
   </header>
 
@@ -238,12 +239,13 @@
     <a href="#decisions">설계 결정</a>
     <a href="#v03new">v0.3 신규 항목(적용 완료)</a>
     <a href="#v06new">가상 EMR 스테이징 테이블(006)</a>
+    <a href="#v06later">클리닉 로그인·격리 확장(007~012)</a>
   </nav>
 
   <main>
     <section id="erd">
       <h2>ERD</h2>
-      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고) <span class="mono">EMR_*</span> 4종은 <span class="mono">auth.users</span>와 완전히 독립적인 별도 도메인(가상 EMR 스테이징)이며, 회원가입(claim) 시점에만 <span class="mono">AUTH_USERS</span>와 연결된다 — <span class="mono">006_add_admin_emr_staging_tables.sql</span> 참고.</p>
+      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고) <span class="mono">EMR_*</span> 3종(<span class="mono">SIGNUP_VERIFICATION_CODES</span>는 v0.6·010에서 삭제됨)은 <span class="mono">auth.users</span>와 완전히 독립적인 별도 도메인(가상 EMR 스테이징)이며, 회원가입(claim) 시점에만 <span class="mono">AUTH_USERS</span>와 연결된다 — <span class="mono">006_add_admin_emr_staging_tables.sql</span> 참고. <span class="mono">ADMIN_ACCOUNTS</span>(v0.6·008)도 <span class="mono">auth.users</span>와 무관하게 독립적으로 존재하며 자체 JWT로 인증한다.</p>
 
       <div class="diagram-toolbar">
         <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
@@ -270,7 +272,7 @@ erDiagram
   AUTH_USERS |o--o| EMR_PATIENTS : "0:1 claim (v0.4)"
   EMR_PATIENTS ||--o{ EMR_CARE_RECORDS : "1:N (v0.4)"
   EMR_PATIENTS ||--o{ EMR_MEMBERSHIPS : "1:N (v0.4)"
-  EMR_PATIENTS ||--o{ SIGNUP_VERIFICATION_CODES : "1:N (v0.4)"
+  EMR_MEMBERSHIPS ||--o{ EMR_CARE_RECORDS : "0:N (v0.6, membership_id)"
 
   AUTH_USERS {
     uuid id PK
@@ -306,9 +308,8 @@ erDiagram
     uuid user_id FK
     text care_name
     date care_date
-    text part_of_body
+    text_array part_of_body "v0.6 배열화"
     text brand
-    text store
     text practitioner
     text status "v0.3"
     int session_number "v0.3"
@@ -365,8 +366,8 @@ erDiagram
     text name
     date birth_date
     text phone
-    text_array allergies
-    text_array chronic_conditions
+    text notes "v0.6, was allergies/chronic/comment"
+    text brand "v0.6"
     uuid claimed_user_id FK "-> auth.users, nullable"
     timestamptz claimed_at
   }
@@ -376,6 +377,8 @@ erDiagram
     text care_name
     text care_type
     date care_date
+    text_array part_of_body "v0.6 배열화"
+    uuid membership_id FK "v0.6"
     text_array basic_aftercare_guide
     text doctor_comment
   }
@@ -385,13 +388,13 @@ erDiagram
     text product_name
     int total_count
     int used_count
+    int remaining_count "v0.6 generated"
   }
-  SIGNUP_VERIFICATION_CODES {
+  ADMIN_ACCOUNTS {
     uuid id PK
-    uuid patient_id FK
-    text code
-    timestamptz expires_at
-    timestamptz used_at
+    text username
+    text password_hash
+    text brand
   }
 </pre>
         </div>
@@ -402,10 +405,10 @@ erDiagram
       <h2>인증 (Supabase 관리) <span class="tag">직접 구현 안 함</span></h2>
       <p class="desc">이메일/비밀번호 계정, 비밀번호 해싱, access/refresh 토큰 발급·재발급·폐기는 전부 Supabase Auth가 처리한다. 우리 스키마는 <span class="mono">auth.users.id</span>를 FK로 참조만 한다. 전화번호 SMS 인증은 국내 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(<span class="mono">004_remove_phone_verification.sql</span>) — <span class="mono">phone</span>은 이제 조회·표시용 연락처 값일 뿐이다.</p>
       <div class="note-card">
-        <b>가입 흐름</b> <span class="done-badge">v0.4 · 환자번호+인증코드 기반</span>: <span class="mono">POST /auth/signup({patientNo, verificationCode, email, password})</span> → <span class="mono">emr_patients</span>에서 <span class="mono">patient_no</span>로 조회(없으면 <span class="mono">PATIENT_NOT_FOUND</span>, 이미 <span class="mono">claimed_user_id</span> 있으면 <span class="mono">PATIENT_ALREADY_CLAIMED</span>) → <span class="mono">signup_verification_codes</span>에서 코드 일치·미사용·미만료 확인(<span class="mono">INVALID_OR_EXPIRED_VERIFICATION_CODE</span>) → <span class="mono">supabase.auth.admin.createUser()</span> → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span>/<span class="mono">medical_profiles</span> insert(이름/전화/생년월일은 <span class="mono">emr_patients</span> 원본 값) + <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>를 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> + 코드 <span class="mono">used_at</span> 기록 + <span class="mono">emr_patients.claimed_user_id</span> 기록. 실패 시 Auth 유저 롤백(하위 테이블은 CASCADE로 자동 정리, <span class="mono">emr_*</span>는 claim 전이라 그대로 남아 재시도 가능).
+        <b>가입 흐름</b> <span class="done-badge">v0.6 · 환자번호+이름+생년월일 대조 기반</span>: <span class="mono">POST /auth/signup({patientNo, name, birthDate, email, password, interestGoals})</span> → <span class="mono">emr_patients</span>에서 <span class="mono">patient_no</span>로 조회(없으면 <span class="mono">PATIENT_NOT_FOUND</span>, 이미 <span class="mono">claimed_user_id</span> 있으면 <span class="mono">PATIENT_ALREADY_CLAIMED</span>) → 조회된 <span class="mono">name</span>/<span class="mono">birth_date</span>가 요청값과 정확히 일치하는지 대조(불일치 시 <span class="mono">PATIENT_IDENTITY_MISMATCH</span>, 별도 인증코드 발급 없음) → <span class="mono">supabase.auth.admin.createUser()</span> → 생성된 <span class="mono">user.id</span>로 <span class="mono">profiles</span> insert + <span class="mono">medical_profiles</span> insert(<span class="mono">emr_patients.notes</span>를 <span class="mono">doctor_general_comment</span>로 이관) + <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>를 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> + <span class="mono">emr_patients.claimed_user_id</span>/<span class="mono">claimed_at</span> 기록. 실패 시 Auth 유저 롤백(하위 테이블은 CASCADE로 자동 정리, <span class="mono">emr_patients</span>는 claim 전이라 그대로 남아 재시도 가능). <i>v0.4 시점엔 <span class="mono">signup_verification_codes</span>로 발급하는 별도 인증코드 대조 방식이었으나 v0.6(010)에서 이 방식으로 대체되며 테이블 자체가 삭제됐다.</i>
       </div>
       <div class="note-card" style="margin-top:10px;">
-        <b>비밀번호 재설정/변경</b> <span class="done-badge">v0.3 · 구현 완료</span>: 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>, <span class="mono">reset-confirm</span>은 Supabase 기본 메일 템플릿이 URL 해시로 실어 보내는 이미 검증된 <span class="mono">access_token</span>을 <span class="mono">supabaseAnon.auth.getUser()</span>로 재확인 후 <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>/<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
+        <b>비밀번호 재설정/변경</b> <span class="done-badge">구현 완료</span>: 별도 테이블이 필요 없다. <span class="mono">POST /auth/password/reset-request</span>는 <span class="mono">supabaseAnon.auth.resetPasswordForEmail()</span>에 위임. <span class="mono">reset-confirm</span>은 <span class="mono">{email, code, newPassword}</span>를 받아 <span class="mono">code</span>를 <span class="mono">supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 검증한 뒤 <span class="mono">supabaseAdmin.auth.admin.updateUserById()</span>로 처리한다(<span class="mono">auth.service.ts</span>) — Supabase 이메일 템플릿의 <span class="mono">{{ .Token }}</span> 숫자 코드를 그대로 쓰는 방식으로, 링크(<span class="mono">access_token</span>) 기반이었던 이전 설계에서 전환됐다. <span class="mono">POST /profile/password</span>(로그인 상태 변경)는 동일하게 <span class="mono">updateUserById()</span>로 처리(<span class="mono">profile.service.ts</span>) — 셋 다 Supabase Auth가 해싱/토큰을 전담하므로 테이블 추가 없음.
       </div>
     </section>
 
@@ -468,7 +471,8 @@ erDiagram
                 <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
                 <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null</td><td>관리명</td></tr>
                 <tr><td class="mono">care_date</td><td class="mono">date</td><td>not null</td><td>관리일</td></tr>
-                <tr><td class="mono">part_of_body / brand / store / practitioner</td><td class="mono">text</td><td>—</td><td>부위 · 브랜드 · 매장 · 담당자</td></tr>
+                <tr><td class="mono">part_of_body</td><td class="mono">text[]</td><td>not null, default '{}'</td><td><span class="done-badge">v0.6</span> 관리 부위(중복 선택). 이전엔 단일 <span class="mono">text</span>였으나 012에서 배열로 변경</td></tr>
+                <tr><td class="mono">brand / practitioner</td><td class="mono">text</td><td>—</td><td>브랜드 · 담당자. <span class="mono">store</span> 컬럼은 v0.6(009)에서 제거(브랜드와 순수 중복)</td></tr>
                 <tr><td class="mono">status</td><td class="mono">text</td><td>not null, default 'completed'</td><td><span class="done-badge">v0.3</span> 이력 화면의 상태 칩</td></tr>
                 <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td><span class="done-badge">v0.3</span> 관리 상세 "관리 회차: N/M회차"</td></tr>
                 <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.3</span> 이 시술이 차감한 이용권. memberships 생성 후 FK 추가 필요(순서 주의)</td></tr>
@@ -630,7 +634,7 @@ erDiagram
         <div class="table-head">
           <span class="name">public.emr_patients</span>
           <span class="owner">가상 EMR · 계정 미연결</span>
-          <span class="done-badge">v0.4 · 적용 완료</span>
+          <span class="done-badge">v0.4 신설 · v0.6 컬럼 개편(009/010)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -638,15 +642,16 @@ erDiagram
               <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
-                <tr><td class="mono">patient_no</td><td class="mono">text</td><td>not null, unique</td><td>병원 발급 환자번호. 가입 시 인증코드와 함께 입력받아 신원 확인</td></tr>
+                <tr><td class="mono">patient_no</td><td class="mono">text</td><td>not null, unique</td><td>병원 발급 환자번호. 가입 시 이름+생년월일과 함께 대조해 신원 확인(v0.6, 별도 인증코드 없음)</td></tr>
                 <tr><td class="mono">name / birth_date / phone</td><td class="mono">text / date / text</td><td>not null</td><td>의료진이 입력한 원본 — claim 시 그대로 <span class="mono">profiles</span>로 복사</td></tr>
-                <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">text[]</td><td>default '{}'</td><td>claim 시 <span class="mono">medical_profiles</span>로 복사</td></tr>
+                <tr><td class="mono">notes</td><td class="mono">text</td><td>nullable</td><td><span class="done-badge">v0.6·010</span> 기타사항(알러지·기저질환·의사소견 통합 자유입력). claim 시 <span class="mono">medical_profiles.doctor_general_comment</span>로 이관. 예전 <span class="mono">allergies</span>/<span class="mono">chronic_conditions</span>/<span class="mono">doctor_general_comment</span> 3컬럼을 대체</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">text</td><td>nullable</td><td><span class="done-badge">v0.6·009</span> 등록한 클리닉(<span class="mono">admin_accounts.brand</span>와 매칭) — 클리닉별 데이터 격리 근거</td></tr>
                 <tr><td class="mono">claimed_user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">SET NULL</span>, nullable</td><td>가입(claim) 완료 시 채워짐. null이면 미가입 상태, 중복 가입 방지 겸용</td></tr>
                 <tr><td class="mono">claimed_at</td><td class="mono">timestamptz</td><td>—</td><td>claim 시각</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">auth.users</span>와 무관하게 독립 존재 — <span class="mono">server_admin</span>(관리자 웹 백엔드)이 환자 등록 시 채우는 원본 데이터</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">auth.users</span>와 무관하게 독립 존재 — <span class="mono">server_admin</span>(관리자 웹 백엔드)이 환자 등록 시 채우는 원본 데이터. claim 이후에도 새 시술기록을 추가할 수 있으며, 이때는 스테이징이 아니라 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>에 곧바로 기록된다</p>
         </div>
       </div>
 
@@ -654,7 +659,7 @@ erDiagram
         <div class="table-head">
           <span class="name">public.emr_care_records</span>
           <span class="owner">가상 EMR · 계정 미연결</span>
-          <span class="done-badge">v0.4 · 적용 완료</span>
+          <span class="done-badge">v0.4 신설 · v0.6 컬럼 개편(009/011/012)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -664,9 +669,11 @@ erDiagram
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
                 <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
                 <tr><td class="mono">care_name / care_type / care_date</td><td class="mono">text / text / date</td><td>not null</td><td><span class="mono">care_type</span>은 <span class="mono">reference_guides</span> 매칭 키 (현재 peeling/laser_toning만 지원)</td></tr>
-                <tr><td class="mono">part_of_body / brand / store / practitioner</td><td class="mono">text</td><td>—</td><td>—</td></tr>
+                <tr><td class="mono">part_of_body</td><td class="mono">text[]</td><td>not null, default '{}'</td><td><span class="done-badge">v0.6·012</span> 단일 텍스트에서 배열로 변경. <span class="mono">GET /body-parts</span> 목록 안에서만 검증</td></tr>
+                <tr><td class="mono">brand / practitioner</td><td class="mono">text</td><td>—</td><td><span class="mono">store</span>는 v0.6(009)에서 제거</td></tr>
                 <tr><td class="mono">basic_aftercare_guide / doctor_comment</td><td class="mono">text[] / text</td><td>—</td><td>claim 시 그대로 <span class="mono">care_records</span>로 복사</td></tr>
                 <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td>—</td></tr>
+                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.6·011</span> 이 기록이 소비한 이용권. 삭제 시 이용권 차감을 자동으로 되돌리기 위해 연결</td></tr>
               </tbody>
             </table>
           </div>
@@ -678,7 +685,7 @@ erDiagram
         <div class="table-head">
           <span class="name">public.emr_memberships</span>
           <span class="owner">가상 EMR · 계정 미연결</span>
-          <span class="done-badge">v0.4 · 적용 완료</span>
+          <span class="done-badge">v0.4 신설 · v0.6 컬럼 추가(007)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -689,20 +696,21 @@ erDiagram
                 <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
                 <tr><td class="mono">product_name</td><td class="mono">text</td><td>not null</td><td>—</td></tr>
                 <tr><td class="mono">total_count / used_count</td><td class="mono">int</td><td>not null, default 0</td><td>claim 시 그대로 <span class="mono">memberships</span>로 복사</td></tr>
+                <tr><td class="mono">remaining_count</td><td class="mono">int</td><td>generated always as (total_count - used_count) stored</td><td><span class="done-badge">v0.6·007</span> <span class="mono">public.memberships</span>와 동일 패턴 — 시술기록 추가 화면의 이용권 토글 목록용</td></tr>
                 <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>—</td></tr>
                 <tr><td class="mono">available_care_names</td><td class="mono">text[]</td><td>default '{}'</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">public.memberships</span>와 동일한 형태로 claim 시 그대로 복사됨</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">public.memberships</span>와 동일한 형태로 claim 시 그대로 복사됨(<span class="mono">remaining_count</span>는 GENERATED라 자동 계산)</p>
         </div>
       </div>
 
       <div class="table-card">
         <div class="table-head">
-          <span class="name">public.signup_verification_codes</span>
-          <span class="owner">가입 인증코드</span>
-          <span class="done-badge">v0.4 · 적용 완료</span>
+          <span class="name">public.admin_accounts</span>
+          <span class="owner">클리닉 관리자 로그인</span>
+          <span class="done-badge">v0.6 · 008/009</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -710,14 +718,24 @@ erDiagram
               <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
-                <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
-                <tr><td class="mono">code</td><td class="mono">text</td><td>not null</td><td>데스크(<span class="mono">server_admin</span>)에서 발급 버튼 클릭 시 생성</td></tr>
-                <tr><td class="mono">expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>발급 후 24시간</td></tr>
-                <tr><td class="mono">used_at</td><td class="mono">timestamptz</td><td>nullable</td><td>회원가입 완료 시 채워짐(소진 표시)</td></tr>
+                <tr><td class="mono">username</td><td class="mono">text</td><td>not null, unique</td><td>—</td></tr>
+                <tr><td class="mono">password_hash</td><td class="mono">text</td><td>not null</td><td>bcrypt 해시</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">text</td><td>not null</td><td>클리닉당 계정 1개 — 로그인 시 이후 요청의 브랜드 격리 기준이 됨</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">실제 SMS 발송 없이 <span class="mono">admin-web</span> 화면에 코드를 표시해 안내하는 방식(<span class="mono">server/README.md</span>의 SMS 미구현 방침과 동일한 결). <span class="mono">POST /auth/signup</span>에서 <span class="mono">patientNo</span>+<span class="mono">code</span> 일치·미사용·미만료 확인되면 사용 처리하고 <span class="mono">emr_patients</span>를 claim한다</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">auth.users</span>와 무관 — <span class="mono">server_admin</span>이 자체 bcrypt+JWT(<span class="mono">ADMIN_JWT_SECRET</span>)로 인증한다. 3개(AMRED/DERNA/WIM) 고정 계정을 시드 스크립트로만 생성(가입 API 없음). <span class="mono">/patients/*</span> 전체 라우트가 이 토큰을 요구하며, 다른 클리닉 데이터는 404로 통일(존재 자체를 숨김). <span class="mono">store</span> 컬럼은 v0.6(009)에서 제거(<span class="mono">brand</span>와 순수 중복)</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">~~public.signup_verification_codes~~</span>
+          <span class="owner">제거됨</span>
+          <span class="done-badge" style="border-style:dashed;">v0.4 신설 006 → v0.6 삭제 010</span>
+        </div>
+        <div class="table-body">
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">가입 시 환자번호와 함께 대조하던 24시간 유효 인증코드를 저장하던 테이블. v0.6(010)에서 회원가입 신원확인 방식이 "인증코드 발급·대조"에서 "환자번호+이름+생년월일 일치 대조"로 단순화되며 삭제됐다.</p>
         </div>
       </div>
     </section>
@@ -771,7 +789,11 @@ erDiagram
         </div>
         <div class="decision-card">
           <h3>가상 EMR 스테이징은 auth.users와 완전 분리 <span class="done-badge">v0.4 · 구현 완료</span></h3>
-          <p><span class="mono">emr_patients</span> 등 4종은 <span class="mono">server_admin</span>이 다루는 "계정 연결 전" 데이터라 고객용 테이블과 독립적으로 존재. claim(회원가입) 시점에만 1회성 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 반영되지 않는다(의도적 범위 제한).</p>
+          <p><span class="mono">emr_patients</span> 등은 <span class="mono">server_admin</span>이 다루는 "계정 연결 전" 데이터라 고객용 테이블과 독립적으로 존재. claim(회원가입) 시점에만 1회성 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 반영되지 않는다(의도적 범위 제한).</p>
+        </div>
+        <div class="decision-card">
+          <h3>관리자 로그인은 Supabase Auth가 아니라 자체 bcrypt+JWT <span class="done-badge">v0.6 · 008</span></h3>
+          <p>클리닉 계정 3개가 고정이라 가입 플로우 자체가 필요 없고(시드로만 생성), 고객용 <span class="mono">auth.users</span>와 완전히 다른 성격의 인증(브랜드별 격리)이라 별도 테이블+토큰 체계로 분리하는 편이 단순함.</p>
         </div>
       </div>
     </section>
@@ -840,10 +862,30 @@ erDiagram
       <div class="note-card" style="margin-top:14px;">
         <b>배경(설계 대안 기각 사유)</b>: 처음엔 "이미 가입된 계정 위에 EMR 데이터를 얹는" 방식(placeholder Auth 계정을 미리 만들어두는 안)을 검토했으나 (1) 나중에 진짜 가입 시 별개 계정이 생겨 매칭이 안 되고 (2) 기존 <span class="mono">PHONE_ALREADY_EXISTS</span> 체크가 오히려 진짜 가입을 막으며 (3) <span class="mono">medical_profiles.user_id</span>가 PK라 계정 이관 시 PK 스왑이 필요하다는 세 가지 문제로 기각됐다. "환자번호+인증코드로 신원확인 후 가입" 방식이 이 세 문제를 모두 해결한다.
       </div>
-      <p class="note"><b>관리자용 신규 스택</b>: 관리자 웹(<span class="mono">admin-web</span>, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 <span class="mono">server_admin/</span>(포트 4100, <span class="mono">server/</span>와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. <span class="mono">server_admin</span>은 이 4개 테이블만 다루고 <span class="mono">server/</span>의 기존 고객용 테이블은 건드리지 않는다. 이 마이그레이션은 이미 Supabase 프로젝트에 적용됐다.</p>
+      <p class="note"><b>관리자용 신규 스택</b>: 관리자 웹(<span class="mono">admin-web</span>, 별도 GitHub 저장소)과 그 백엔드 <span class="mono">server_admin/</span>(포트 4100, <span class="mono">server/</span>와 동일 컨벤션)이 이 마이그레이션과 함께 추가됐다. <span class="mono">server_admin</span>은 이 테이블들만 다루고 <span class="mono">server/</span>의 기존 고객용 테이블은 건드리지 않는다. 이 마이그레이션은 이미 Supabase 프로젝트에 적용됐다. <i>(이 시점엔 "로그인 없이 항상 열림"이 데모 범위 결정이었으나, v0.6(008)에서 클리닉별 로그인이 추가되며 뒤집혔다 — 아래 절 참고.)</i></p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.4 · 2026-08-13</footer>
+    <section id="v06later">
+      <h2>클리닉 로그인·데이터 격리 확장 <span class="tag">007~012</span></h2>
+      <p class="desc">가상 EMR 스택이 "무인증 데모"에서 "클리닉별 로그인 기반 실사용 도구"로 확장되며 이어진 6개 마이그레이션.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>변경</th><th>대상</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">007</td><td>컬럼 추가</td><td class="mono">emr_memberships.remaining_count</td><td>GENERATED 컬럼, <span class="mono">public.memberships</span>와 동일 패턴</td></tr>
+            <tr><td class="mono">008</td><td>신규 테이블</td><td class="mono">public.admin_accounts</td><td>클리닉당 계정 1개(총 3개), 시드로만 생성. "무인증 데모" 결정을 뒤집음</td></tr>
+            <tr><td class="mono">009</td><td>컬럼 삭제/추가</td><td class="mono">care_records.store, emr_care_records.store, admin_accounts.store</td><td>삭제(brand와 순수 중복) — 동시에 <span class="mono">emr_patients.brand</span> 추가(격리 근거)</td></tr>
+            <tr><td class="mono">010</td><td>테이블 삭제 / 컬럼 통합</td><td class="mono">signup_verification_codes 삭제, emr_patients.notes 추가</td><td>인증코드 절차 제거 → 이름+생년월일 대조로 전환. allergies/chronic_conditions/doctor_general_comment 3컬럼을 notes로 통합</td></tr>
+            <tr><td class="mono">011</td><td>컬럼 추가</td><td class="mono">emr_care_records.membership_id</td><td>시술기록 삭제 시 이용권 차감을 자동으로 되돌리기 위한 FK</td></tr>
+            <tr><td class="mono">012</td><td>컬럼 타입 변경</td><td class="mono">care_records.part_of_body, emr_care_records.part_of_body</td><td><span class="mono">text</span> → <span class="mono">text[]</span>(관리 부위 중복 선택). 데모 단계라 기존 값 미보존, 재시드 필요</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">전부 <span class="mono">server/db/migrations/007_*.sql</span> ~ <span class="mono">012_*.sql</span>. 아직 적용하지 않은 환경(신규 클론 등)이라면 006 다음 순서로 Supabase SQL Editor에서 실행해야 한다.</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.6 · 2026-08-16</footer>
   </main>
 </div>
 

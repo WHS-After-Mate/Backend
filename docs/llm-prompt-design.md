@@ -1,6 +1,6 @@
 # WHS After Mate — LLM 프롬프트 설계 (v0.1)
 
-기준: `api-spec.md` v0.4, `db-schema.md` v0.2. LLM은 정확히 **2곳**에서만 호출된다: `GET /aftercare/daily-guide`(일차별 가이드, 하루 1회 캐시), `POST /aftercare/questions`(챗봇 Q&A, 매 요청). 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리한다.
+기준: `api-spec.md` v0.6, `db-schema.md` v0.6(2026-08-16 재확인 — LLM 호출 지점 자체의 파이프라인·프롬프트 설계는 최초 작성 이후 변경 없음). LLM은 정확히 **2곳**에서만 호출된다: `GET /aftercare/daily-guide`(일차별 가이드, 하루 1회 캐시), `POST /aftercare/questions`(챗봇 Q&A, 매 요청). 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리한다.
 
 ---
 
@@ -46,7 +46,7 @@
 | 필드 | 출처 | 용도 |
 |---|---|---|
 | `care_name`, `care_date`, `days_elapsed` | `care_records` | "언제 무슨 시술을 받았는지" |
-| `part_of_body`, `brand` | `care_records` | 시술 부위 맥락 |
+| `part_of_body`, `brand` | `care_records` | 시술 부위(배열, 중복 선택 가능) 맥락 |
 | `doctor_comment` | `care_records.doctor_comment` | 해당 시술 건에 대한 의사 코멘트 |
 | `allergies`, `chronic_conditions` | `medical_profiles` | 특정 성분/행동 회피 근거 |
 | `doctor_general_comment` | `medical_profiles` | 환자 전반에 대한 의사 코멘트 |
