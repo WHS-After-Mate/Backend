@@ -1,3 +1,15 @@
+## 2026-08-16 (2, 신규 세션)
+- 세션 시작, work-log 브리핑 → 미커밋 변경분(interestGoals/비밀번호 재설정 코드화/OTP 자릿수 완화/api-spec 재동기화) typecheck 통과 확인 후 commit+push (`9e600e7`)
+- 사용자가 이월 항목 2번(Resend 커스텀 도메인) 진행 요청 → 도메인 미보유 확인, 진행 불가로 보류하려던 차에 사용자가 "Resend 커스텀 도메인이 뭔지" 질문 → 어제 한 SMTP 연동(배관 작업)과 오늘 필요한 커스텀 도메인(발신 주소 제약 해제)이 다른 단계임을 설명
+- 사용자가 "도메인 구매 없이 실사용자에게 보내는 방법 — 개인 Gmail SMTP를 Supabase에 직접 연결"을 역제안 → 장단점(도메인 불필요 vs Google이 자동화 릴레이를 이상 활동으로 보고 계정을 잠글 리스크) 설명, 리스크 격리를 위해 **개인 메인 계정이 아닌 발송 전용 새 Gmail 계정**으로 진행 추천 → 사용자가 `ykenko02@gmail.com`으로 확정
+- 브라우저 자동화로 `ykenko02@gmail.com`의 2단계 인증 활성화(전화번호 인증은 사용자 직접) → 앱 비밀번호 발급(사용자 직접 생성 및 Supabase 비밀번호 칸에 직접 입력, 자격증명이라 대신 입력 안 함) 진행. 중간에 사용자가 개인 계정(`용상`)에서 먼저 메뉴 위치를 확인해달라고 요청 → 실제 앱 비밀번호는 생성하지 않고 페이지 위치만 시연
+- Supabase 대시보드(project ref `qcaivwfjgubievzijkwi`, "youyongsang's Project MS" — 2개 프로젝트 중 `.env`의 `SUPABASE_URL`과 ref 대조로 정확한 프로젝트 특정) → SMTP Settings에서 Sender email/Host(`smtp.gmail.com`)/Port(587)/Username을 브라우저로 채움, Password(앱 비밀번호)는 사용자가 직접 입력 후 저장. Supabase가 "개인용 이메일 발송에 최적화된 프로바이더" 경고를 띄움(예상된 트레이드오프)
+- 로컬 서버(4000) 빌드+기동 후 `POST /api/v1/auth/password/reset-request`를 curl로 반복 호출(Supabase 초당 레이트리밋 60초 회피용 재시도 루프)하며 `yongsang0615@gmail.com`(계정 소유자 아닌 임의의 실사용자 대역)으로 실제 메일 수신 확인 — Gmail SMTP 전환 라이브 검증 성공
+- 사용자가 "Reset password 링크 제거" 요청 → Supabase Auth 이메일 템플릿(Reset Password) Source에서 `{{ .ConfirmationURL }}` 링크 문단 삭제, `{{ .Token }}` 코드만 유지, 저장 확인
+- 재발송 테스트 시 사용자가 "링크가 그대로 왔다"고 보고 → 대시보드 소스는 정상이었으나, 실제 Gmail 받은편지함을 직접 열어 대조한 결과 **템플릿 저장 직후 발송분은 캐시 지연으로 옛 버전이 나갔던 것**으로 확인(Supabase Auth 템플릿 반영에 1~2분 지연 있음, 실측). 몇 분 후 재테스트로 링크 없이 코드만 오는 새 템플릿 정상 수신 확인
+- 테스트 서버 종료(taskkill), `docs/api-spec.md`/`.html`·`server/README.md`의 "Resend 커스텀 SMTP" 문구를 Gmail SMTP 전환 내용으로 갱신, "API 명세서" 아티팩트 재발행, commit+push (`9f2eeb6`)
+- work-log 정리
+
 ## 2026-08-16
 - (이어서) 재방문(이미 회원가입한) 고객의 시술기록 등록이 막혀있던 문제 해결 — claim 이후에도 항상 기록 가능하도록 `addCareRecord`를 claim 여부에 따라 스테이징(`emr_*`)/실제 앱 테이블(`care_records`/`memberships`) 분기하도록 재설계, 응답/조회에 `source`("emr"|"app") 필드 추가. 실서버로 등록→claim→재방문 시술기록 추가까지 종단 검증
 - `GET /visit-stats` 신규 구현 — 오늘/어제/이틀 전 방문 고객 수(중복 제거). 당일 가입 케이스에서 emr/app 양쪽에 같은 사람이 잡혀 이중 카운트되는 버그를 실측으로 발견해 `claimed_user_id` 기준 신원 통합으로 수정
