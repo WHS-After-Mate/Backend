@@ -1,3 +1,19 @@
+## 2026-08-16 (4, 이어서)
+- (이어서) 사용자가 "프로토타입을 따라갈 경우 생길 변수는?" 질문 → 4가지(careType 이중화 위험, 만료일 개념 부재, 자동 회차 매칭 오차 위험, 정적 카탈로그를 DB로 옮길 필요성) 설명하며 해커톤 범위엔 부담이 크다는 의견 제시 → 사용자가 "프로토타입을 따라가자. 2번(만료+차감 차단), 3번(자동 이어쓰기), 4번(새 테이블)"으로 명확히 결정
+  - 구현 전 AskUserQuestion으로 3가지 확인: 카탈로그 클리닉별 vs 공통 → **전체 공통**, 만료 기준일(생성일+1년 vs 최근 시술일+1년 매번 갱신) → **생성일(첫 시술일)+1년 고정**, 카탈로그 관리 방식(시드만 vs 관리자 CRUD) → **관리자 CRUD API까지 구현**
+  - 코드 조사로 두 가지 발견: ① `memberships`/`emr_memberships.expires_at` 컬럼이 마이그레이션 001부터 이미 존재했는데 `server_admin`이 그동안 값을 넣은 적이 없어 항상 null이었음(신규 컬럼 추가 불필요, 로직만 채우면 됨) ② `care_records.membership_id` FK도 이미 있어 시술기록↔이용권 연결 인프라가 이미 갖춰져 있었음
+  - `treatment_catalog` 신규 테이블(마이그레이션 013) 작성 → 사용자가 Supabase SQL Editor에서 직접 적용("적용했어" 확인)
+  - `catalog.routes.ts`/`catalog.service.ts`/`catalog.validators.ts` 신규 — `GET`(검색)/`POST`/`PATCH`/`DELETE /treatment-catalog`. `patients.service.ts`의 `assertValidCareType`을 export해 카탈로그 등록/수정 시 careType 재검증에 재사용
+  - `patients.service.ts`: `addOneYear(dateStr)` 헬퍼로 이용권 생성 시 `expires_at`=`careDate`+1년 채움, `deductMembershipSession`에 만료 확인 추가(만료 시 `409 MEMBERSHIP_EXPIRED`), `findContinuableMembership`으로 같은 `product_name`+`total_count`의 아직 유효한 이용권을 찾아 `addCareRecord`가 `totalSessions` 경로에서 새로 만들기 전에 먼저 재사용 시도하도록 변경, 응답에 `membershipCreated`(신규 생성 여부) 필드 추가
+  - `errors.ts`에 `membershipExpired`/`treatmentNotFound`/`treatmentNameAlreadyExists` 3종 추가
+  - typecheck/build 통과 확인 후 서버 실기동(4100) + curl/Node 스크립트로 라이브 검증: 카탈로그 생성(한글 payload는 Bash `-d` 인코딩 깨짐 이슈로 파일/Node fetch로 우회, 기존에 알려진 이슈와 동일 원인) → 검색/중복거부/수정 확인 → 환자 등록 → 첫 시술기록(totalSessions=3) 생성 시 `membershipCreated:true`+`expires_at`=`careDate`+1년 확인 → 같은 careName+totalSessions로 두 번째 시술기록 추가 시 `membershipCreated:false`+동일 membership id+`used_count` 1→2 증가로 자동 이어쓰기 확인 → 서비스role 스크립트로 이용권을 강제 만료(`expires_at`=과거)시킨 뒤 그 `membershipId`로 명시적 차감 시도 → `409 MEMBERSHIP_EXPIRED` 확인 → 같은 조건으로 다시 `totalSessions` 요청 시 만료된 이용권을 건너뛰고 새 이용권을 만드는 것(`membershipCreated:true`, 새 id)까지 확인 → 테스트 데이터(시술기록 3건 API 삭제로 이용권도 연쇄 정리 확인, 카탈로그 API 삭제, 환자는 서비스role 스크립트로 삭제) 전부 정리, 임시 스크립트 파일도 전부 삭제
+  - `docs/admin-api-spec.md`/`.html`(v0.2→v0.3): "2. 치료-부위 카탈로그" 신규 절 추가(이후 "시술기록/이용권"→3절, "통계"→4절로 번호 이동), care-records 엔드포인트의 DB 순서/Request/Response/에러 전부 자동 이어쓰기·만료 반영해 갱신, 공통 에러 코드·데이터 모델·알려진 제한사항 표에도 반영
+  - `docs/db-schema.md`/`.html`(v0.6→v0.7): `treatment_catalog` 테이블 정의 신규, ERD(mermaid)에 독립 엔티티로 추가, `memberships`/`emr_memberships`의 `expires_at` 설명에 "v0.7부터 실제 채움" 주석, "치료-부위 카탈로그 추가(013)" 마이그레이션 이력 절 신규
+  - `server_admin/README.md` 엔드포인트 표에 카탈로그 4종 추가, 마이그레이션 안내를 "006~012"→"006~013"으로 갱신
+  - 두 문서 모두 `<table>`/`<section>`/`<div class="table-card">`/`<div class="endpoint-card">` 태그 개수 대조로 균형 확인
+  - 아티팩트 2종(관리자 API 명세서 `743df35b...`, DB 스키마 — 기존 progress 기록엔 `f152ff3e`로만 짧게 적혀 있었는데 실제 UUID 뒷부분이 달라 `Artifact list`로 정확한 URL(`f152ff3e-c2f7-4b36-b4ce-364667d3bf60`)을 다시 찾아 재발행. **이후 기록 시 UUID는 항상 전체를 적을 것**) WebFetch로 최신본 확인 후 재발행
+  - commit+push (`7a94c80`)
+
 ## 2026-08-16 (3, 신규 세션)
 - work-log 브리핑 후 사용자가 `docs/WHS_After_Mate_Admin_revised.html`(관리자 웹 정적 프로토타입)을 업로드 → 대조해서 미구현 API 구현 요청, 동시에 3가지 사전 결정 전달: "전날/금일/익일 예약으로 바꾸기로 했어", "관리날짜를 추가해서 예약이 가능하게끔 하기로 했어", "취소 기능은 추후 앱 연동해서 구현해야겠어"(→ 나중에 "취소는 아직 구현하지 말고 대시보드 표시만 하자"로 범위 재확인)
 - 프로토타입 HTML을 읽어 구조 파악 — 대시보드가 "이틀전/하루전/금일"에서 "전날/금일/익일" 3카드로, "관리 등록" 모달에 `manageDate`(날짜 선택, 기본값 오늘) 필드가 추가돼 있고, 치료명 검색 시 하드코딩된 `catalog` 객체로 부위 select가 자동 채워지는 방식임을 확인

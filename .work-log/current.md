@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-16 09:10
+최종 업데이트: 2026-08-16 10:30
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
@@ -34,12 +34,18 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
   - 실서버로 내일 날짜(`2026-08-17`) 시술기록 생성 → `tomorrow.count`에 반영되는 것까지 라이브 검증 후 테스트 데이터(환자/시술기록/이용권) 정리
   - `docs/admin-api-spec.md`/`.html`(v0.1→v0.2), `server_admin/README.md` 동기화, 아티팩트 재발행
   - commit+push (`653bed8`)
+- **프로토타입의 치료-부위 카탈로그 + 이용권 만료/자동 이어쓰기 방식 도입** — 사용자에게 "프로토타입 방식을 따라갈 경우 생길 변수"(카탈로그 범위, 만료 기준일, 관리 API 필요 여부)를 먼저 설명 → 사용자가 3가지 확정: ① 카탈로그는 클리닉별이 아니라 전체 공통 ② 만료일은 이용권 생성일(첫 시술일)+1년 고정(재계산 안 함) ③ 카탈로그 항목도 관리자 CRUD API로 구현
+  - 신규 테이블 `treatment_catalog`(마이그레이션 013, 사용자가 Supabase SQL Editor에서 직접 적용) — 치료명(unique)→기본 careType/관리 부위 매핑, brand 컬럼 없음(공통). `GET`/`POST`/`PATCH`/`DELETE /treatment-catalog` 신규(`catalog.routes.ts`/`catalog.service.ts`/`catalog.validators.ts`). 시술기록 저장(`POST .../care-records`)은 카탈로그를 강제하지 않고 여전히 `careName`/`careType`/`partOfBody`를 그대로 받음(제안용 데이터일 뿐)
+  - `memberships`/`emr_memberships.expires_at`(001부터 있던 컬럼인데 그동안 `server_admin`이 값을 넣지 않아 항상 null이었음을 코드로 확인) — 새 이용권 생성 시 `careDate`+1년으로 채우기 시작, 차감 시 만료 확인해 만료면 `409 MEMBERSHIP_EXPIRED`(신규 에러코드)로 거부
+  - 이용권 자동 이어쓰기 — `totalSessions`(직접입력)로 요청 시 같은 `product_name`+`total_count`로 아직 유효한(소진·만료 안 된) 이용권을 먼저 찾아 있으면 이어서 차감, 없으면 새로 생성. 응답에 `membershipCreated`(boolean) 추가해 신규 생성 여부 구분
+  - 실서버로 카탈로그 CRUD(생성/검색/중복거부/수정/삭제), 자동 이어쓰기(동일 이용권 재사용+`used_count` 증가 확인), 강제로 과거 날짜를 넣어 만료시킨 이용권에 대한 명시적 차감 거부(`MEMBERSHIP_EXPIRED`), 만료된 이용권은 자동 이어쓰기 후보에서 제외되고 새 이용권이 만들어지는 것까지 전부 라이브 검증 후 테스트 데이터(환자/시술기록/이용권/카탈로그) 정리
+  - `docs/admin-api-spec.md`/`.html`(v0.2→v0.3, "2. 치료-부위 카탈로그" 신규 절, 이후 절 번호 전부 한 칸씩 밀림), `docs/db-schema.md`/`.html`(v0.6→v0.7, `treatment_catalog` 테이블 정의+ERD 추가), `server_admin/README.md` 동기화, 아티팩트 2종(관리자 API 명세서/DB 스키마) 재발행
+  - commit+push (`7a94c80`)
 
 ## 현재 작업 중
 - (없음 — 이번 세션 작업 전부 커밋+푸시+아티팩트 재발행까지 완료)
 
 ## 다음 할 일
-- **(신규, 미결정) 프로토타입(`WHS_After_Mate_Admin_revised.html`)의 시술/이용권 데이터 모델이 현재 백엔드와 다름** — 프로토타입은 치료명(예: "울쎄라 리프팅")별로 고정된 `catalog`(부위 목록 + 타입)를 갖고, 같은 (이름,횟수권) 조합을 고객 이력에서 자동 매칭해 회차를 자동 증가시키고 1년 만료를 자동 계산하는 구조. 현재 백엔드는 `careType`(reference_guides 검수값) + 시술 시마다 `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접입력, 새 이용권 생성)를 관리자가 매번 선택하는 구조로 상당히 다름. 이번 세션엔 범위 밖이라 손대지 않았음 — 이 갭을 그대로 둘지, 프로토타입 방식으로 재설계할지 사용자 결정 필요(다음 세션에 먼저 물어볼 것)
 - 예약 취소 기능 — 사용자가 명시적으로 보류. 나중에 앱과 연동해 금일/향후 예약을 취소하는 기능으로 별도 구현 예정(착수 전)
 - 가비아 클라우드 배포 — 크레딧 지급 조건 확인 후 진행 예정(아직 착수 전)
 - (이월) 프론트 담당자 GitHub Collaborator 초대 미발송
@@ -51,8 +57,9 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Gmail SMTP는 트랜잭션 메일 전용 서비스가 아니라 발송량이 몰리면 스팸/전송 제한 리스크가 있음 — 정식 서비스 규모로 갈 때 도메인 기반 트랜잭션 메일 서비스(Resend 등)로 재검토 필요(도메인 확보되면)
 
 ## 주요 파일
-- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계 전체 로직. claim 여부 분기(emr_* vs 실제 테이블), 중복 환자 재사용+notes 갱신, `getVisitStats`(전날/금일/익일 예약)
-- `docs/WHS_After_Mate_Admin_revised.html` — 관리자 웹 정적 프로토타입(신규 업로드, git 미추적 상태 — 참고용 데모, 실제 API 연동 없음). 대시보드 3카드/관리 등록 모달/치료-부위 카탈로그 구조 참고용
+- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계 전체 로직. claim 여부 분기(emr_* vs 실제 테이블), 중복 환자 재사용+notes 갱신, `getVisitStats`(전날/금일/익일 예약), 이용권 만료(`addOneYear`)/자동 이어쓰기(`findContinuableMembership`)
+- `server_admin/src/services/catalog.service.ts`(신규) — 치료-부위 카탈로그 CRUD, `assertValidCareType`은 `patients.service.ts`에서 export해 재사용
+- `docs/WHS_After_Mate_Admin_revised.html` — 관리자 웹 정적 프로토타입(신규 업로드, git 미추적 상태 — 참고용 데모, 실제 API 연동 없음). 대시보드 3카드/관리 등록 모달/치료-부위 카탈로그 구조를 실제 구현에 반영 완료
 - `server/src/services/auth.service.ts` — `signup()`(interestGoals 포함), `requestPasswordReset`/`confirmPasswordReset`(숫자 코드 방식, Gmail SMTP로 발송)
 - `docs/admin-api-spec.md`/`.html` — server_admin 전체 API 명세, 아티팩트로도 발행됨
 - `docs/api-spec.md`/`.html` — 고객용 server/ API 명세, 이번 세션에 SMTP 전환 문구 갱신 + reset-verify 반영 + admin-api-spec 스타일 Response 필드 표 전면 추가
@@ -60,7 +67,7 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
 - `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 + reset-verify 반영해 재동기화
 - `server/src/services/auth.service.ts` — `verifyPasswordResetCode`(신규)/`confirmPasswordReset`(resetToken 방식으로 변경)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `653bed8`)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `7a94c80`)
 
 ## 특이사항 / 결정 사항
 - **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서, Google이 이상 발송으로 계정을 잠그더라도 개인 계정에 영향이 없도록 격리함
