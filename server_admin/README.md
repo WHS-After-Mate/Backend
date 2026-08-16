@@ -10,7 +10,8 @@
 - **같은 Supabase 프로젝트**를 공유한다 — `.env`의 `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`는 `server/.env`와 동일한 값이어야 한다.
 - 여기서 쓰는 `emr_patients`/`emr_care_records`/`emr_memberships` 3개 테이블은 `auth.users`와 **무관하게 독립적으로 존재**한다
   (마이그레이션 `006_add_admin_emr_staging_tables.sql` + 이후 `007`~`012`로 조정됨). 별도 관리자 로그인 계정
-  테이블 `admin_accounts`(마이그레이션 `008`)도 이 리포에 속한다.
+  테이블 `admin_accounts`(마이그레이션 `008`)도 이 리포에 속한다. 치료-부위 카탈로그 `treatment_catalog`
+  (마이그레이션 `013`)는 클리닉 공통 참조 테이블 — 어떤 계정/환자 테이블과도 FK로 연결되지 않는다.
 - 환자가 실제로 앱에 가입할 때(`POST /auth/signup` — `server/`), **환자번호(patientNo) + 이름 + 생년월일**이
   emr_patients 레코드와 정확히 일치하면 그 순간 이 스테이징 테이블의 데이터가
   `profiles`/`medical_profiles`/`care_records`/`memberships`로 **1회성 이관(claim)**된다. 인증코드 발급 절차는 없다.
@@ -27,7 +28,7 @@ npm run dev             # 기본 포트 4100
 npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1회
 ```
 
-마이그레이션 006~012가 아직 Supabase에 적용 안 됐다면 SQL Editor에서 순서대로 실행해야 한다(001~005와 동일한 방식).
+마이그레이션 006~013이 아직 Supabase에 적용 안 됐다면 SQL Editor에서 순서대로 실행해야 한다(001~005와 동일한 방식).
 
 ## 로그인
 
@@ -47,9 +48,11 @@ npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1
 | GET | `/api/v1/patients?search=` | 환자 목록/검색 (로그인한 클리닉 소유 환자만, 이름·전화번호·환자번호 부분일치) |
 | GET | `/api/v1/patients/:patientId` | 환자 상세 (프로필 + 시술기록 + 이용권, claim 여부와 무관하게 항상 기록 가능) |
 | PATCH | `/api/v1/patients/:patientId` | 환자 프로필 수정 |
-| POST | `/api/v1/patients/:patientId/care-records` | 시술 기록 추가 — `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접 입력, 새 이용권 생성) 중 하나. claim 여부에 따라 스테이징(`emr_*`) 또는 실제 앱 테이블에 기록 |
+| POST | `/api/v1/patients/:patientId/care-records` | 시술 기록 추가 — `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접 입력). `totalSessions`는 같은 치료명+같은 횟수권으로 아직 유효한 이용권이 있으면 이어서 차감, 없으면 새로 생성(만료일=`careDate`+1년). claim 여부에 따라 스테이징(`emr_*`) 또는 실제 앱 테이블에 기록 |
 | DELETE | `/api/v1/care-records/:careRecordId` | 시술 기록 삭제 — 연결된 이용권도 함께 정리(유일 참조면 이용권 삭제, 아니면 `used_count` -1). 별도 "이용권 삭제" API는 없음 |
 | GET | `/api/v1/visit-stats` | 전날/금일(KST) 방문 + 익일 예약 고객 수 (중복 제거) |
+| GET | `/api/v1/treatment-catalog?search=` | 치료-부위 카탈로그 목록/검색 — 클리닉 공통(브랜드 격리 없음) |
+| POST/PATCH/DELETE | `/api/v1/treatment-catalog[/:treatmentId]` | 치료-부위 카탈로그 등록/수정/삭제 — 치료명→기본 careType/관리 부위 매핑, 관리자 CRUD |
 
 ## 미확정/후속 과제
 

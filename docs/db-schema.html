@@ -220,13 +220,14 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.6 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.6, <code>admin-api-spec.md</code> v0.3 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.7</span> 표시는 치료-부위 카탈로그·이용권 만료(마이그레이션 013)로 바뀐 항목.</p>
     <div class="badges">
-      <span class="badge">v0.6</span>
+      <span class="badge">v0.7</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
       <span class="badge outline">환자번호+이름+생년월일 기반 회원가입(v0.6)</span>
       <span class="badge outline">클리닉별 관리자 로그인(v0.6)</span>
+      <span class="badge outline">치료-부위 카탈로그(v0.7)</span>
     </div>
   </header>
 
@@ -240,12 +241,13 @@
     <a href="#v03new">v0.3 신규 항목(적용 완료)</a>
     <a href="#v06new">가상 EMR 스테이징 테이블(006)</a>
     <a href="#v06later">클리닉 로그인·격리 확장(007~012)</a>
+    <a href="#v07">치료-부위 카탈로그(013)</a>
   </nav>
 
   <main>
     <section id="erd">
       <h2>ERD</h2>
-      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고) <span class="mono">EMR_*</span> 3종(<span class="mono">SIGNUP_VERIFICATION_CODES</span>는 v0.6·010에서 삭제됨)은 <span class="mono">auth.users</span>와 완전히 독립적인 별도 도메인(가상 EMR 스테이징)이며, 회원가입(claim) 시점에만 <span class="mono">AUTH_USERS</span>와 연결된다 — <span class="mono">006_add_admin_emr_staging_tables.sql</span> 참고. <span class="mono">ADMIN_ACCOUNTS</span>(v0.6·008)도 <span class="mono">auth.users</span>와 무관하게 독립적으로 존재하며 자체 JWT로 인증한다.</p>
+      <p class="desc">점선 없이 실선으로 이어진 관계만 실제 FK 제약이다. (전화번호 SMS 인증 기능은 제거되어 <span class="mono">phone_verifications</span> 테이블도 함께 삭제됐다 — <span class="mono">004_remove_phone_verification.sql</span> 참고) <span class="mono">EMR_*</span> 3종(<span class="mono">SIGNUP_VERIFICATION_CODES</span>는 v0.6·010에서 삭제됨)은 <span class="mono">auth.users</span>와 완전히 독립적인 별도 도메인(가상 EMR 스테이징)이며, 회원가입(claim) 시점에만 <span class="mono">AUTH_USERS</span>와 연결된다 — <span class="mono">006_add_admin_emr_staging_tables.sql</span> 참고. <span class="mono">ADMIN_ACCOUNTS</span>(v0.6·008)도 <span class="mono">auth.users</span>와 무관하게 독립적으로 존재하며 자체 JWT로 인증한다. <span class="mono">TREATMENT_CATALOG</span>(v0.7·013)은 어떤 테이블과도 FK 관계가 없는 순수 참조 테이블이라 다이어그램에도 관계선 없이 독립적으로 떠 있다 — 치료명 선택 시 careType/관리 부위 후보를 자동 제안하는 용도일 뿐, 시술기록/이용권이 이 테이블을 참조하지 않는다.</p>
 
       <div class="diagram-toolbar">
         <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
@@ -327,7 +329,7 @@ erDiagram
     int total_count
     int used_count
     int remaining_count
-    date expires_at
+    date expires_at "v0.7부터 실제 값 채움"
     date last_used_at
     text_array available_care_names
   }
@@ -389,12 +391,19 @@ erDiagram
     int total_count
     int used_count
     int remaining_count "v0.6 generated"
+    date expires_at "v0.7부터 실제 값 채움"
   }
   ADMIN_ACCOUNTS {
     uuid id PK
     text username
     text password_hash
     text brand
+  }
+  TREATMENT_CATALOG {
+    uuid id PK
+    text care_name "unique, v0.7"
+    text care_type "v0.7"
+    text_array body_parts "v0.7"
   }
 </pre>
         </div>
@@ -549,7 +558,7 @@ erDiagram
                 <tr><td class="mono">product_name</td><td class="mono">text</td><td>not null</td><td>상품명</td></tr>
                 <tr><td class="mono">total_count / used_count</td><td class="mono">int</td><td>not null, default 0</td><td>총/사용 횟수</td></tr>
                 <tr><td class="mono">remaining_count</td><td class="mono">int</td><td><span class="constraint">GENERATED</span> total_count - used_count</td><td>계산 컬럼, 직접 갱신 불필요</td></tr>
-                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>유효기간 · 최근 사용일</td></tr>
+                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>유효기간 · 최근 사용일. <span class="done-badge">v0.7</span> <span class="mono">server_admin</span>이 생성일(첫 시술일)+1년으로 실제 채우기 시작(그 전엔 항상 null이었음, DB 제약 아님)</td></tr>
                 <tr><td class="mono">available_care_names</td><td class="mono">text[]</td><td>default '{}'</td><td>이용 가능 관리 목록</td></tr>
                 <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, expires_at)</td></tr>
               </tbody>
@@ -686,6 +695,7 @@ erDiagram
           <span class="name">public.emr_memberships</span>
           <span class="owner">가상 EMR · 계정 미연결</span>
           <span class="done-badge">v0.4 신설 · v0.6 컬럼 추가(007)</span>
+          <span class="done-badge">v0.7 expires_at 활성화</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -697,12 +707,35 @@ erDiagram
                 <tr><td class="mono">product_name</td><td class="mono">text</td><td>not null</td><td>—</td></tr>
                 <tr><td class="mono">total_count / used_count</td><td class="mono">int</td><td>not null, default 0</td><td>claim 시 그대로 <span class="mono">memberships</span>로 복사</td></tr>
                 <tr><td class="mono">remaining_count</td><td class="mono">int</td><td>generated always as (total_count - used_count) stored</td><td><span class="done-badge">v0.6·007</span> <span class="mono">public.memberships</span>와 동일 패턴 — 시술기록 추가 화면의 이용권 토글 목록용</td></tr>
-                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td>—</td></tr>
+                <tr><td class="mono">expires_at / last_used_at</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.7</span> <span class="mono">expires_at</span>는 <span class="mono">server_admin</span>이 생성일(첫 시술일)+1년으로 채움(그 전엔 항상 null)</td></tr>
                 <tr><td class="mono">available_care_names</td><td class="mono">text[]</td><td>default '{}'</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">public.memberships</span>와 동일한 형태로 claim 시 그대로 복사됨(<span class="mono">remaining_count</span>는 GENERATED라 자동 계산)</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">public.memberships</span>와 동일한 형태로 claim 시 그대로 복사됨(<span class="mono">remaining_count</span>는 GENERATED라 자동 계산, <span class="mono">expires_at</span>은 그대로 복사)</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.treatment_catalog</span>
+          <span class="owner">치료-부위 카탈로그 · 클리닉 공통</span>
+          <span class="done-badge">v0.7 신설(013)</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null, <span class="constraint">UNIQUE</span></td><td>치료명 — 전체 카탈로그에서 유일</td></tr>
+                <tr><td class="mono">care_type</td><td class="mono">text</td><td>not null</td><td><span class="mono">reference_guides</span>에 실제 존재하는 값인지 서버가 재검증</td></tr>
+                <tr><td class="mono">body_parts</td><td class="mono">text[]</td><td>not null, default '{}'</td><td>이 치료에서 고를 만한 관리 부위 후보(<span class="mono">GET /body-parts</span> 목록 중)</td></tr>
+                <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">FK 없음 — 어떤 테이블도 이 테이블을 참조하지 않는다. 시술기록/이용권은 카탈로그 값을 등록 시점에 그대로 복사해 쓸 뿐이라, 카탈로그를 수정/삭제해도 과거 기록엔 영향이 없다. 브랜드 컬럼 없음(전체 클리닉 공통).</p>
         </div>
       </div>
 
@@ -885,7 +918,17 @@ erDiagram
       <p class="note">전부 <span class="mono">server/db/migrations/007_*.sql</span> ~ <span class="mono">012_*.sql</span>. 아직 적용하지 않은 환경(신규 클론 등)이라면 006 다음 순서로 Supabase SQL Editor에서 실행해야 한다.</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.6 · 2026-08-16</footer>
+    <section id="v07">
+      <h2>치료-부위 카탈로그 추가 <span class="tag">013</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/013_add_treatment_catalog.sql</span> — 관리자 웹 프로토타입(<span class="mono">docs/WHS_After_Mate_Admin_revised.html</span>)의 "치료명 고르면 관리 부위 자동 채움" 방식을 도입하기 위해 <span class="mono">public.treatment_catalog</span> 신규 추가(위 테이블 정의 참고). 스키마 변경과 함께 <span class="mono">server_admin</span>의 이용권 처리 로직도 두 가지 바뀌었다:</p>
+      <ul style="margin:0; padding-left:20px; font-size:14px; color:var(--text-muted); display:flex; flex-direction:column; gap:8px; max-width:74ch;">
+        <li><b>이용권 만료일 실제 적용</b> — <span class="mono">memberships</span>/<span class="mono">emr_memberships</span>의 <span class="mono">expires_at</span> 컬럼은 001부터 있었지만 그동안 <span class="mono">server_admin</span>이 값을 넣지 않아 항상 <span class="mono">null</span>이었다. 이제 새 이용권을 만들 때 그 시술 날짜(<span class="mono">careDate</span>) 기준 +1년으로 계산해 채우고, 차감 시 만료 여부를 확인해 만료됐으면 <span class="mono">409 MEMBERSHIP_EXPIRED</span>로 거부한다(DB 스키마 변경 없음, 애플리케이션 로직만 추가)</li>
+        <li><b>이용권 자동 이어쓰기</b> — <span class="mono">POST .../care-records</span>에 <span class="mono">totalSessions</span>(직접입력)로 요청하면, 같은 <span class="mono">product_name</span>+같은 <span class="mono">total_count</span>로 아직 유효한(소진·만료 안 된) 이용권이 있는지 먼저 찾아서 있으면 새로 만들지 않고 그 이용권에 이어서 차감한다(관리자 프로토타입의 "패키지 자동 이어쓰기" 동작 재현)</li>
+      </ul>
+      <p class="note">자세한 API 계약은 <span class="mono">docs/admin-api-spec.md</span> v0.3 참고.</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.7 · 2026-08-16</footer>
   </main>
 </div>
 

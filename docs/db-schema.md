@@ -1,6 +1,8 @@
-# WHS After Mate — DB 스키마 (v0.6)
+# WHS After Mate — DB 스키마 (v0.7)
 
-기준: `api-spec.md` v0.6. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.6, `admin-api-spec.md` v0.3. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+
+v0.7 변경: 관리자 웹 프로토타입의 치료-부위 카탈로그 방식을 도입 — 신규 테이블 `public.treatment_catalog`(치료명→기본 careType/관리 부위 매핑, 클리닉 공통, `013_add_treatment_catalog.sql`) 추가. 스키마 변경은 아니지만 `emr_memberships`/`memberships`의 기존 `expires_at`(date, nullable) 컬럼을 `server_admin`이 이제 실제로 채워 쓰기 시작함(이용권 생성일=첫 시술일 기준 +1년, 만료 시 차감 차단) — 자세한 내용은 하단 "치료-부위 카탈로그 추가 (013)" 절 참고.
 
 v0.6 변경: 관리자용 가상 EMR 스택이 클리닉별 로그인 기반으로 확장됐다 — 회원가입 인증코드 발급 절차를 없애고 **환자번호+이름+생년월일 일치**로 신원을 확인하는 방식으로 단순화(`signup_verification_codes` 테이블 삭제, 010), 클리닉 관리자 로그인(`admin_accounts`, 008)과 클리닉별 데이터 격리(`store` 컬럼 제거+`emr_patients.brand` 추가, 009), 시술기록↔이용권 연결(`emr_care_records.membership_id`, 011), 관리 부위 배열화(`part_of_body text[]`, 012), 이용권 잔여횟수 생성 컬럼(`emr_memberships.remaining_count`, 007)이 전부 이 범위에서 추가됐다. 비밀번호 재설정도 이메일 링크에서 숫자 인증코드(Supabase `verifyOtp`) 방식으로 바뀌었다(DB 마이그레이션 없음). 자세한 내용은 하단 007~012 절 참고.
 
@@ -177,6 +179,7 @@ create index idx_memberships_user_expiry
 ```
 
 - `remaining_count`는 GENERATED 컬럼 — 직접 갱신 불필요, `used_count`만 늘리면 자동 계산됨
+- `expires_at` *(컬럼 자체는 001부터 존재, v0.7부터 `server_admin`이 실제로 채움)*: `server_admin`이 이용권을 새로 만들 때 그 시술 날짜(`careDate`) 기준 +1년으로 계산해 넣는다(이어서 차감할 때는 재계산하지 않음). 만료 후 차감 시도는 `server_admin` 서비스 레이어에서 거부(`MEMBERSHIP_EXPIRED`) — DB 제약이 아니라 애플리케이션 레벨 검증
 
 ### public.membership_usages — 이용권 회차별 사용 이력 *(v0.3, 마이그레이션 003)*
 
@@ -359,6 +362,26 @@ create index idx_emr_memberships_patient on public.emr_memberships (patient_id);
 ```
 
 - `public.memberships`와 동일한 형태로 claim 시 그대로 복사됨(단, `remaining_count`는 GENERATED라 claim 시 복사 대상이 아니라 자동 계산됨)
+- `expires_at`은 `public.memberships`와 동일하게 v0.7부터 `server_admin`이 생성 시점(첫 시술일+1년)에 채운다
+
+### public.treatment_catalog — 치료-부위 카탈로그 *(v0.7 신설 013)*
+
+```sql
+create table public.treatment_catalog (
+  id uuid primary key default gen_random_uuid(),
+  care_name text not null unique,
+  care_type text not null,
+  body_parts text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+- 치료명(`care_name`)을 고르면 기본 `care_type`/관리 부위(`body_parts`) 후보를 자동 제안하기 위한 참조 테이블 — `admin-web` 프로토타입(`docs/WHS_After_Mate_Admin_revised.html`)의 치료 카탈로그 구조를 반영
+- 클리닉(브랜드)별로 나누지 않고 **전체 클리닉 공통**으로 관리(brand 컬럼 없음) — 로그인만 되어 있으면 어느 클리닉 관리자든 CRUD 가능
+- `care_type`은 등록/수정 시 `reference_guides`에 실제로 존재하는 값인지 서버가 재검증(`GET /care-types`와 동일 로직)
+- **참조 관계 없음** — 이미 저장된 시술기록/이용권은 카탈로그를 FK로 참조하지 않고 등록 시점 값을 그대로 복사해 쓴다. 카탈로그 항목을 수정/삭제해도 과거 시술기록엔 영향 없음
+- `POST .../care-records`는 이 카탈로그를 강제하지 않는다 — 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다(카탈로그는 프론트 자동완성 제안용일 뿐)
 - `remaining_count` *(v0.6, 마이그레이션 007)*: `public.memberships`와 동일한 패턴의 GENERATED 컬럼. 시술기록 추가 화면에서 "이 이용권 몇 회 남았는지" 토글 목록을 보여줄 때 프론트/서버가 직접 계산하지 않아도 됨
 
 ### public.admin_accounts — 클리닉별 관리자 로그인 계정 *(v0.6, 마이그레이션 008/009)*
@@ -496,3 +519,12 @@ create table public.admin_accounts (
 ## 관리 부위 배열화 (012)
 
 `server/db/migrations/012_care_record_body_parts_array.sql` — 관리 상세 화면(와이어프레임 11번)처럼 한 시술이 여러 부위에 동시에 이뤄질 수 있어(예: "이마+미간"), `care_records.part_of_body`/`emr_care_records.part_of_body`를 단일 텍스트에서 배열(`text[]`)로 변경. 값은 정해진 부위 목록 중에서만 고를 수 있도록 `server_admin`이 검증한다(`GET /body-parts`로 목록 노출). 데모 단계라 기존 값은 보존하지 않고 컬럼을 재생성했다(재시드 필요).
+
+## 치료-부위 카탈로그 추가 (013)
+
+`server/db/migrations/013_add_treatment_catalog.sql` — 관리자 웹 프로토타입(`docs/WHS_After_Mate_Admin_revised.html`)의 "치료명 고르면 관리 부위 자동 채움" 방식을 도입하기 위해 `public.treatment_catalog` 신규 추가(위 테이블 정의 참고). 이와 함께 `server_admin`의 이용권 처리 로직도 두 가지 변경:
+
+- **이용권 만료일 실제 적용** — `memberships`/`emr_memberships`의 `expires_at` 컬럼은 001부터 있었지만 그동안 `server_admin`이 값을 넣지 않아 항상 `null`이었다. 이제 새 이용권을 만들 때 그 시술 날짜(`careDate`) 기준 +1년으로 계산해 채우고, 차감 시 만료 여부를 확인해 만료됐으면 `409 MEMBERSHIP_EXPIRED`로 거부한다(DB 스키마 변경 없음, 애플리케이션 로직만 추가)
+- **이용권 자동 이어쓰기** — `POST .../care-records`에 `totalSessions`(직접입력)로 요청하면, 같은 `product_name`+같은 `total_count`로 아직 유효한(소진·만료 안 된) 이용권이 있는지 먼저 찾아서 있으면 새로 만들지 않고 그 이용권에 이어서 차감한다(관리자 프로토타입의 "패키지 자동 이어쓰기" 동작 재현)
+
+자세한 API 계약은 `docs/admin-api-spec.md` v0.3 참고.

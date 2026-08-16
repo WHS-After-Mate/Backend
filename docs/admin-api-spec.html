@@ -465,13 +465,15 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Admin Backend Reference</div>
     <h1>관리자 API 명세서</h1>
-    <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(2절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
+    <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(3절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
     <div class="badges">
-      <span class="badge">v0.2</span>
+      <span class="badge">v0.3</span>
       <span class="badge outline">클리닉 로그인 3계정</span>
       <span class="badge outline">시술기록↔이용권 1:1</span>
       <span class="badge outline">브랜드 격리(404)</span>
       <span class="badge outline">전날/금일 방문 + 익일 예약</span>
+      <span class="badge outline">치료-부위 카탈로그</span>
+      <span class="badge outline">이용권 만료/자동 이어쓰기</span>
     </div>
     <div class="infobar">
       <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
@@ -485,8 +487,9 @@
     <a href="#overview">엔드포인트 전체 요약</a>
     <a href="#login">0. 로그인</a>
     <a href="#patients">1. 환자</a>
-    <a href="#care">2. 시술기록/이용권</a>
-    <a href="#stats">3. 통계</a>
+    <a href="#catalog">2. 치료-부위 카탈로그</a>
+    <a href="#care">3. 시술기록/이용권</a>
+    <a href="#stats">4. 통계</a>
     <a href="#isolation">클리닉 데이터 격리</a>
     <a href="#models">데이터 모델</a>
     <a href="#errors">공통 에러 코드</a>
@@ -497,7 +500,7 @@
 
     <section id="overview">
       <h2>엔드포인트 전체 요약</h2>
-      <p class="desc">별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(2절 참고).</p>
+      <p class="desc">별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(3절 참고). 치료-부위 카탈로그(<span class="mono">treatment_catalog</span>)는 이용권과 별개로, 치료명 선택 시 careType/관리 부위 후보를 자동 제안하는 참조 데이터일 뿐이다(2절 참고).</p>
       <div class="flow-strip">
         <span class="step">로그인</span><span class="arrow">→</span>
         <span class="step">환자 등록/조회</span><span class="arrow">→</span>
@@ -510,6 +513,10 @@
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>불필요</td><td>클리닉 관리자 로그인</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/care-types</td><td>필요</td><td>시술기록 추가 시 고를 수 있는 careType 목록</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/body-parts</td><td>필요</td><td>시술기록 추가 시 고를 수 있는 관리 부위 목록(중복 선택)</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/treatment-catalog?search=</td><td>필요</td><td>치료-부위 카탈로그 목록/검색(치료명 자동완성용)</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/treatment-catalog</td><td>필요</td><td>치료-부위 카탈로그 항목 등록</td></tr>
+            <tr><td><span class="method patch">PATCH</span></td><td class="mono">/treatment-catalog/{treatmentId}</td><td>필요</td><td>치료-부위 카탈로그 항목 수정</td></tr>
+            <tr><td><span class="method delete">DELETE</span></td><td class="mono">/treatment-catalog/{treatmentId}</td><td>필요</td><td>치료-부위 카탈로그 항목 삭제</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/patients</td><td>필요</td><td>환자 등록(환자번호 발급, 이름+생년월일+전화번호 중복 시 기존 환자 재사용 후 200)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/patients?search=</td><td>필요</td><td>환자 목록/검색(로그인 클리닉만)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/patients/{patientId}</td><td>필요</td><td>환자 상세(프로필+시술기록+이용권)</td></tr>
@@ -877,8 +884,112 @@
       </div>
     </section>
 
+    <section id="catalog">
+      <h2>2. 치료-부위 카탈로그</h2>
+      <p class="desc">치료명(예: "울쎄라 리프팅")을 고르면 그 치료의 기본 careType/관리 부위 후보를 자동으로 채워주기 위한 참조 테이블(<span class="mono">treatment_catalog</span>). 클리닉(브랜드)별로 나누지 않고 <b>전체 클리닉 공통</b>으로 관리한다(로그인만 되어 있으면 어느 클리닉 계정이든 조회/추가/수정/삭제 가능 — brand 격리 대상 아님). 어디까지나 <b>제안</b>일 뿐 강제가 아니다 — <span class="mono">POST .../care-records</span>는 이 카탈로그를 거치지 않고 여전히 <span class="mono">careName</span>/<span class="mono">careType</span>/<span class="mono">partOfBody</span>를 그대로 받는다.</p>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/treatment-catalog?search=</span>
+          <span class="note">치료명 자동완성용</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><b>Query</b>: <span class="mono">search</span>(optional) — <span class="mono">careName</span> 부분일치(대소문자 무시), 생략 시 전체 목록</p>
+          <div>
+            <div class="block-label">DB</div>
+            <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">treatment_catalog</span> <b>SELECT</b> <span class="mono">*</span>(<span class="mono">search</span> 있으면 <span class="mono">care_name</span>에 <span class="mono">ilike</span>) — <span class="mono">care_name</span> 오름차순 정렬</p>
+          </div>
+          <div>
+            <div class="block-label">Response 200</div>
+            <details class="example">
+              <summary>예시 JSON</summary>
+              <pre>{
+  "treatments": [
+    {
+      "id": "uuid",
+      "care_name": "울쎄라 리프팅",
+      "care_type": "peeling",
+      "body_parts": ["얼굴 전체", "이중턱", "턱선", "심부볼", "팔자"],
+      "created_at": "2026-08-16T09:00:00Z",
+      "updated_at": "2026-08-16T09:00:00Z"
+    }
+  ]
+}</pre>
+            </details>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">id</td><td class="mono">string(uuid)</td><td>수정/삭제 시 경로 파라미터로 씀</td></tr>
+                  <tr><td class="mono">care_name</td><td class="mono">string</td><td>치료명 — 전체 카탈로그에서 유일(unique)</td></tr>
+                  <tr><td class="mono">care_type</td><td class="mono">string</td><td><span class="mono">GET /care-types</span> 목록에 있는 값만 허용(등록/수정 시 서버가 재검증)</td></tr>
+                  <tr><td class="mono">body_parts</td><td class="mono">string[]</td><td><span class="mono">GET /body-parts</span> 목록 중 이 치료에서 실제로 고를 만한 부위 후보(1개 이상)</td></tr>
+                  <tr><td class="mono">created_at / updated_at</td><td class="mono">string</td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/treatment-catalog</span>
+        </div>
+        <div class="endpoint-body">
+          <div>
+            <div class="block-label">Request Body</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">careName</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>카탈로그 전체에서 유일해야 함</td></tr>
+                  <tr><td class="mono">careType</td><td class="mono">string</td><td><span class="field-required">required</span></td><td><span class="mono">GET /care-types</span> 목록에 있는 값만 허용</td></tr>
+                  <tr><td class="mono">bodyParts</td><td class="mono">string[]</td><td><span class="field-required">required (1개 이상)</span></td><td><span class="mono">GET /body-parts</span> 목록 중에서만 선택</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">DB</div>
+            <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">reference_guides</span>로 <span class="mono">careType</span> 유효성 재확인(<span class="mono">assertValidCareType</span>, <span class="mono">GET /care-types</span>와 동일 로직) → <span class="mono">treatment_catalog</span> <b>INSERT</b>. <span class="mono">care_name</span> unique 충돌 시 409</p>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><b>Response 201</b>: 생성된 <span class="mono">treatment_catalog</span> 행(위 GET 응답의 배열 항목과 동일 형태)</p>
+          <div class="status-row">
+            <span class="status-chip err">400 INVALID_CARE_TYPE</span>
+            <span class="status-chip err">409 TREATMENT_NAME_ALREADY_EXISTS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method patch">PATCH</span><span class="path mono">/treatment-catalog/{treatmentId}</span>
+          <span class="note">부분 수정</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">보낸 필드만 반영(모두 optional, 스키마는 POST와 동일). <span class="mono">careType</span>을 보냈으면 재검증 → <span class="mono">treatment_catalog</span> <b>SELECT</b>(존재 확인) → <b>UPDATE</b>. <b>Response 200</b>: 수정된 행</p>
+          <div class="status-row">
+            <span class="status-chip err">404 TREATMENT_NOT_FOUND</span>
+            <span class="status-chip err">400 INVALID_CARE_TYPE</span>
+            <span class="status-chip err">409 TREATMENT_NAME_ALREADY_EXISTS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span><span class="path mono">/treatment-catalog/{treatmentId}</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">treatment_catalog</span> <b>DELETE</b>(<span class="mono">id</span>, 삭제된 행 반환으로 존재 여부 판단). <b>Response 204</b>: 본문 없음. 카탈로그 삭제는 이미 저장된 시술기록/이용권에 영향을 주지 않는다(참조 관계 없음 — 등록 시점에 스냅샷처럼 <span class="mono">careName</span>/<span class="mono">careType</span>/<span class="mono">partOfBody</span>를 그대로 복사해 쓸 뿐).</p>
+          <div class="status-row"><span class="status-chip err">404 TREATMENT_NOT_FOUND</span></div>
+        </div>
+      </div>
+    </section>
+
     <section id="care">
-      <h2>2. 시술기록 / 이용권</h2>
+      <h2>3. 시술기록 / 이용권</h2>
       <p class="desc"><b>핵심 설계</b>: 시술과 이용권은 1:1로 묶여 있다. "이용권 추가"라는 별도 행위가 없다 — 시술기록을 등록하는 순간 라디오로 ① 이미 갖고 있는 이용권에서 1회 차감하거나 ② 그 자리에서 새 이용권을 만들며 1회차를 바로 소비하는 것, 둘 중 하나를 고른다. 시술기록을 지우면 그 이용권도 같이 정리된다 — "이용권 삭제" API도 없다.</p>
       <p class="note" style="margin-top:0;"><b>회원가입(claim) 여부와 무관하게 항상 기록 가능</b>: 환자가 아직 회원가입 전이면 스테이징 테이블(<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>)에, 이미 회원가입했으면 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 기록된다 — 재방문 고객의 시술도 계속 남길 수 있다. 응답의 <span class="mono">source</span>(<span class="mono">"emr"</span>|<span class="mono">"app"</span>) 필드로 어느 쪽에 기록됐는지 알 수 있다.</p>
 
@@ -897,9 +1008,9 @@
               <li>
                 여기서 갈림 —
                 <b><span class="mono">membershipId</span>를 보냈으면</b>:
-                (1번에서 정해진) 이용권 테이블 <b>SELECT</b> <span class="mono">*</span> (<span class="mono">id</span>로 조회, 소유자 일치·<span class="mono">used_count &lt; total_count</span> 확인) → <b>UPDATE</b> <span class="mono">used_count</span>+1, <span class="mono">last_used_at</span>=<span class="mono">careDate</span><br />
+                (1번에서 정해진) 이용권 테이블 <b>SELECT</b> <span class="mono">*</span> (<span class="mono">id</span>로 조회, 소유자 일치·<span class="mono">used_count &lt; total_count</span>·<span class="mono">expires_at</span>이 <span class="mono">careDate</span>보다 이전이 아님을 확인) → <b>UPDATE</b> <span class="mono">used_count</span>+1, <span class="mono">last_used_at</span>=<span class="mono">careDate</span><br />
                 <b><span class="mono">totalSessions</span>를 보냈으면</b>:
-                이용권 테이블 <b>INSERT</b> — 소유자(미가입이면 <span class="mono">patient_id</span>, 가입 완료면 <span class="mono">user_id</span>), <span class="mono">product_name</span>=<span class="mono">careName</span>, <span class="mono">total_count</span>=<span class="mono">totalSessions</span>, <span class="mono">used_count</span>=1, <span class="mono">last_used_at</span>=<span class="mono">careDate</span>, <span class="mono">available_care_names</span>=[<span class="mono">careName</span>]
+                먼저 이용권 테이블 <b>SELECT</b>(소유자+<span class="mono">product_name</span>=<span class="mono">careName</span>+<span class="mono">total_count</span>=<span class="mono">totalSessions</span>, 생성일순) 중 아직 유효한(<span class="mono">used_count &lt; total_count</span>이고 만료 전) 것이 있는지 확인 — <b>있으면</b> 그 이용권을 그대로 <span class="mono">membershipId</span> 경로와 동일하게 차감(새로 만들지 않음). <b>없으면</b> 이용권 테이블 <b>INSERT</b> — 소유자(미가입이면 <span class="mono">patient_id</span>, 가입 완료면 <span class="mono">user_id</span>), <span class="mono">product_name</span>=<span class="mono">careName</span>, <span class="mono">total_count</span>=<span class="mono">totalSessions</span>, <span class="mono">used_count</span>=1, <span class="mono">expires_at</span>=<span class="mono">careDate</span>+1년, <span class="mono">last_used_at</span>=<span class="mono">careDate</span>, <span class="mono">available_care_names</span>=[<span class="mono">careName</span>]
               </li>
               <li>시술기록 테이블(<span class="mono">emr_care_records</span> 또는 <span class="mono">care_records</span>) <b>INSERT</b> — 소유자, <span class="mono">care_name, care_type, care_date, part_of_body, brand</span>(토큰에서), <span class="mono">practitioner, basic_aftercare_guide, doctor_comment, session_number</span>(=차감/생성 후 <span class="mono">used_count</span>), <span class="mono">total_sessions</span>(=<span class="mono">total_count</span>), <span class="mono">membership_id</span>(=3번에서 처리한 이용권 id). 가입 완료 환자면 추가로 <span class="mono">source_system</span>="aac_emr", <span class="mono">synced_at</span>=현재 시각도 같이 기록</li>
             </ol>
@@ -918,7 +1029,7 @@
                   <tr><td class="mono">basicAftercareGuide</td><td class="mono">string[]</td><td><span class="field-optional">optional</span></td><td>기본값 <span class="mono">[]</span></td></tr>
                   <tr><td class="mono">doctorComment</td><td class="mono">string</td><td><span class="field-optional">optional</span></td><td></td></tr>
                   <tr><td class="mono">membershipId</td><td class="mono">string(uuid)</td><td><span class="field-required">택1</span></td><td>기존 이용권에서 1회 차감</td></tr>
-                  <tr><td class="mono">totalSessions</td><td class="mono">number</td><td><span class="field-required">택1</span></td><td>직접 입력 — 이 총 횟수로 새 이용권 생성, 1회차 즉시 소비</td></tr>
+                  <tr><td class="mono">totalSessions</td><td class="mono">number</td><td><span class="field-required">택1</span></td><td>직접 입력(패키지 구매) — 같은 <span class="mono">careName</span>+같은 횟수권으로 아직 유효한 이용권이 있으면 이어서 차감, 없으면 새 이용권 생성 후 1회차 즉시 소비</td></tr>
                 </tbody>
               </table>
             </div>
@@ -952,21 +1063,23 @@
     "total_count": 3,
     "used_count": 1,
     "remaining_count": 2,
-    "expires_at": null,
+    "expires_at": "2027-08-15",
     "last_used_at": "2026-08-15",
     "available_care_names": ["울쎄라 300샷"],
     "created_at": "2026-08-15T09:10:00Z"
   },
-  "source": "emr"
+  "source": "emr",
+  "membershipCreated": true
 }</pre>
             </details>
           </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careRecord</span>/<span class="mono">membership</span> 필드는 각각 위 <span class="mono">GET /patients/{patientId}</span> 응답의 <span class="mono">careRecords[]</span>/<span class="mono">memberships[]</span> 항목과 필드 구성이 완전히 동일하다(위 표 참고 — 회원가입 완료 환자면 <span class="mono">patient_id</span> 대신 <span class="mono">user_id</span>, <span class="mono">source: "app"</span>). <span class="mono">session_number</span>/<span class="mono">total_sessions</span>는 이 시술이 이용권 처리 후의 스냅샷값(차감된 <span class="mono">used_count</span>/<span class="mono">total_count</span>)이다. 최상위 <span class="mono">source</span>(<span class="mono">"emr"</span>|<span class="mono">"app"</span>)는 이번 호출이 어느 테이블에 기록됐는지 알려주는 필드.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careRecord</span>/<span class="mono">membership</span> 필드는 각각 위 <span class="mono">GET /patients/{patientId}</span> 응답의 <span class="mono">careRecords[]</span>/<span class="mono">memberships[]</span> 항목과 필드 구성이 완전히 동일하다(위 표 참고 — 회원가입 완료 환자면 <span class="mono">patient_id</span> 대신 <span class="mono">user_id</span>, <span class="mono">source: "app"</span>). <span class="mono">session_number</span>/<span class="mono">total_sessions</span>는 이 시술이 이용권 처리 후의 스냅샷값(차감된 <span class="mono">used_count</span>/<span class="mono">total_count</span>)이다. 최상위 <span class="mono">source</span>(<span class="mono">"emr"</span>|<span class="mono">"app"</span>)는 이번 호출이 어느 테이블에 기록됐는지 알려주는 필드. <span class="mono">membershipCreated</span>(boolean)는 이번 호출로 이용권을 <b>새로</b> 만들었는지 여부 — <span class="mono">membershipId</span>를 직접 골랐거나 <span class="mono">totalSessions</span>가 기존 이용권에 이어서 차감됐으면 <span class="mono">false</span>, 진짜 새 이용권을 만들었을 때만 <span class="mono">true</span>. <span class="mono">membership.expires_at</span>은 새로 만든 경우 <span class="mono">careDate</span> 기준 +1년, 기존 이용권에서 차감한 경우 처음 만들 때 값 그대로(재계산 안 됨).</p>
           <div class="status-row">
             <span class="status-chip err">404 PATIENT_NOT_FOUND</span>
             <span class="status-chip err">400 INVALID_CARE_TYPE</span>
             <span class="status-chip err">404 MEMBERSHIP_NOT_FOUND</span>
             <span class="status-chip err">409 MEMBERSHIP_EXHAUSTED</span>
+            <span class="status-chip err">409 MEMBERSHIP_EXPIRED</span>
           </div>
         </div>
       </div>
@@ -1000,7 +1113,7 @@
     </section>
 
     <section id="stats">
-      <h2>3. 통계</h2>
+      <h2>4. 통계</h2>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
@@ -1053,7 +1166,7 @@
         <li>다른 클리닉 소유 데이터는 ID를 직접 넣어 요청해도 <b>403이 아니라 404</b> — 존재 자체를 숨겨서 다른 클리닉 데이터의 존재를 추측할 수 없게 함</li>
         <li><span class="mono">emr_memberships</span>/<span class="mono">memberships</span>(이용권) 자체에는 <span class="mono">brand</span> 컬럼이 없다 — 시술기록의 <span class="mono">patient_id</span>/<span class="mono">user_id</span>를 거쳐 간접 격리된다(환자/유저가 이미 브랜드로 검증됐으므로 안전)</li>
         <li>회원가입 완료 환자의 이용권(<span class="mono">memberships</span>)은 애초에 특정 클리닉 소유가 아니다(고객이 여러 클리닉을 다닐 수 있음) — <span class="mono">GET /patients/{patientId}</span>는 이 고객의 이용권 <b>전체</b>를 보여준다(다른 클리닉에서 만든 것 포함), 시술기록만 <span class="mono">brand</span>로 걸러서 이 클리닉 방문분만 보여준다</li>
-        <li><span class="mono">GET /care-types</span>/<span class="mono">GET /body-parts</span>는 예외 — 클리닉 공통 자료·고정 상수라 격리 대상이 아님</li>
+        <li><span class="mono">GET /care-types</span>/<span class="mono">GET /body-parts</span>/<span class="mono">treatment-catalog</span>(전체 CRUD)는 예외 — 클리닉 공통 자료·고정 상수라 격리 대상이 아님</li>
       </ul>
     </section>
 
@@ -1065,7 +1178,8 @@
           <tbody>
             <tr><td>Patient</td><td class="mono">emr_patients</td><td>id, patient_no, name, birth_date, phone, notes, brand, claimed_user_id, claimed_at</td></tr>
             <tr><td>CareRecord</td><td><span class="mono">emr_care_records</span>(미가입) 또는 <span class="mono">care_records</span>(가입 완료)</td><td>id, patient_id 또는 user_id, care_name, care_type, care_date, part_of_body, brand, practitioner, basic_aftercare_guide, doctor_comment, session_number, total_sessions, membership_id, <b>source</b>(API 응답에서만 붙는 파생 필드)</td></tr>
-            <tr><td>Membership</td><td><span class="mono">emr_memberships</span>(미가입) 또는 <span class="mono">memberships</span>(가입 완료)</td><td>id, patient_id 또는 user_id, product_name, total_count, used_count, remaining_count(생성 컬럼), expires_at, last_used_at, available_care_names, <b>source</b></td></tr>
+            <tr><td>Membership</td><td><span class="mono">emr_memberships</span>(미가입) 또는 <span class="mono">memberships</span>(가입 완료)</td><td>id, patient_id 또는 user_id, product_name, total_count, used_count, remaining_count(생성 컬럼), expires_at(생성일+1년, 재계산 안 됨), last_used_at, available_care_names, <b>source</b></td></tr>
+            <tr><td>TreatmentCatalog</td><td class="mono">treatment_catalog</td><td>id, care_name(unique), care_type, body_parts, created_at, updated_at — 클리닉 공통, brand 없음</td></tr>
             <tr><td>AdminAccount</td><td class="mono">admin_accounts</td><td>id, username, password_hash, brand — API로 노출되는 건 JWT payload의 adminId/username/brand뿐, 계정 목록 조회 API는 없음</td></tr>
           </tbody>
         </table>
@@ -1085,6 +1199,9 @@
             <tr><td class="mono">INVALID_CARE_TYPE</td><td>400</td><td>검수되지 않은 careType</td></tr>
             <tr><td class="mono">MEMBERSHIP_NOT_FOUND</td><td>404</td><td>이용권 없음 또는 다른 환자 소유</td></tr>
             <tr><td class="mono">MEMBERSHIP_EXHAUSTED</td><td>409</td><td>이용권 잔여 횟수 0</td></tr>
+            <tr><td class="mono">MEMBERSHIP_EXPIRED</td><td>409</td><td>이용권 만료(expires_at &lt; careDate)</td></tr>
+            <tr><td class="mono">TREATMENT_NOT_FOUND</td><td>404</td><td>치료 카탈로그 항목 없음</td></tr>
+            <tr><td class="mono">TREATMENT_NAME_ALREADY_EXISTS</td><td>409</td><td>치료 카탈로그에 같은 careName이 이미 존재</td></tr>
             <tr><td class="mono">CARE_RECORD_NOT_FOUND</td><td>404</td><td>시술기록 없음 또는 다른 클리닉 소유</td></tr>
             <tr><td class="mono">VALIDATION_ERROR</td><td>400</td><td>요청 형식 위반(zod)</td></tr>
             <tr><td class="mono">NOT_FOUND</td><td>404</td><td>존재하지 않는 라우트</td></tr>
@@ -1103,9 +1220,12 @@
         <li><b><span class="mono">patientId</span>/<span class="mono">careRecordId</span> 경로 파라미터가 UUID 형식으로 사전 검증되지 않음</b> — 잘못된 형식을 보내면 Supabase 레벨 오류가 <span class="mono">500 INTERNAL_ERROR</span>로 나올 수 있음</li>
         <li><b>회원가입 이관 시점의 시술기록 중복 표시</b> — <span class="mono">GET /patients/{patientId}</span>에서 회원가입 이전 시술기록이 <span class="mono">source: "emr"</span>(원본)과 <span class="mono">source: "app"</span>(이관 복사본) 양쪽에 나타난다(위 해당 절 참고). 프론트에서 "같은 시술이 두 번 온다"고 오인하지 않도록 주의 필요</li>
         <li><b>이용권(memberships)은 클리닉별로 격리되지 않음</b> — 회원가입한 고객의 이용권은 어느 클리닉에서 만들었든 전부 조회·차감 대상에 뜬다(실제 <span class="mono">memberships</span> 테이블에 <span class="mono">brand</span> 컬럼 자체가 없음). 다른 클리닉이 판 이용권을 실수로 차감하는 걸 막는 장치는 현재 없음</li>
+        <li><b>치료-부위 카탈로그는 시술기록 저장을 강제하지 않음</b> — <span class="mono">POST .../care-records</span>는 여전히 <span class="mono">careName</span>/<span class="mono">careType</span>/<span class="mono">partOfBody</span>를 그대로 받고 카탈로그 값과 일치하는지 검증하지 않는다(프론트 자동완성용 제안 데이터일 뿐). 카탈로그에 없는 치료명으로도 시술기록은 그대로 등록 가능</li>
+        <li><b>이용권 만료일은 재계산되지 않음</b> — 기존 이용권에 이어서 차감해도 <span class="mono">expires_at</span>은 처음 만들 때(첫 시술일+1년) 값 그대로 유지된다</li>
+        <li><b>이용권 자동 이어쓰기 매칭은 <span class="mono">product_name</span>+<span class="mono">total_count</span> 정확히 일치할 때만 동작</b> — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · server_admin 관리자 API · v0.2 · 2026-08-16</footer>
+    <footer>WHS After Mate · server_admin 관리자 API · v0.3 · 2026-08-16</footer>
   </main>
 </div>

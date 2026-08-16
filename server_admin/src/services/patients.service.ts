@@ -249,6 +249,7 @@ async function deductMembershipSession(
   if (error) throw Errors.internal(error.message);
   if (!membership || membership[ownerColumn] !== ownerId) throw Errors.membershipNotFound();
   if (membership.used_count >= membership.total_count) throw Errors.membershipExhausted();
+  if (membership.expires_at && membership.expires_at < careDate) throw Errors.membershipExpired();
 
   const { data, error: updateError } = await supabaseAdmin
     .from(table)
@@ -261,7 +262,16 @@ async function deductMembershipSession(
   return data;
 }
 
+// 이용권 만료일 = 생성일(=첫 시술일, careDate) + 1년. 날짜 문자열(YYYY-MM-DD) 그대로 연산해
+// 타임존 이슈 없이 처리한다.
+function addOneYear(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const next = new Date(Date.UTC(y + 1, m - 1, d));
+  return next.toISOString().slice(0, 10);
+}
+
 // "직접 입력" — 시술기록을 추가하면서 그 자리에서 새 이용권을 만들고 1회차를 바로 사용 처리한다.
+// 만료일은 이 이용권의 생성일(=첫 시술일) 기준 +1년으로 고정(이후 재방문으로 만료일이 계속 밀리지 않음).
 async function createMembershipFromCareRecord(
   table: MembershipTable,
   ownerColumn: "patient_id" | "user_id",
@@ -277,6 +287,7 @@ async function createMembershipFromCareRecord(
       product_name: careName,
       total_count: totalSessions,
       used_count: 1,
+      expires_at: addOneYear(careDate),
       last_used_at: careDate,
       available_care_names: [careName],
     })
@@ -285,6 +296,32 @@ async function createMembershipFromCareRecord(
 
   if (error) throw Errors.internal(error.message);
   return data;
+}
+
+// 같은 치료명+같은 횟수권으로 이미 갖고 있는(아직 소진·만료 안 된) 이용권이 있으면 그걸 찾아 이어서
+// 차감할 수 있게 한다(관리자 프로토타입의 "패키지 자동 이어쓰기" 동작). 여러 개면 먼저 산 것부터 소진.
+async function findContinuableMembership(
+  table: MembershipTable,
+  ownerColumn: "patient_id" | "user_id",
+  ownerId: string,
+  careName: string,
+  totalSessions: number,
+  careDate: string,
+) {
+  const { data, error } = await supabaseAdmin
+    .from(table)
+    .select("*")
+    .eq(ownerColumn, ownerId)
+    .eq("product_name", careName)
+    .eq("total_count", totalSessions)
+    .order("created_at", { ascending: true });
+  if (error) throw Errors.internal(error.message);
+
+  return (
+    (data ?? []).find(
+      (m) => m.used_count < m.total_count && (!m.expires_at || m.expires_at >= careDate),
+    ) ?? null
+  );
 }
 
 // careType은 관리자가 자유 입력하는 값이 아니라, 전문가 검수를 거쳐 reference_guides에 실제로
@@ -296,7 +333,7 @@ export async function listCareTypes() {
   return [...new Set((data ?? []).map((row) => row.care_type as string))].sort();
 }
 
-async function assertValidCareType(careType: string) {
+export async function assertValidCareType(careType: string) {
   const { data, error } = await supabaseAdmin
     .from("reference_guides")
     .select("care_type")
@@ -335,16 +372,33 @@ export async function addCareRecord(
   const ownerColumn = claimed ? "user_id" : "patient_id";
   const ownerId = claimed ? (patient.claimed_user_id as string) : patientId;
 
+  // membershipId를 직접 고르면 그 이용권에서 차감. totalSessions만 왔으면(=패키지 구매) 같은
+  // 치료명+같은 횟수권으로 아직 유효한 이용권을 먼저 찾아 이어서 차감하고, 없을 때만 새로 만든다.
+  let membershipCreated = false;
   const membership = input.membershipId
     ? await deductMembershipSession(membershipTable, ownerColumn, ownerId, input.membershipId, input.careDate)
-    : await createMembershipFromCareRecord(
-        membershipTable,
-        ownerColumn,
-        ownerId,
-        input.careName,
-        input.totalSessions!,
-        input.careDate,
-      );
+    : await (async () => {
+        const continuable = await findContinuableMembership(
+          membershipTable,
+          ownerColumn,
+          ownerId,
+          input.careName,
+          input.totalSessions!,
+          input.careDate,
+        );
+        if (continuable) {
+          return deductMembershipSession(membershipTable, ownerColumn, ownerId, continuable.id, input.careDate);
+        }
+        membershipCreated = true;
+        return createMembershipFromCareRecord(
+          membershipTable,
+          ownerColumn,
+          ownerId,
+          input.careName,
+          input.totalSessions!,
+          input.careDate,
+        );
+      })();
 
   const insertPayload: Record<string, unknown> = {
     [ownerColumn]: ownerId,
@@ -370,7 +424,13 @@ export async function addCareRecord(
 
   const { data, error } = await supabaseAdmin.from(careRecordTable).insert(insertPayload).select().single();
   if (error) throw Errors.internal(error.message);
-  return { careRecord: data, membership, source: claimed ? ("app" as const) : ("emr" as const) };
+  return {
+    careRecord: data,
+    membership,
+    source: claimed ? ("app" as const) : ("emr" as const),
+    // membershipId를 직접 골랐거나, 이어서 차감할 기존 이용권을 찾았으면 false. 진짜 새로 만들었을 때만 true.
+    membershipCreated,
+  };
 }
 
 // 시술기록을 지우면 그 기록이 소비한 이용권도 함께 정리한다(별도 "이용권 삭제" API는 없음) —

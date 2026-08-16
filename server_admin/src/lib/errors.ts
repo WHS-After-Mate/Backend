@@ -14,8 +14,12 @@ export const Errors = {
   careRecordNotFound: () => new ApiError(404, "CARE_RECORD_NOT_FOUND", "시술 기록을 찾을 수 없습니다."),
   membershipNotFound: () => new ApiError(404, "MEMBERSHIP_NOT_FOUND", "이용권을 찾을 수 없습니다."),
   membershipExhausted: () => new ApiError(409, "MEMBERSHIP_EXHAUSTED", "선택한 이용권의 잔여 횟수가 없습니다."),
+  membershipExpired: () => new ApiError(409, "MEMBERSHIP_EXPIRED", "선택한 이용권이 만료되었습니다."),
   invalidCareType: () =>
     new ApiError(400, "INVALID_CARE_TYPE", "검수된 사후관리 가이드가 있는 관리 유형만 선택할 수 있습니다."),
+  treatmentNotFound: () => new ApiError(404, "TREATMENT_NOT_FOUND", "치료 카탈로그 항목을 찾을 수 없습니다."),
+  treatmentNameAlreadyExists: () =>
+    new ApiError(409, "TREATMENT_NAME_ALREADY_EXISTS", "이미 등록된 치료명입니다."),
   invalidCredentials: () => new ApiError(401, "INVALID_CREDENTIALS", "아이디 또는 비밀번호가 올바르지 않습니다."),
   unauthorized: () => new ApiError(401, "UNAUTHORIZED", "로그인이 필요합니다."),
   validation: (message: string) => new ApiError(400, "VALIDATION_ERROR", message),
