@@ -8,6 +8,14 @@
 - 사용자가 "Reset password 링크 제거" 요청 → Supabase Auth 이메일 템플릿(Reset Password) Source에서 `{{ .ConfirmationURL }}` 링크 문단 삭제, `{{ .Token }}` 코드만 유지, 저장 확인
 - 재발송 테스트 시 사용자가 "링크가 그대로 왔다"고 보고 → 대시보드 소스는 정상이었으나, 실제 Gmail 받은편지함을 직접 열어 대조한 결과 **템플릿 저장 직후 발송분은 캐시 지연으로 옛 버전이 나갔던 것**으로 확인(Supabase Auth 템플릿 반영에 1~2분 지연 있음, 실측). 몇 분 후 재테스트로 링크 없이 코드만 오는 새 템플릿 정상 수신 확인
 - 테스트 서버 종료(taskkill), `docs/api-spec.md`/`.html`·`server/README.md`의 "Resend 커스텀 SMTP" 문구를 Gmail SMTP 전환 내용으로 갱신, "API 명세서" 아티팩트 재발행, commit+push (`9f2eeb6`)
+- 사용자가 남은 이월 항목(문서 3종 미동기화) 진행 요청 — `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html`, `docs/llm-prompt-design.md`/`.html` 재동기화 착수
+  - `server/db/migrations/007_emr_membership_remaining_count.sql` ~ `012_care_record_body_parts_array.sql` 6개 전부 실제 내용 확인 후 반영
+  - `db-schema.md`는 회원가입 흐름 설명과 `emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes` 테이블 정의가 여전히 2026-08-13 시점의 인증코드 방식으로 남아있던 걸 발견(2026-08-13 이후 실제 코드는 010에서 이름+생년월일 대조 방식으로 전환됨) — 가입 흐름·해당 테이블 전면 재작성, `signup_verification_codes` 제거를 "~~제거됨~~" 절로 명시, `admin_accounts` 신규 테이블 추가, ERD mermaid 다이어그램도 동일하게 갱신, 버전 v0.4→v0.6
+  - `server-code-guide.md`도 3절(인증/온보딩)과 9절 "v0.6 신규 항목" 표가 같은 이유로 stale — signup 단계별 설명과 에러코드(`patientIdentityMismatch` 등)를 실제 `auth.service.ts`/`lib/errors.ts` 코드와 대조해 재작성, 비밀번호 재설정 숫자코드화 항목 추가, 버전 v0.2→v0.3
+  - `llm-prompt-design.md`는 daily-guide/questions LLM 파이프라인·프롬프트 자체가 이번 백엔드 변경들과 무관하게 그대로임을 코드 대조로 확인 — stale한 버전 각주(`api-spec v0.4 · db-schema v0.2`)만 정정, `part_of_body` 배열화만 1줄 반영
+  - `.html` 3종도 동일 내용으로 동기화(ERD mermaid, 테이블 카드, 마이그레이션 이력 섹션 007~012 신규 추가)
+  - 아티팩트 3종(DB 스키마 `f152ff3e`, 서버 코드 설명서 `65b8c9b6`, LLM 프롬프트 설계 `48a5799c`) WebFetch로 최신본 확인 후 재발행
+  - commit+push (`815667b`)
 - work-log 정리
 
 ## 2026-08-16
