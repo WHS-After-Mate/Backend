@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-16 08:20
+최종 업데이트: 2026-08-16 09:10
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
@@ -28,11 +28,19 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - 사용자가 "/auth/signup 설명에 오류가 있는 것 같다"고 지적 → 확인해보니 엔드포인트 요약 표/배지/v0.6 절 3곳에 "환자번호+인증코드"라는 옛 표현이 남아있었음(010에서 이미 이름+생년월일 대조 방식으로 바뀌었는데 이 3곳만 안 고쳐져 있었음) — 수정
 - 사용자 요청으로 validators 코드와 api-spec.md 전체를 대조하는 좀 더 넓은 점검 진행 — `PATCH /profile`(Request/Response 필드 표 자체가 없었음), `POST /aftercare/questions`(Request 표 없음, question 1000자 제한 미문서화), 공통 에러 코드 표에 `INVALID_CREDENTIALS` 누락 — 전부 발견해 보완
 - 아티팩트 재발행, commit+push (`3b7bff7`)
+- 사용자가 `docs/WHS_After_Mate_Admin_revised.html`(관리자 웹 프로토타입, 정적 데모)을 업로드 → 대조해 미구현 사항 구현 요청. 사전 결정 3가지 확인: ① `GET /visit-stats`를 "이틀전/하루전/금일"에서 "전날/금일/익일 예약"으로 변경 ② 시술기록에 이미 있는 `careDate`를 미래 날짜로 넣는 것만으로 "예약"을 표현(별도 예약 테이블/컬럼 신설 없음) ③ 예약 취소·앱↔웹 동기화는 이번 범위에서 명시적으로 제외(사용자가 작업 도중 "취소는 아직 구현하지 말고 대시보드 표시만" 이라고 재확인)
+  - 코드 확인 결과 `createCareRecordSchema.careDate`가 애초에 미래 날짜를 막지 않고 있어 ②는 검증기 변경 불필요했음
+  - `patients.service.ts`의 `getVisitStats`를 `{yesterday, today, tomorrow}` 3키로 재구성(`kstDateString`에 음수 `daysAgo`를 처음 사용해 내일 날짜 계산) — 나머지 identity-dedup 로직은 그대로 재사용
+  - 실서버로 내일 날짜(`2026-08-17`) 시술기록 생성 → `tomorrow.count`에 반영되는 것까지 라이브 검증 후 테스트 데이터(환자/시술기록/이용권) 정리
+  - `docs/admin-api-spec.md`/`.html`(v0.1→v0.2), `server_admin/README.md` 동기화, 아티팩트 재발행
+  - commit+push (`653bed8`)
 
 ## 현재 작업 중
 - (없음 — 이번 세션 작업 전부 커밋+푸시+아티팩트 재발행까지 완료)
 
 ## 다음 할 일
+- **(신규, 미결정) 프로토타입(`WHS_After_Mate_Admin_revised.html`)의 시술/이용권 데이터 모델이 현재 백엔드와 다름** — 프로토타입은 치료명(예: "울쎄라 리프팅")별로 고정된 `catalog`(부위 목록 + 타입)를 갖고, 같은 (이름,횟수권) 조합을 고객 이력에서 자동 매칭해 회차를 자동 증가시키고 1년 만료를 자동 계산하는 구조. 현재 백엔드는 `careType`(reference_guides 검수값) + 시술 시마다 `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접입력, 새 이용권 생성)를 관리자가 매번 선택하는 구조로 상당히 다름. 이번 세션엔 범위 밖이라 손대지 않았음 — 이 갭을 그대로 둘지, 프로토타입 방식으로 재설계할지 사용자 결정 필요(다음 세션에 먼저 물어볼 것)
+- 예약 취소 기능 — 사용자가 명시적으로 보류. 나중에 앱과 연동해 금일/향후 예약을 취소하는 기능으로 별도 구현 예정(착수 전)
 - 가비아 클라우드 배포 — 크레딧 지급 조건 확인 후 진행 예정(아직 착수 전)
 - (이월) 프론트 담당자 GitHub Collaborator 초대 미발송
 - (이월) `.env` 비밀값을 프론트 담당자에게 git 아닌 채널로 전달
@@ -43,7 +51,8 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Gmail SMTP는 트랜잭션 메일 전용 서비스가 아니라 발송량이 몰리면 스팸/전송 제한 리스크가 있음 — 정식 서비스 규모로 갈 때 도메인 기반 트랜잭션 메일 서비스(Resend 등)로 재검토 필요(도메인 확보되면)
 
 ## 주요 파일
-- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계 전체 로직. claim 여부 분기(emr_* vs 실제 테이블), 중복 환자 재사용+notes 갱신, `getVisitStats`
+- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계 전체 로직. claim 여부 분기(emr_* vs 실제 테이블), 중복 환자 재사용+notes 갱신, `getVisitStats`(전날/금일/익일 예약)
+- `docs/WHS_After_Mate_Admin_revised.html` — 관리자 웹 정적 프로토타입(신규 업로드, git 미추적 상태 — 참고용 데모, 실제 API 연동 없음). 대시보드 3카드/관리 등록 모달/치료-부위 카탈로그 구조 참고용
 - `server/src/services/auth.service.ts` — `signup()`(interestGoals 포함), `requestPasswordReset`/`confirmPasswordReset`(숫자 코드 방식, Gmail SMTP로 발송)
 - `docs/admin-api-spec.md`/`.html` — server_admin 전체 API 명세, 아티팩트로도 발행됨
 - `docs/api-spec.md`/`.html` — 고객용 server/ API 명세, 이번 세션에 SMTP 전환 문구 갱신 + reset-verify 반영 + admin-api-spec 스타일 Response 필드 표 전면 추가
@@ -51,7 +60,7 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
 - `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 + reset-verify 반영해 재동기화
 - `server/src/services/auth.service.ts` — `verifyPasswordResetCode`(신규)/`confirmPasswordReset`(resetToken 방식으로 변경)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `3b7bff7`)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `653bed8`)
 
 ## 특이사항 / 결정 사항
 - **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서, Google이 이상 발송으로 계정을 잠그더라도 개인 계정에 영향이 없도록 격리함

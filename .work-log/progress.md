@@ -1,3 +1,17 @@
+## 2026-08-16 (3, 신규 세션)
+- work-log 브리핑 후 사용자가 `docs/WHS_After_Mate_Admin_revised.html`(관리자 웹 정적 프로토타입)을 업로드 → 대조해서 미구현 API 구현 요청, 동시에 3가지 사전 결정 전달: "전날/금일/익일 예약으로 바꾸기로 했어", "관리날짜를 추가해서 예약이 가능하게끔 하기로 했어", "취소 기능은 추후 앱 연동해서 구현해야겠어"(→ 나중에 "취소는 아직 구현하지 말고 대시보드 표시만 하자"로 범위 재확인)
+- 프로토타입 HTML을 읽어 구조 파악 — 대시보드가 "이틀전/하루전/금일"에서 "전날/금일/익일" 3카드로, "관리 등록" 모달에 `manageDate`(날짜 선택, 기본값 오늘) 필드가 추가돼 있고, 치료명 검색 시 하드코딩된 `catalog` 객체로 부위 select가 자동 채워지는 방식임을 확인
+  - `createCareRecordSchema.careDate`(정규식 `^\d{4}-\d{2}-\d{2}$`만)를 코드로 직접 확인해 미래 날짜 제한이 원래 없었음을 확인 — "관리 날짜 추가" 요구는 검증기 변경 없이 이미 충족돼 있었음, "예약"은 곧 미래 `careDate`를 가진 시술기록 row 그 자체로 정의(별도 테이블 불필요)
+  - `patients.service.ts`의 `getVisitStats` `days` 배열을 `{today,yesterday,twoDaysAgo}`(0/1/2)에서 `{yesterday,today,tomorrow}`(1/0/-1)로 재구성 — 기존 `kstDateString(daysAgo)`가 이미 범용이라 음수(미래) 지원을 처음 실사용. 나머지(emr_care_records/care_records 합산, claimed_user_id 기준 중복 제거) 로직은 그대로 유지
+  - `patients.routes.ts`의 `/visit-stats` 주석만 갱신(라우트 동작은 변경 없음)
+  - `npm run typecheck`/`build` 통과 확인
+- 라이브 검증 — 실서버(4100) 기동 후 curl로 테스트 환자 등록 → 내일 날짜(`2026-08-17`)로 시술기록 생성 → `GET /visit-stats`에서 `tomorrow.count`에 정상 반영되는 것 확인. 테스트 환자/시술기록/이용권은 `DELETE /care-records/:id`(204, 이용권도 함께 자동 정리)와 서비스role key 임시 스크립트(생성 직후 삭제)로 전부 정리
+- `docs/admin-api-spec.md`(v0.1→v0.2, changelog 문단+엔드포인트 요약 표+`GET /visit-stats` 절 전면 갱신)/`.html`(배지/뱃지/필드표 동기화), `server_admin/README.md` 엔드포인트 표 1줄 갱신
+- 아티팩트("WHS After Mate — 관리자 API 명세서", `743df35b...`) WebFetch로 최신본(v0.1) 확인 후 재발행
+- commit+push (`653bed8`)
+- 프로토타입에서 발견한 시술/이용권 데이터 모델 차이(치료명별 고정 `catalog`+자동 회차 추적 vs 현재의 `careType`+매번 수동 `membershipId`/`totalSessions` 선택)는 이번 범위 밖이라 구현하지 않고 work-log에 "다음 세션에 먼저 물어볼 것"으로 남김
+- work-log 정리
+
 ## 2026-08-16 (2, 신규 세션)
 - 세션 시작, work-log 브리핑 → 미커밋 변경분(interestGoals/비밀번호 재설정 코드화/OTP 자릿수 완화/api-spec 재동기화) typecheck 통과 확인 후 commit+push (`9e600e7`)
 - 사용자가 이월 항목 2번(Resend 커스텀 도메인) 진행 요청 → 도메인 미보유 확인, 진행 불가로 보류하려던 차에 사용자가 "Resend 커스텀 도메인이 뭔지" 질문 → 어제 한 SMTP 연동(배관 작업)과 오늘 필요한 커스텀 도메인(발신 주소 제약 해제)이 다른 단계임을 설명
