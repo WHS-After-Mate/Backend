@@ -659,7 +659,7 @@
           <span class="note">인증코드 + 새 비밀번호 제출</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">이메일로 받은 숫자 인증코드와 새 비밀번호를 한 번에 제출한다 — 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로). 서버는 <span class="mono">code</span>를 Supabase의 <span class="mono">auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아님). 성공하면 그 자리에서 비밀번호를 갱신하고, 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Resend 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">이메일로 받은 숫자 인증코드와 새 비밀번호를 한 번에 제출한다 — 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로). 서버는 <span class="mono">code</span>를 Supabase의 <span class="mono">auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아님). 성공하면 그 자리에서 비밀번호를 갱신하고, 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>

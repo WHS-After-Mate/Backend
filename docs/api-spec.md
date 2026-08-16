@@ -132,7 +132,7 @@ accessToken 재발급.
 ```
 **Response 204**
 `400 INVALID_OR_EXPIRED_RESET_CODE`
-- 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담, `auth.service.ts`의 `confirmPasswordReset` 참고). 검증이 성공하면 그 자리에서 바로 비밀번호를 갱신하고, 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Resend 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.
+- 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담, `auth.service.ts`의 `confirmPasswordReset` 참고). 검증이 성공하면 그 자리에서 바로 비밀번호를 갱신하고, 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Gmail 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.
 
 ---
 
