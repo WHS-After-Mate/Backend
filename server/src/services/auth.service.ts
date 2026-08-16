@@ -3,13 +3,14 @@ import { supabaseAdmin, supabaseAnon } from "../config/supabase";
 import { ApiError, Errors } from "../lib/errors";
 
 // 회원가입 = "병원에서 이미 시술받은 환자가 앱 계정을 처음 만드는 순간"이다.
-// 인증코드 발송 없이 환자번호(patientNo)+이름+생년월일 세 값이 emr_patients 레코드와 정확히
-// 일치하는지로 신원을 확인하고, 그 시점까지 쌓여있던 emr_care_records/emr_memberships를
+// 인증코드 발송 없이 환자번호(patientNo)+이름+생년월일+전화번호 네 값이 emr_patients 레코드와
+// 정확히 일치하는지로 신원을 확인하고, 그 시점까지 쌓여있던 emr_care_records/emr_memberships를
 // 실제 테이블로 1회성 이관(claim)한다.
 export async function signup(input: {
   patientNo: string;
   name: string;
   birthDate: string;
+  phone: string;
   email: string;
   password: string;
   interestGoals: string[];
@@ -22,7 +23,11 @@ export async function signup(input: {
   if (!patient) throw Errors.patientNotFound();
   if (patient.claimed_user_id) throw Errors.patientAlreadyClaimed();
 
-  if (patient.name.trim() !== input.name.trim() || patient.birth_date !== input.birthDate) {
+  if (
+    patient.name.trim() !== input.name.trim() ||
+    patient.birth_date !== input.birthDate ||
+    patient.phone !== input.phone
+  ) {
     throw Errors.patientIdentityMismatch();
   }
 

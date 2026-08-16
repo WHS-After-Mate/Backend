@@ -21,7 +21,7 @@ export const Errors = {
   patientAlreadyClaimed: () =>
     new ApiError(409, "PATIENT_ALREADY_CLAIMED", "이미 가입 처리된 환자번호입니다."),
   patientIdentityMismatch: () =>
-    new ApiError(400, "PATIENT_IDENTITY_MISMATCH", "환자번호/이름/생년월일이 일치하지 않습니다."),
+    new ApiError(400, "PATIENT_IDENTITY_MISMATCH", "환자번호/이름/생년월일/전화번호가 일치하지 않습니다."),
   invalidCredentials: () =>
     new ApiError(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다."),
   noActiveCustomerProfile: () =>

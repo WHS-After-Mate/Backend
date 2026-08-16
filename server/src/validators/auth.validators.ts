@@ -1,12 +1,13 @@
 import { z } from "zod";
 
-// 인증코드 발송을 없애고, patientNo + name + birthDate 조합으로 신원을 확인한다 — 셋 다
-// emr_patients에 등록된 값과 정확히 일치해야 가입이 진행된다(전화번호는 신원확인에 안 씀).
-// phone은 여전히 client 입력이 아니라 patientNo로 찾은 emr_patients 레코드에서 그대로 가져온다.
+// 인증코드 발송을 없애고, patientNo + name + birthDate + phone 조합으로 신원을 확인한다 — 넷 다
+// emr_patients에 등록된 값과 정확히 일치해야 가입이 진행된다. phone 포맷은 관리자 쪽 환자 등록
+// (server_admin/src/validators/patients.validators.ts)과 동일하게 하이픈 없는 숫자 9~11자리로 맞춘다.
 export const signupSchema = z.object({
   patientNo: z.string().min(1),
   name: z.string().min(1),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  phone: z.string().regex(/^\d{9,11}$/),
   email: z.string().email(),
   password: z.string().min(8),
   // 와이어프레임 원안: 회원가입 화면에서 관심 목표를 중복 선택 — 다음 관리 추천의 우선순위에 반영되고

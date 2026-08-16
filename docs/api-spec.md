@@ -56,10 +56,10 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 
 ## 1. 인증 / 온보딩
 
-회원가입은 **병원(관리자용 admin-web/server_admin)에서 등록한 환자번호(patientNo) + 이름 + 생년월일이 전부 일치해야만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다(별도 인증코드 발급 절차는 없음). 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두면, 환자가 그 환자번호 + 본인 이름 + 생년월일로 신원을 증명하고 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
+회원가입은 **병원(관리자용 admin-web/server_admin)에서 등록한 환자번호(patientNo) + 이름 + 생년월일 + 전화번호가 전부 일치해야만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다(별도 인증코드 발급 절차는 없음). 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두면, 환자가 그 환자번호 + 본인 이름 + 생년월일 + 전화번호로 신원을 증명하고 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
 
 ### POST /auth/signup
-환자번호+이름+생년월일 일치 기반 회원가입. 전화번호는 요청에 포함하지 않는다 — `patientNo`로 찾은 `emr_patients` 레코드(의료진이 입력한 원본)에서 그대로 가져와 `profiles`에 채운다. `interestGoals`는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 `PUT /profile/interests`로 언제든 바꿀 수 있음).
+환자번호+이름+생년월일+전화번호 일치 기반 회원가입. `phone`은 `emr_patients`에 등록된 원본과 정확히 같아야 하며(하이픈 없는 숫자 9~11자리, 관리자 쪽 환자 등록과 동일 포맷), 일치가 확인된 뒤에도 그대로 `patient.phone`(EMR 원본)을 `profiles`에 채운다 — 클라이언트가 입력한 값을 그대로 저장하는 게 아니라 신원확인 용도로만 쓴다. `interestGoals`는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 `PUT /profile/interests`로 언제든 바꿀 수 있음).
 
 가입이 성공하면 그 시점까지 `emr_patients`에 쌓여 있던 시술 이력·이용권(`emr_care_records`/`emr_memberships`)이 실제 `care_records`/`memberships`로 **1회성 이관(claim)** 된다. 이관은 가입 시 딱 한 번만 일어나며, claim 이후에도 병원(`server_admin`)에서 이 환자에게 새 시술기록을 추가하면 이번엔 스테이징이 아니라 실제 앱 테이블에 곧바로 기록된다(재가입은 막힘 — 같은 환자번호로 재시도 시 `409 PATIENT_ALREADY_CLAIMED`).
 
@@ -69,6 +69,7 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
   "patientNo": "EMR-P-A1B2C3",
   "name": "홍길동",
   "birthDate": "1990-05-20",
+  "phone": "01011112222",
   "email": "user@example.com",
   "password": "string (8자 이상)",
   "interestGoals": ["수분 개선", "탄력 관리"]
@@ -77,7 +78,7 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 **Response 200**: `POST /auth/login`과 동일 스키마 (accessToken, refreshToken, expiresIn, user)
 `404 PATIENT_NOT_FOUND`: 환자번호를 찾을 수 없음
 `409 PATIENT_ALREADY_CLAIMED`: 이미 가입 처리된 환자번호
-`400 PATIENT_IDENTITY_MISMATCH`: 환자번호는 찾았지만 이름 또는 생년월일이 `emr_patients` 원본과 다름
+`400 PATIENT_IDENTITY_MISMATCH`: 환자번호는 찾았지만 이름·생년월일·전화번호 중 하나 이상이 `emr_patients` 원본과 다름
 `409 EMAIL_ALREADY_EXISTS`
 
 ### POST /auth/login
@@ -751,3 +752,12 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 - **`PHONE_ALREADY_EXISTS` 에러 제거** — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`PATIENT_IDENTITY_MISMATCH` 3종 신규 추가.
 - **claim은 1회성, 지속 동기화 아님**: claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 반영되지 않는다(의도적 범위 제한). 실제 서비스라면 배치 ETL이 필요 — `db-schema.md`의 "클리닉 EMR 연동" 절 참고.
 - **비밀번호 재설정을 코드 검증 단계와 비밀번호 변경 단계로 재분리**: 와이어프레임(05번)이 "인증번호 발송" → "인증번호 확인" → "새 비밀번호 저장"을 별도 버튼 3개로 그리고 있는데, 기존 구현은 코드 검증과 비밀번호 변경을 `reset-confirm` 하나로 합쳐뒀었다. 신규 `POST /auth/password/reset-verify`가 코드만 검증해 `resetToken`을 내려주고, `reset-confirm`은 이제 `{resetToken, newPassword}`만 받는다(더 이상 `email`/`code`를 직접 받지 않음). 코드는 `verifyOtp` 호출 시점에 이미 소진되므로 재사용 불가 — 라이브 테스트로 확인 완료.
+
+## v0.7 — 회원가입 신원확인에 전화번호 추가
+
+`POST /auth/signup`의 신원확인 항목을 patientNo+이름+생년월일 3종에서 **patientNo+이름+생년월일+전화번호 4종**으로 강화했다. 관리자 쪽 환자 등록(`POST /patients`)이 이름+생년월일+전화번호로 중복 판정을 하는 것과 대칭을 맞추고, 이름+생년월일만으로는 동명이인/오탈자 신원확인이 약하다는 문제를 보완하기 위함.
+
+- **Request에 `phone` 필드 추가**: 관리자 쪽(`server_admin/src/validators/patients.validators.ts`)과 동일한 포맷(`/^\d{9,11}$/`, 하이픈 없는 숫자 9~11자리)으로 검증한다. `server/src/validators/auth.validators.ts`.
+- **`auth.service.ts`의 `signup()`**: `emr_patients`에서 조회한 `patient.phone`을 `input.phone`과 비교하는 조건이 이름/생년월일 비교에 추가됨 — 하나라도 다르면 기존과 동일하게 `400 PATIENT_IDENTITY_MISMATCH`.
+- **`profiles.phone`에 채우는 값은 변함없이 EMR 원본**(`patient.phone`)이다 — 클라이언트가 보낸 `phone`은 신원확인에만 쓰이고 저장값의 출처는 아니다(정상적으로 신원확인을 통과했다면 두 값은 어차피 동일).
+- 회원가입 화면(와이어프레임)에 전화번호 입력란 추가가 필요 — 클라이언트(앱) 쪽 변경사항은 이 문서(서버 스펙) 범위 밖.

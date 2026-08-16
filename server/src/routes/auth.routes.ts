@@ -12,12 +12,13 @@ import {
 } from "../validators/auth.validators";
 
 // 1. 인증 / 온보딩 (api-spec.md §1)
-// 회원가입은 병원(admin-web/server_admin)에서 발급한 환자번호와, 그 환자번호에 등록된 이름·생년월일이
-// 모두 일치해야만 가능하다 — 환자번호 없는 자유 가입은 막혀있다(실제 시술 이력 없는 계정 방지).
+// 회원가입은 병원(admin-web/server_admin)에서 발급한 환자번호와, 그 환자번호에 등록된
+// 이름·생년월일·전화번호가 모두 일치해야만 가능하다 — 환자번호 없는 자유 가입은 막혀있다(실제
+// 시술 이력 없는 계정 방지).
 
 export const authRouter = Router();
 
-// 회원가입: 환자번호+이름+생년월일 일치 확인으로 emr_patients를 claim하며 이메일/비밀번호 계정 생성
+// 회원가입: 환자번호+이름+생년월일+전화번호 일치 확인으로 emr_patients를 claim하며 이메일/비밀번호 계정 생성
 authRouter.post(
   "/signup",
   asyncHandler(async (req, res) => {
