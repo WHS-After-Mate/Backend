@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-16 10:30
+최종 업데이트: 2026-08-16 10:45
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
@@ -41,12 +41,15 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
   - 실서버로 카탈로그 CRUD(생성/검색/중복거부/수정/삭제), 자동 이어쓰기(동일 이용권 재사용+`used_count` 증가 확인), 강제로 과거 날짜를 넣어 만료시킨 이용권에 대한 명시적 차감 거부(`MEMBERSHIP_EXPIRED`), 만료된 이용권은 자동 이어쓰기 후보에서 제외되고 새 이용권이 만들어지는 것까지 전부 라이브 검증 후 테스트 데이터(환자/시술기록/이용권/카탈로그) 정리
   - `docs/admin-api-spec.md`/`.html`(v0.2→v0.3, "2. 치료-부위 카탈로그" 신규 절, 이후 절 번호 전부 한 칸씩 밀림), `docs/db-schema.md`/`.html`(v0.6→v0.7, `treatment_catalog` 테이블 정의+ERD 추가), `server_admin/README.md` 동기화, 아티팩트 2종(관리자 API 명세서/DB 스키마) 재발행
   - commit+push (`7a94c80`)
+- 사용자가 "일단 여기까지만 하고 더 추가해야할 사항은 readme에 넣자"고 정리 요청 → 추가 구현 없이 `server_admin/README.md`의 "미확정/후속 과제"에 이번 작업에서 의도적으로 남겨둔 항목 4개를 문서화만 함(예약 취소 미구현, 카탈로그가 시술기록 저장을 강제하지 않음, 이용권 만료일 재계산 안 됨, 자동 이어쓰기 매칭이 `product_name`+`total_count` 완전 일치일 때만 동작). commit+push (`010af8f`)
 
 ## 현재 작업 중
 - (없음 — 이번 세션 작업 전부 커밋+푸시+아티팩트 재발행까지 완료)
 
 ## 다음 할 일
 - 예약 취소 기능 — 사용자가 명시적으로 보류. 나중에 앱과 연동해 금일/향후 예약을 취소하는 기능으로 별도 구현 예정(착수 전)
+- (신규, README에 기록됨) 치료-부위 카탈로그가 시술기록 저장(`careName`/`careType`/`partOfBody`)을 강제하지 않음 — 프론트에서 카탈로그로 자동완성만 붙이고 서버는 검증 안 함. 필요해지면 서버 레벨 검증 추가 검토
+- (신규, README에 기록됨) 이용권 자동 이어쓰기 매칭 정확도 — `product_name`+`total_count` 완전 일치만 인식. 관리자가 카탈로그에서 치료명을 선택 입력하게 하는 프론트 구현으로 표기 불일치를 줄일 수 있음(아직 미구현)
 - 가비아 클라우드 배포 — 크레딧 지급 조건 확인 후 진행 예정(아직 착수 전)
 - (이월) 프론트 담당자 GitHub Collaborator 초대 미발송
 - (이월) `.env` 비밀값을 프론트 담당자에게 git 아닌 채널로 전달
@@ -67,7 +70,7 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
 - `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 + reset-verify 반영해 재동기화
 - `server/src/services/auth.service.ts` — `verifyPasswordResetCode`(신규)/`confirmPasswordReset`(resetToken 방식으로 변경)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `7a94c80`)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `010af8f`)
 
 ## 특이사항 / 결정 사항
 - **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서, Google이 이상 발송으로 계정을 잠그더라도 개인 계정에 영향이 없도록 격리함
