@@ -9,6 +9,9 @@ export const signupSchema = z.object({
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   email: z.string().email(),
   password: z.string().min(8),
+  // 와이어프레임 원안: 회원가입 화면에서 관심 목표를 중복 선택 — 다음 관리 추천의 우선순위에 반영되고
+  // 내 정보 > 관심 목표 화면에서 동일한 값이 보이며 그 화면에서 나중에 바꿀 수도 있다.
+  interestGoals: z.array(z.string().min(1)).default([]),
 });
 
 export const loginSchema = z.object({
@@ -25,6 +28,9 @@ export const passwordResetRequestSchema = z.object({
 });
 
 export const passwordResetConfirmSchema = z.object({
-  recoveryToken: z.string().min(1),
+  email: z.string().email(),
+  // Supabase 대시보드 설정에 따라 OTP 자리수가 달라질 수 있어(이 프로젝트는 실측 결과 8자리) 정확한
+  // 자리수로 고정하지 않고 숫자로만 구성됐는지만 느슨하게 검증한다.
+  code: z.string().regex(/^\d{6,10}$/, "6~10자리 숫자"),
   newPassword: z.string().min(8),
 });

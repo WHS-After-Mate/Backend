@@ -57,7 +57,7 @@ authRouter.post(
   }),
 );
 
-// 로그인 화면 "비밀번호를 잊으셨나요?" — 이메일 입력 시 재설정 링크 발송 (v0.5)
+// 로그인 화면 "비밀번호를 잊으셨나요?" — 이메일 입력 시 재설정 인증코드 발송
 authRouter.post(
   "/password/reset-request",
   asyncHandler(async (req, res) => {
@@ -67,12 +67,12 @@ authRouter.post(
   }),
 );
 
-// 재설정 링크로 열린 화면에서 새 비밀번호 설정 (v0.5)
+// 이메일로 받은 6자리 인증코드 + 새 비밀번호 제출
 authRouter.post(
   "/password/reset-confirm",
   asyncHandler(async (req, res) => {
-    const { recoveryToken, newPassword } = passwordResetConfirmSchema.parse(req.body);
-    await authService.confirmPasswordReset(recoveryToken, newPassword);
+    const { email, code, newPassword } = passwordResetConfirmSchema.parse(req.body);
+    await authService.confirmPasswordReset(email, code, newPassword);
     res.status(204).send();
   }),
 );

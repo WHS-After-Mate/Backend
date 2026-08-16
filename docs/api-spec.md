@@ -55,26 +55,28 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 
 ## 1. 인증 / 온보딩
 
-회원가입은 **병원(관리자용 admin-web/server_admin)에서 발급한 환자번호 + 인증코드로만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다. 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두고, 환자에게 인증코드를 발급하면 환자가 그 코드로 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
+회원가입은 **병원(관리자용 admin-web/server_admin)에서 등록한 환자번호(patientNo) + 이름 + 생년월일이 전부 일치해야만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다(별도 인증코드 발급 절차는 없음). 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두면, 환자가 그 환자번호 + 본인 이름 + 생년월일로 신원을 증명하고 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
 
 ### POST /auth/signup
-환자번호 + 인증코드 기반 회원가입. 이름/생년월일/전화번호는 요청에 포함하지 않는다 — `patientNo`로 찾은 `emr_patients` 레코드(의료진이 입력한 원본)에서 그대로 가져와 `profiles`에 채운다.
+환자번호+이름+생년월일 일치 기반 회원가입. 전화번호는 요청에 포함하지 않는다 — `patientNo`로 찾은 `emr_patients` 레코드(의료진이 입력한 원본)에서 그대로 가져와 `profiles`에 채운다. `interestGoals`는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 `PUT /profile/interests`로 언제든 바꿀 수 있음).
 
-가입이 성공하면 그 시점까지 `emr_patients`에 쌓여 있던 시술 이력·이용권(`emr_care_records`/`emr_memberships`)이 실제 `care_records`/`memberships`로 **1회성 이관(claim)** 된다. 이관은 가입 시 딱 한 번만 일어나며, claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 자동 반영되지 않는다(같은 환자번호로 재가입 시도 시 `409 PATIENT_ALREADY_CLAIMED`).
+가입이 성공하면 그 시점까지 `emr_patients`에 쌓여 있던 시술 이력·이용권(`emr_care_records`/`emr_memberships`)이 실제 `care_records`/`memberships`로 **1회성 이관(claim)** 된다. 이관은 가입 시 딱 한 번만 일어나며, claim 이후에도 병원(`server_admin`)에서 이 환자에게 새 시술기록을 추가하면 이번엔 스테이징이 아니라 실제 앱 테이블에 곧바로 기록된다(재가입은 막힘 — 같은 환자번호로 재시도 시 `409 PATIENT_ALREADY_CLAIMED`).
 
 **Request**
 ```json
 {
-  "patientNo": "P-00042",
-  "verificationCode": "483920",
+  "patientNo": "EMR-P-A1B2C3",
+  "name": "홍길동",
+  "birthDate": "1990-05-20",
   "email": "user@example.com",
-  "password": "string (8자 이상)"
+  "password": "string (8자 이상)",
+  "interestGoals": ["수분 개선", "탄력 관리"]
 }
 ```
 **Response 200**: `POST /auth/login`과 동일 스키마 (accessToken, refreshToken, expiresIn, user)
 `404 PATIENT_NOT_FOUND`: 환자번호를 찾을 수 없음
 `409 PATIENT_ALREADY_CLAIMED`: 이미 가입 처리된 환자번호
-`400 INVALID_OR_EXPIRED_VERIFICATION_CODE`: 인증코드가 올바르지 않거나 만료(24시간)됨
+`400 PATIENT_IDENTITY_MISMATCH`: 환자번호는 찾았지만 이름 또는 생년월일이 `emr_patients` 원본과 다름
 `409 EMAIL_ALREADY_EXISTS`
 
 ### POST /auth/login
@@ -112,25 +114,25 @@ accessToken 재발급.
 **Response 204**
 
 ### POST /auth/password/reset-request `(v0.5)`
-로그인 화면의 "비밀번호를 잊으셨나요?" — 이메일 입력 후 재설정 링크 발송.
+로그인 화면의 "비밀번호를 잊으셨나요?" — 이메일 입력 후 숫자 인증코드 발송.
 
 **Request**
 ```json
 { "email": "user@example.com" }
 ```
 **Response 204** — 가입 여부와 무관하게 항상 204 (계정 존재 여부를 노출하지 않기 위한 의도적 설계)
-- Supabase Auth `resetPasswordForEmail(email, { redirectTo: <앱 딥링크> })` 위임 예정. 이메일 링크가 앱을 열면 `recoveryToken`을 클라이언트가 추출해 아래 confirm 엔드포인트로 전달
+- Supabase Auth `resetPasswordForEmail(email, { redirectTo: env.PASSWORD_RESET_REDIRECT_URL })`에 위임. 이 호출 한 번으로 Supabase가 재설정 링크와 숫자 OTP를 함께 발급하는데, 이메일에 실제로 코드가 보이려면 Supabase 대시보드의 **Authentication > Email Templates > Reset Password** 템플릿에 `{{ .Token }}`이 포함돼 있어야 한다(기본 템플릿은 링크만 노출 — 대시보드에서 한 번 설정해야 하는 항목, 코드로 바꿀 수 없음). OTP 자리수는 고정 스펙이 아니라 프로젝트 설정에 따라 달라진다 — **실측으로 8자리**임을 확인했다(흔히 알려진 "6자리"가 아님, `passwordResetConfirmSchema`도 6~10자리를 느슨하게 허용하도록 되어 있음).
 
 ### POST /auth/password/reset-confirm `(v0.5)`
-재설정 링크로 열린 화면에서 새 비밀번호 설정.
+이메일로 받은 숫자 인증코드 + 새 비밀번호를 한 번에 제출. 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로).
 
 **Request**
 ```json
-{ "recoveryToken": "string", "newPassword": "string" }
+{ "email": "user@example.com", "code": "48392017", "newPassword": "string (8자 이상)" }
 ```
 **Response 204**
-`400 INVALID_OR_EXPIRED_RESET_TOKEN`
-- `recoveryToken`은 Supabase 기본 "Reset Password" 메일 템플릿이 리다이렉트 시 URL 해시(`#access_token=...&type=recovery`)로 실어 보내는 **access_token 값**이다(실사용 링크로 실측 확인, `auth.service.ts`의 `confirmPasswordReset` 참고). `token_hash`가 아니므로 이메일 템플릿을 커스텀하지 않는 한 클라이언트는 해시 프래그먼트에서 `access_token` 파라미터를 추출해 그대로 전달하면 된다.
+`400 INVALID_OR_EXPIRED_RESET_CODE`
+- 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담, `auth.service.ts`의 `confirmPasswordReset` 참고). 검증이 성공하면 그 자리에서 바로 비밀번호를 갱신하고, 탈취 대비를 위해 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Resend 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.
 
 ---
 
@@ -490,7 +492,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | `EMAIL_ALREADY_EXISTS` | 이미 가입된 이메일 |
 | `PATIENT_NOT_FOUND` | 존재하지 않는 환자번호 *(v0.6 신규)* |
 | `PATIENT_ALREADY_CLAIMED` | 이미 가입 처리된 환자번호 *(v0.6 신규)* |
-| `INVALID_OR_EXPIRED_VERIFICATION_CODE` | 인증코드 불일치/만료 *(v0.6 신규)* |
+| `PATIENT_IDENTITY_MISMATCH` | 환자번호는 찾았지만 이름/생년월일이 `emr_patients` 원본과 다름 *(마이그레이션 010에서 인증코드 방식 대체)* |
 | `NO_ACTIVE_CUSTOMER_PROFILE` | 연결된 고객 프로필 없음 |
 | `CARE_RECORD_NOT_FOUND` | 존재하지 않는 관리 이력 |
 | `MEMBERSHIP_NOT_FOUND` | 존재하지 않는 이용권 |
@@ -498,7 +500,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | `GUIDE_GENERATION_FAILED` | LLM 일차별 가이드 생성 실패 |
 | `ANSWER_GENERATION_FAILED` | LLM Q&A 답변 생성 실패 |
 | `UNSUPPORTED_CATEGORY` | 미지원 질문 카테고리 |
-| `INVALID_OR_EXPIRED_RESET_TOKEN` | 비밀번호 재설정 토큰 무효/만료 *(v0.5 신규)* |
+| `INVALID_OR_EXPIRED_RESET_CODE` | 비밀번호 재설정 인증코드 무효/만료 *(v0.5 신규, 이메일 링크 대신 숫자 코드 방식으로 전환)* |
 | `INVALID_CURRENT_PASSWORD` | 비밀번호 변경 시 현재 비밀번호 불일치 *(v0.5 신규)* |
 
 ## 미확정 사항 (기획팀 확인 필요)
@@ -531,8 +533,8 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 
 실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체했다.
 
-- **신규 관리자용 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소, 로그인 없이 항상 열림 — 데모 범위 결정)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 추가됨. 데스크에서 환자 등록, 시술기록/이용권 입력, 인증코드(24시간 유효) 발급을 수행한다. `server_admin`의 API는 이 문서(고객용 `server/`)의 범위 밖이며 `server_admin/README.md` 참고.
-- **신규 스테이징 테이블 4종**(`server/db/migrations/006_add_admin_emr_staging_tables.sql`): `emr_patients`/`emr_care_records`/`emr_memberships`/`signup_verification_codes`. `auth.users`와 완전히 무관하게 독립 존재하며, 가입(claim) 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 `db-schema.md` 참고.
-- **`POST /auth/signup` 시그니처 전면 교체**: `{email,password,name,phone,birthDate}` → `{patientNo,verificationCode,email,password}`. 이름/전화/생년월일은 클라이언트가 입력하지 않고 `emr_patients` 원본에서 가져온다. 가입 성공 시 `emr_care_records`/`emr_memberships`가 실제 `care_records`/`memberships`로 **1회성 이관**되고, 실패 시 방금 만든 Auth 계정은 롤백된다(CASCADE로 하위 데이터 자동 정리).
-- **`PHONE_ALREADY_EXISTS` 에러 제거** — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`INVALID_OR_EXPIRED_VERIFICATION_CODE` 3종 신규 추가.
+- **신규 관리자용 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 추가됨. 클리닉별 관리자 로그인(3계정)을 거쳐 환자 등록, 시술기록/이용권 입력을 수행한다. `server_admin`의 API는 이 문서(고객용 `server/`)의 범위 밖이며 `docs/admin-api-spec.md` 참고.
+- **신규 스테이징 테이블**(`server/db/migrations/006_add_admin_emr_staging_tables.sql`): `emr_patients`/`emr_care_records`/`emr_memberships`. `auth.users`와 완전히 무관하게 독립 존재하며, 가입(claim) 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 `db-schema.md` 참고.
+- **`POST /auth/signup` 시그니처 전면 교체**: `{email,password,name,phone,birthDate}` → `{patientNo,name,birthDate,email,password,interestGoals}`. 이름/생년월일은 클라이언트가 자유 입력하는 게 아니라 신원 확인용으로 `emr_patients` 원본과 대조되고, 전화번호는 아예 요청에 없이 원본에서 그대로 가져온다. 가입 성공 시 `emr_care_records`/`emr_memberships`가 실제 `care_records`/`memberships`로 **1회성 이관**되고, 실패 시 방금 만든 Auth 계정은 롤백된다(CASCADE로 하위 데이터 자동 정리). (인증코드 발급 방식은 처음에 이렇게 설계했다가 마이그레이션 010에서 patientNo+이름+생년월일 대조 방식으로 대체됨 — `signup_verification_codes` 테이블은 제거됨)
+- **`PHONE_ALREADY_EXISTS` 에러 제거** — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 `PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`PATIENT_IDENTITY_MISMATCH` 3종 신규 추가.
 - **claim은 1회성, 지속 동기화 아님**: claim 이후 `emr_*` 테이블에 새로 추가된 기록은 앱에 반영되지 않는다(의도적 범위 제한). 실제 서비스라면 배치 ETL이 필요 — `db-schema.md`의 "클리닉 EMR 연동" 절 참고.

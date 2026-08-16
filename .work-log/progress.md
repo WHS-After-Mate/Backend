@@ -1,3 +1,21 @@
+## 2026-08-16
+- (이어서) 재방문(이미 회원가입한) 고객의 시술기록 등록이 막혀있던 문제 해결 — claim 이후에도 항상 기록 가능하도록 `addCareRecord`를 claim 여부에 따라 스테이징(`emr_*`)/실제 앱 테이블(`care_records`/`memberships`) 분기하도록 재설계, 응답/조회에 `source`("emr"|"app") 필드 추가. 실서버로 등록→claim→재방문 시술기록 추가까지 종단 검증
+- `GET /visit-stats` 신규 구현 — 오늘/어제/이틀 전 방문 고객 수(중복 제거). 당일 가입 케이스에서 emr/app 양쪽에 같은 사람이 잡혀 이중 카운트되는 버그를 실측으로 발견해 `claimed_user_id` 기준 신원 통합으로 수정
+- `docs/admin-api-spec.md`/`.html` 전면 동기화(DB 절, Response 필드 표, 통계 섹션, 알려진 제한사항) + 아티팩트 재발행
+- 사용자 질문("기존 고객도 시술기록 정상 추가되는거지?")에 실서버로 등록→claim→시술기록 추가→`source:"app"` 확인, `GET /patients/:id`·`GET /visit-stats`까지 라이브로 재검증해 답변
+- **미커밋 대량 작업 커밋+푸시** (`fea1b9a`, 41개 파일) — 클리닉 관리자 로그인, EMR 스테이징, store 제거+brand 격리, 시술기록/이용권 통합, 관리 부위 배열, 위 재방문/통계 기능 전부 포함. `docs/AAC_클리닉_자산_조사.docx`는 이번에도 커밋 여부 미결정이라 제외하고 커밋 전 git diff/typecheck/build로 검토
+- "이제 뭐 해야하지" 질문에 상태 정리해서 제시 → 사용자가 dd.txt 미결정 항목부터 처리하기로 결정
+- **환자 등록 중복 처리 추가** — 같은 클리닉에 이름+생년월일+전화번호 전부 일치하는 환자가 이미 있으면 새로 등록 안 함. 처음엔 `409` 에러로 막는 설계로 구현했는데, 사용자가 "기타사항이 바뀌었을 수도 있는데 반영 안 되냐" 질문 → notes 다르면 자동 갱신 + `200`+`duplicate:true`+안내 메시지로 재설계(에러 대신 성공 처리, 사용자가 상태코드 방향까지 직접 지정). 관련해서 추가했던 `ApiError.details` 메커니즘은 다시 안 쓰게 돼서 제거(코드 정리)
+- **dd.txt 미결정 항목 3개 결정**:
+  - 항목4(인증코드→이름+생년월일)는 이미 구현되어 있었음을 코드 확인으로 답변
+  - 항목5: 회원가입에 관심목표(`interestGoals`) 추가하기로 결정 → `POST /auth/signup`에 필드 추가, `profiles.interest_goals`에 즉시 저장. 실가입으로 `GET /profile` 확인까지 검증
+  - 항목7: 비밀번호 찾기를 이메일 링크에서 숫자 인증코드로 전환하기로 결정 → `POST /auth/password/reset-confirm`을 `{recoveryToken, newPassword}`에서 `{email, code, newPassword}`로 변경, `auth.verifyOtp(type:"recovery")`로 검증. 에러코드도 `INVALID_OR_EXPIRED_RESET_TOKEN`→`INVALID_OR_EXPIRED_RESET_CODE`로 개명
+  - `docs/api-spec.md`/`.html`의 "인증/온보딩" 섹션이 예전 verificationCode 설계 그대로 방치돼 있던 걸 발견해 전면 재작성(관련 작업 하면서 겸사겸사 정정)
+- 사용자가 "Supabase 대시보드에서 이메일 템플릿 Source 탭이 안 눌러진다"고 보고 → 브라우저 자동화로 직접 확인해서 원인 파악: **커스텀 SMTP 연동 없이는 템플릿 편집 자체가 막혀있음**(기존 README TODO였던 항목과 동일 이슈였는데 사전 인지 못함). 사용자가 Resend 가입+API 키 발급(직접 진행) → 브라우저로 Supabase SMTP Settings에서 비밀 아닌 필드(Host/Port/Username/Sender)만 채워주고 API 키/비밀번호는 사용자가 직접 입력하도록 안내 → 저장 성공 확인 → Reset Password 템플릿 Source 탭에 `{{ .Token }}` 추가 → 저장 성공 확인
+- **비밀번호 재설정 전체 플로우를 실사용 이메일로 라이브 종단 검증** — `yongsang0615@gmail.com` 계정으로 reset-request→실제 메일 수신→받은 코드로 reset-confirm→새 비밀번호로 로그인까지 확인(진행 전 실제 계정 비밀번호가 바뀐다는 점을 사용자에게 확인받고 진행). 이 과정에서 **인증코드가 "6자리"라는 가정이 틀렸음을 발견**(실측 8자리, Supabase 프로젝트 설정에 따라 다름) → 검증 정규식을 `/^\d{6}$/`에서 `/^\d{6,10}$/`로 완화, 테스트 페이지의 `maxlength="6"` 버그도 같이 수정, 문서의 모든 "6자리" 문구를 "숫자 코드(실측 8자리)"로 정정. 테스트로 바뀐 비밀번호는 사용자가 직접 원래대로 복구하기로 함
+- `server/README.md`의 "Supabase 커스텀 SMTP 연동 필요" TODO를 완료 처리로 갱신(발신 주소가 아직 Resend 테스트 도메인이라 계정 소유자 본인 이메일로만 발송 가능하다는 한계는 남겨둠)
+- 이번 라운드(interestGoals/비밀번호 재설정 코드화/문서 재동기화/OTP 자릿수 수정)는 아직 커밋 안 함 — `/기록저장`으로 세션 정리
+
 ## 2026-08-15
 - admin-web 리포 업데이트 여부 확인 요청 → `git fetch`/`git log HEAD..origin/main`으로 새 커밋 없음(여전히 `initial commit` 하나뿐) 확인해 답변
 - 사용자가 `.work-log/dd.txt`에 피드백을 업데이트했다고 해서 확인 → 실제 코드와 항목별로 대조. 대부분 이미 Tier 0~5에서 완료됐고, 5개 항목만 현재 코드/기존 결정과 다르거나 미반영임을 정리해 제시(이용권 처리, brand 제거, 회원가입 관심목표, 비밀번호찾기, 관리자 인증)

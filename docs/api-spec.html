@@ -545,23 +545,25 @@
 
     <section id="auth">
       <h2>1. 인증 / 온보딩</h2>
-      <p class="desc">회원가입은 <b>병원(관리자용 admin-web/server_admin)에서 발급한 환자번호 + 인증코드로만</b> 가능하다 <span class="done-badge" style="margin-left:2px;">v0.6</span> — 실제 시술 이력 없는 자유 가입은 막혀있다. 의료진(데스크)이 환자 방문 시 먼저 <span class="mono">emr_patients</span>에 환자 정보·시술 이력을 입력해두고 인증코드를 발급하면, 환자가 그 코드로 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.</p>
+      <p class="desc">회원가입은 <b>병원(관리자용 admin-web/server_admin)에서 등록한 환자번호(patientNo) + 이름 + 생년월일이 전부 일치해야만</b> 가능하다 <span class="done-badge" style="margin-left:2px;">v0.6</span> — 실제 시술 이력 없는 자유 가입은 막혀있다(별도 인증코드 발급 절차는 없음). 의료진(데스크)이 환자 방문 시 먼저 <span class="mono">emr_patients</span>에 환자 정보·시술 이력을 입력해두면, 환자가 그 환자번호 + 본인 이름 + 생년월일로 신원을 증명하고 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method post">POST</span><span class="path mono">/auth/signup</span>
-          <span class="note">환자번호+인증코드 기반 회원가입</span>
+          <span class="note">환자번호+이름+생년월일 일치 기반 회원가입</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">이름/생년월일/전화번호는 요청에 포함하지 않는다 — <span class="mono">patientNo</span>로 찾은 <span class="mono">emr_patients</span> 레코드(의료진이 입력한 원본)에서 그대로 가져와 <span class="mono">profiles</span>에 채운다. 가입 성공 시 그때까지 쌓여있던 시술 이력·이용권(<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>)이 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> 된다 — claim 이후 <span class="mono">emr_*</span>에 새로 추가된 기록은 앱에 반영되지 않으며, 같은 환자번호 재가입은 <span class="mono">409 PATIENT_ALREADY_CLAIMED</span>로 막힌다.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">전화번호는 요청에 포함하지 않는다 — <span class="mono">patientNo</span>로 찾은 <span class="mono">emr_patients</span> 레코드(의료진이 입력한 원본)에서 그대로 가져와 <span class="mono">profiles</span>에 채운다. <span class="mono">interestGoals</span>는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 <span class="mono">PUT /profile/interests</span>로 언제든 바꿀 수 있음). 가입 성공 시 그때까지 쌓여있던 시술 이력·이용권(<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>)이 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> 된다 — claim 이후에도 병원(<span class="mono">server_admin</span>)에서 새 시술기록을 추가하면 이번엔 실제 앱 테이블에 곧바로 기록되며, 같은 환자번호 재가입은 <span class="mono">409 PATIENT_ALREADY_CLAIMED</span>로 막힌다.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">patientNo</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>병원 데스크에서 발급한 환자번호</td></tr>
-                <tr><td class="mono">verificationCode</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>환자번호와 함께 발급된 인증코드 (24시간 유효)</td></tr>
+                <tr><td class="mono">name</td><td class="mono">string</td><td><span class="field-required">required</span></td><td><span class="mono">emr_patients</span> 원본과 정확히 일치해야 함(신원확인용)</td></tr>
+                <tr><td class="mono">birthDate</td><td class="mono">string</td><td><span class="field-required">required</span></td><td><span class="mono">YYYY-MM-DD</span>, <span class="mono">emr_patients</span> 원본과 정확히 일치해야 함(신원확인용)</td></tr>
                 <tr><td class="mono">email</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>계정 이메일</td></tr>
                 <tr><td class="mono">password</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>비밀번호 (8자 이상)</td></tr>
+                <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td><span class="field-optional">optional (기본 [])</span></td><td>중복 선택 가능, 자유 문자열</td></tr>
               </tbody>
             </table>
           </div>
@@ -569,7 +571,7 @@
           <div class="status-row">
             <span class="status-chip err">404 PATIENT_NOT_FOUND</span>
             <span class="status-chip err">409 PATIENT_ALREADY_CLAIMED</span>
-            <span class="status-chip err">400 INVALID_OR_EXPIRED_VERIFICATION_CODE</span>
+            <span class="status-chip err">400 PATIENT_IDENTITY_MISMATCH</span>
             <span class="status-chip err">409 EMAIL_ALREADY_EXISTS</span>
           </div>
         </div>
@@ -646,7 +648,7 @@
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 204 — 가입 여부와 무관하게 항상 204(계정 존재 여부 미노출). Supabase Auth <span class="mono">resetPasswordForEmail()</span> 위임 예정</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 204 — 가입 여부와 무관하게 항상 204(계정 존재 여부 미노출). Supabase Auth <span class="mono">resetPasswordForEmail(email, { redirectTo })</span>에 위임하는데, 이 호출 한 번으로 재설정 링크와 숫자 OTP가 함께 발급된다. 이메일에 실제로 코드가 보이려면 Supabase 대시보드의 <b>Authentication &gt; Email Templates &gt; Reset Password</b> 템플릿에 <span class="mono">{{ .Token }}</span>이 포함돼 있어야 한다(기본 템플릿은 링크만 노출 — 대시보드에서 설정해야 하는 항목, 코드로 바꿀 수 없음). OTP 자리수는 프로젝트 설정에 따라 다르다 — <b>실측으로 8자리</b>임을 확인했다(흔히 알려진 "6자리"가 아님).</p>
         </div>
       </div>
 
@@ -654,19 +656,21 @@
         <div class="endpoint-head">
           <span class="method post">POST</span><span class="path mono">/auth/password/reset-confirm</span>
           <span class="done-badge">v0.5 · 구현 완료</span>
-          <span class="note">재설정 링크 화면에서 새 비밀번호 설정</span>
+          <span class="note">인증코드 + 새 비밀번호 제출</span>
         </div>
         <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">이메일로 받은 숫자 인증코드와 새 비밀번호를 한 번에 제출한다 — 코드 확인과 비밀번호 설정을 별도 단계로 나누지 않는다(코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로). 서버는 <span class="mono">code</span>를 Supabase의 <span class="mono">auth.verifyOtp({ email, token: code, type: "recovery" })</span>로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아님). 성공하면 그 자리에서 비밀번호를 갱신하고, 재설정 과정에서 생긴 세션을 포함한 기존 세션을 전부 무효화한다. 실제 이메일 발송(Resend 커스텀 SMTP)부터 코드 검증, 새 비밀번호 로그인까지 라이브로 실측 검증 완료.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
-                <tr><td class="mono">recoveryToken</td><td class="mono">string</td><td>재설정 이메일 링크에서 추출한 토큰</td></tr>
-                <tr><td class="mono">newPassword</td><td class="mono">string</td><td>새 비밀번호</td></tr>
+                <tr><td class="mono">email</td><td class="mono">string</td><td>reset-request에 넣은 이메일과 동일해야 함</td></tr>
+                <tr><td class="mono">code</td><td class="mono">string</td><td>이메일로 받은 숫자 인증코드(자리수는 프로젝트 설정에 따라 다름 — 실측 8자리)</td></tr>
+                <tr><td class="mono">newPassword</td><td class="mono">string</td><td>새 비밀번호 (8자 이상)</td></tr>
               </tbody>
             </table>
           </div>
-          <div class="status-row"><span class="status-chip err">400 INVALID_OR_EXPIRED_RESET_TOKEN</span></div>
+          <div class="status-row"><span class="status-chip err">400 INVALID_OR_EXPIRED_RESET_CODE</span></div>
         </div>
       </div>
     </section>
@@ -1118,7 +1122,7 @@
             <tr><td class="mono">EMAIL_ALREADY_EXISTS</td><td>이미 가입된 이메일</td></tr>
             <tr><td class="mono">PATIENT_NOT_FOUND</td><td>존재하지 않는 환자번호 <span class="done-badge">v0.6</span></td></tr>
             <tr><td class="mono">PATIENT_ALREADY_CLAIMED</td><td>이미 가입 처리된 환자번호 <span class="done-badge">v0.6</span></td></tr>
-            <tr><td class="mono">INVALID_OR_EXPIRED_VERIFICATION_CODE</td><td>인증코드 불일치 / 만료 <span class="done-badge">v0.6</span></td></tr>
+            <tr><td class="mono">PATIENT_IDENTITY_MISMATCH</td><td>환자번호는 찾았지만 이름/생년월일이 emr_patients 원본과 다름 <span class="done-badge">마이그레이션 010</span></td></tr>
             <tr><td class="mono">NO_ACTIVE_CUSTOMER_PROFILE</td><td>연결된 고객 프로필 없음</td></tr>
             <tr><td class="mono">CARE_RECORD_NOT_FOUND</td><td>존재하지 않는 관리 이력</td></tr>
             <tr><td class="mono">MEMBERSHIP_NOT_FOUND</td><td>존재하지 않는 이용권</td></tr>
@@ -1126,7 +1130,7 @@
             <tr><td class="mono">GUIDE_GENERATION_FAILED</td><td>LLM 일차별 가이드 생성 실패</td></tr>
             <tr><td class="mono">ANSWER_GENERATION_FAILED</td><td>LLM Q&amp;A 답변 생성 실패</td></tr>
             <tr><td class="mono">UNSUPPORTED_CATEGORY</td><td>미지원 질문 카테고리</td></tr>
-            <tr><td class="mono">INVALID_OR_EXPIRED_RESET_TOKEN</td><td>비밀번호 재설정 토큰 무효/만료 <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">INVALID_OR_EXPIRED_RESET_CODE</td><td>비밀번호 재설정 인증코드 무효/만료 <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">INVALID_CURRENT_PASSWORD</td><td>비밀번호 변경 시 현재 비밀번호 불일치 <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
@@ -1157,13 +1161,13 @@
 
     <section id="v06new">
       <h2>v0.6 — 가상 EMR 기반 회원가입으로 전면 교체</h2>
-      <p class="desc">실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 <b>환자번호+인증코드 기반 가입</b>으로 교체했다.</p>
+      <p class="desc">실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 <b>환자번호+이름+생년월일 일치 기반 가입</b>으로 교체했다.</p>
       <ul class="open-q">
-        <li><b>신규 관리자용 스택</b> — 관리자 웹(<span class="mono">admin-web</span>, 별도 GitHub 저장소, 로그인 없이 항상 열림 · 데모 범위 결정)과 그 백엔드 <span class="mono">server_admin/</span>(포트 4100, <span class="mono">server/</span>와 동일 컨벤션)이 추가됨. 데스크에서 환자 등록, 시술기록/이용권 입력, 인증코드(24시간 유효) 발급을 수행한다. <span class="mono">server_admin</span> API는 이 문서(고객용 <span class="mono">server/</span>) 범위 밖 — <span class="mono">server_admin/README.md</span> 참고.</li>
-        <li><b>신규 스테이징 테이블 4종</b>(<span class="mono">server/db/migrations/006_add_admin_emr_staging_tables.sql</span>) — <span class="mono">emr_patients</span>/<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>/<span class="mono">signup_verification_codes</span>. <span class="mono">auth.users</span>와 완전히 무관하게 독립 존재하며 claim 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 <span class="mono">db-schema.html</span> 참고.</li>
-        <li><b><span class="mono">POST /auth/signup</span> 시그니처 전면 교체</b> — <span class="mono">{email,password,name,phone,birthDate}</span> → <span class="mono">{patientNo,verificationCode,email,password}</span>. 이름/전화/생년월일은 클라이언트가 입력하지 않고 <span class="mono">emr_patients</span> 원본에서 가져온다. 가입 성공 시 <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>가 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관</b>되고, 실패 시 방금 만든 Auth 계정은 롤백(CASCADE로 하위 데이터 자동 정리)된다.</li>
-        <li><b><span class="mono">PHONE_ALREADY_EXISTS</span> 에러 제거</b> — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 <span class="mono">PATIENT_NOT_FOUND</span>/<span class="mono">PATIENT_ALREADY_CLAIMED</span>/<span class="mono">INVALID_OR_EXPIRED_VERIFICATION_CODE</span> 3종 신규 추가.</li>
-        <li><b>claim은 1회성, 지속 동기화 아님</b> — claim 이후 <span class="mono">emr_*</span> 테이블에 새로 추가된 기록은 앱에 반영되지 않는다(의도적 범위 제한). 실제 서비스라면 배치 ETL이 필요 — <span class="mono">db-schema.html</span>의 "클리닉 EMR 연동" 절 참고.</li>
+        <li><b>신규 관리자용 스택</b> — 관리자 웹(<span class="mono">admin-web</span>, 별도 GitHub 저장소)과 그 백엔드 <span class="mono">server_admin/</span>(포트 4100, <span class="mono">server/</span>와 동일 컨벤션)이 추가됨. 클리닉별 관리자 로그인(3계정)을 거쳐 환자 등록, 시술기록/이용권 입력을 수행한다. <span class="mono">server_admin</span> API는 이 문서(고객용 <span class="mono">server/</span>) 범위 밖 — <span class="mono">docs/admin-api-spec.md</span> 참고.</li>
+        <li><b>신규 스테이징 테이블</b>(<span class="mono">server/db/migrations/006_add_admin_emr_staging_tables.sql</span>) — <span class="mono">emr_patients</span>/<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>. <span class="mono">auth.users</span>와 완전히 무관하게 독립 존재하며 claim 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 <span class="mono">db-schema.html</span> 참고.</li>
+        <li><b><span class="mono">POST /auth/signup</span> 시그니처 전면 교체</b> — <span class="mono">{email,password,name,phone,birthDate}</span> → <span class="mono">{patientNo,name,birthDate,email,password,interestGoals}</span>. 이름/생년월일은 자유 입력이 아니라 신원 확인용으로 <span class="mono">emr_patients</span> 원본과 대조되고, 전화번호는 요청에 아예 없이 원본에서 그대로 가져온다. 가입 성공 시 <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>가 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관</b>되고, 실패 시 방금 만든 Auth 계정은 롤백(CASCADE로 하위 데이터 자동 정리)된다. (처음엔 인증코드 발급 방식으로 설계했다가 마이그레이션 010에서 이름+생년월일 대조 방식으로 대체 — <span class="mono">signup_verification_codes</span> 테이블은 제거됨)</li>
+        <li><b><span class="mono">PHONE_ALREADY_EXISTS</span> 에러 제거</b> — 전화번호 중복 체크 자체가 사라짐(전화번호는 이제 EMR 원본에서 오는 값이라 애초에 클라이언트가 입력하지 않음). 대신 <span class="mono">PATIENT_NOT_FOUND</span>/<span class="mono">PATIENT_ALREADY_CLAIMED</span>/<span class="mono">PATIENT_IDENTITY_MISMATCH</span> 3종 신규 추가.</li>
+        <li><b>claim 시점의 이관은 1회성이지만, claim 이후에도 병원 쪽 기록은 계속 가능</b> — claim 순간 그때까지의 <span class="mono">emr_*</span> 데이터만 앱 테이블로 복사되는 건 맞지만, 그 이후 <span class="mono">server_admin</span>에서 이 환자에게 새 시술기록을 추가하면 스테이징이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 기록된다 — <span class="mono">docs/admin-api-spec.md</span>의 관련 절 참고.</li>
       </ul>
     </section>
 

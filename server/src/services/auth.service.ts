@@ -12,6 +12,7 @@ export async function signup(input: {
   birthDate: string;
   email: string;
   password: string;
+  interestGoals: string[];
 }) {
   const { data: patient } = await supabaseAdmin
     .from("emr_patients")
@@ -46,6 +47,7 @@ export async function signup(input: {
       name: patient.name,
       phone: patient.phone,
       birth_date: patient.birth_date,
+      interest_goals: input.interestGoals,
     });
     if (profileError) throw profileError;
 
@@ -153,7 +155,10 @@ export async function logout(accessToken: string) {
 }
 
 // 로그인 화면의 "비밀번호를 잊으셨나요?" — 계정 존재 여부와 무관하게 항상 성공 처리한다
-// (이메일 열거 공격 방지: Supabase도 미존재 이메일에 에러를 던지지 않고 동일하게 성공 응답한다)
+// (이메일 열거 공격 방지: Supabase도 미존재 이메일에 에러를 던지지 않고 동일하게 성공 응답한다).
+// Supabase는 이 호출 한 번으로 재설정 링크와 6자리 OTP를 동시에 발급한다 — 이메일에 코드가
+// 실제로 보이려면 Supabase 대시보드의 Authentication > Email Templates > Reset Password 템플릿에
+// {{ .Token }}이 포함돼 있어야 한다(기본 템플릿은 링크만 보여줌 — 코드에서 바꿀 수 없는 대시보드 설정).
 export async function requestPasswordReset(email: string) {
   const { error } = await supabaseAnon.auth.resetPasswordForEmail(email, {
     redirectTo: env.PASSWORD_RESET_REDIRECT_URL,
@@ -166,21 +171,18 @@ export async function requestPasswordReset(email: string) {
   }
 }
 
-// 재설정 이메일 링크에서 추출한 토큰으로 새 비밀번호 설정.
-// Supabase 기본 "Reset Password" 메일 템플릿은 자체 /auth/v1/verify 엔드포인트에서 먼저 검증을 마친 뒤
-// redirectTo 주소의 해시(#)에 access_token/refresh_token(이미 발급된 recovery 세션)을 실어 보낸다
-// (커스텀 템플릿으로 바꿔 우리가 직접 token_hash를 받는 방식이 아님 — 실사용 링크로 실측 확인함).
-// 그래서 recoveryToken은 "검증 전 원본 코드"가 아니라 "이미 검증된 access_token"이고,
-// getUser(jwt)로 그 토큰이 진짜 Supabase가 발급한 유효한 토큰인지만 확인하면 된다.
-export async function confirmPasswordReset(recoveryToken: string, newPassword: string) {
-  const { data, error } = await supabaseAnon.auth.getUser(recoveryToken);
-  if (error || !data.user) throw Errors.invalidOrExpiredResetToken();
+// 이메일로 받은 6자리 코드를 검증하고, 그 자리에서 바로 새 비밀번호까지 설정한다(코드 확인과 비밀번호
+// 설정을 별도 화면/API로 나누지 않음 — 코드가 틀리면 어차피 새 비밀번호도 반려해야 하므로 한 번에 처리).
+// verifyOtp가 성공하면 Supabase가 그 코드를 발급한 계정에 대한 recovery 세션을 돌려준다.
+export async function confirmPasswordReset(email: string, code: string, newPassword: string) {
+  const { data, error } = await supabaseAnon.auth.verifyOtp({ email, token: code, type: "recovery" });
+  if (error || !data.session || !data.user) throw Errors.invalidOrExpiredResetToken();
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
     password: newPassword,
   });
   if (updateError) throw Errors.invalidOrExpiredResetToken();
 
-  // 재설정 과정에서 발급된 recovery 세션을 포함해 기존 세션 전체를 무효화(탈취된 토큰 무력화)
-  await supabaseAdmin.auth.admin.signOut(recoveryToken, "global").catch(() => {});
+  // 재설정 과정에서 발급된 recovery 세션을 포함해 기존 세션 전체를 무효화(탈취된 코드 무력화)
+  await supabaseAdmin.auth.admin.signOut(data.session.access_token, "global").catch(() => {});
 }

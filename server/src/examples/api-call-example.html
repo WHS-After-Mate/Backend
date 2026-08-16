@@ -52,6 +52,9 @@
   <label>비밀번호 (8자 이상)</label>
   <input id="signupPassword" value="Passw0rd!2024" />
 
+  <label>관심 목표 (쉼표로 구분, 중복 선택 가능 — 비워도 됨)</label>
+  <input id="signupInterestGoals" value="수분 개선, 탄력 관리" />
+
   <button id="signupBtn">회원가입 — POST /auth/signup (성공하면 accessToken까지 바로 발급됨)</button>
   <div class="step">
     <span id="signupStatus" class="status"></span>
@@ -95,14 +98,16 @@
   </div>
 
   <p class="desc">
-    메일함에서 링크를 열면 "사이트에 연결할 수 없음" 같은 에러 화면이 뜨는데 정상이다
-    (아직 이 주소를 받아줄 프론트가 없을 뿐). 그 화면의 <b>주소창</b>을 보면
-    <code>#access_token=...&amp;refresh_token=...&amp;type=recovery</code> 형태로 붙어있다.
-    <code>access_token=</code> 뒤부터 <code>&amp;expires_at=</code> 앞까지의 긴 문자열만 복사해서 아래 칸에 붙여넣는다.
+    메일에 숫자 인증코드가 들어있다(Supabase 대시보드의 Reset Password 템플릿에 <code>{{ "{{ .Token }}" }}</code>이
+    포함돼 있어야 실제로 코드가 보인다 — 기본 템플릿은 링크만 보여주므로 대시보드에서 한 번 설정해둬야 함).
+    자리수는 "6자리"로 흔히 알려져 있지만 고정 스펙이 아니라 프로젝트 설정에 따라 다르다 — 실측으로 <b>8자리</b>였다.
   </p>
 
-  <label>recoveryToken (메일 링크 주소창의 access_token 값)</label>
-  <input id="recoveryToken" placeholder="주소창에서 복사한 access_token" />
+  <label>이메일 (위와 동일한 주소를 한 번 더)</label>
+  <input id="resetConfirmEmail" placeholder="reset-request에 넣은 이메일과 동일하게" />
+
+  <label>code (메일로 받은 인증코드, 자리수는 메일에 온 그대로)</label>
+  <input id="resetCode" inputmode="numeric" maxlength="10" placeholder="예: 48392017" />
 
   <label>새 비밀번호</label>
   <input id="newPassword" value="NewPassw0rd!2024" />
@@ -216,6 +221,11 @@
           birthDate: $("signupBirthDate").value,
           email: $("signupEmail").value,
           password: $("signupPassword").value,
+          // 쉼표로 구분해 입력한 걸 배열로 쪼갠다 — 빈 칸/공백만 있는 항목은 걸러낸다.
+          interestGoals: $("signupInterestGoals")
+            .value.split(",")
+            .map((g) => g.trim())
+            .filter(Boolean),
         }),
       });
       const data = await res.json();
@@ -363,9 +373,9 @@
   });
 
   // ============================================================
-  // C-2단계: 새 비밀번호로 재설정 — POST /auth/password/reset-confirm
-  // Request body: { recoveryToken, newPassword }
-  // Response: 성공하면 204 No Content, 실패하면 400 INVALID_OR_EXPIRED_RESET_TOKEN + body
+  // C-2단계: 인증코드 + 새 비밀번호로 재설정 — POST /auth/password/reset-confirm
+  // Request body: { email, code, newPassword }
+  // Response: 성공하면 204 No Content, 실패하면 400 INVALID_OR_EXPIRED_RESET_CODE + body
   // ============================================================
   $("resetStep2Btn").addEventListener("click", async () => {
     const baseUrl = $("baseUrl").value.replace(/\/$/, "");
@@ -376,7 +386,8 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recoveryToken: $("recoveryToken").value,
+          email: $("resetConfirmEmail").value,
+          code: $("resetCode").value,
           newPassword: $("newPassword").value,
         }),
       });

@@ -10,7 +10,9 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_ANON_KEY: z.string().min(1),
 
-  // 비밀번호 재설정 이메일의 딥링크 대상 (Android 앱이 이 URL을 가로채 recoveryToken을 추출).
+  // 비밀번호 재설정 이메일에 같이 실리는 링크의 목적지. 실제 재설정은 이제 이메일의 6자리 코드로
+  // 처리하므로(auth.service.ts의 confirmPasswordReset 참고) 이 링크 자체는 안 눌러도 되지만,
+  // Supabase가 이메일 한 통에 링크+코드를 함께 발급하는 구조라 여전히 값이 필요하다.
   // 미설정 시 Supabase 프로젝트의 기본 Site URL로 전송됨 — 앱 딥링크 스킴 확정 후 채워도 됨.
   PASSWORD_RESET_REDIRECT_URL: z.string().url().optional(),
 
