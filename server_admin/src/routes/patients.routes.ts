@@ -99,7 +99,7 @@ patientsRouter.delete(
   }),
 );
 
-// 오늘/어제/이틀 전 방문 고객 수(중복 제거) — emr_care_records(회원가입 전) + care_records(회원가입 후)
+// 전날/금일 방문 + 익일 예약 고객 수(중복 제거) — emr_care_records(회원가입 전) + care_records(회원가입 후)
 // 둘 다 합산한다. 대시보드류 화면에서 씀.
 patientsRouter.get(
   "/visit-stats",

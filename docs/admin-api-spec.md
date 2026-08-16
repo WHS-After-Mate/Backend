@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.1)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.2)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.2 변경: 관리자 웹 대시보드 프로토타입(`docs/WHS_After_Mate_Admin_revised.html`) 검토 결과 `GET /visit-stats`를 "오늘/어제/이틀 전"에서 "전날/금일 방문 + 익일 예약"으로 변경. "익일 예약"은 별도 예약 테이블 없이 기존 시술기록 API(`careDate`가 원래 미래 날짜를 막지 않음)를 그대로 재사용한다 — 자세한 내용은 하단 "3. 통계" 절 참고. 예약 취소 기능은 아직 범위 밖(추후 고객용 앱과 연동해 별도 구현 예정).
 
 `server_admin`은 "실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력"해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(`POST /auth/signup` — `server/`)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(`emr_*`)이 아니라 실제 앱 테이블(`care_records`/`memberships`)에 곧바로 쌓인다(2절 참고).
 
@@ -30,7 +32,7 @@
 | PATCH | `/patients/{patientId}` | 필요 | 환자 프로필 수정 |
 | POST | `/patients/{patientId}/care-records` | 필요 | 시술기록 추가 (이용권 처리 포함, 회원가입 여부 무관) |
 | DELETE | `/care-records/{careRecordId}` | 필요 | 시술기록 삭제 (이용권 정리 포함) |
-| GET | `/visit-stats` | 필요 | 오늘/어제/이틀 전 방문 고객 수 |
+| GET | `/visit-stats` | 필요 | 전날/금일 방문 + 익일 예약 고객 수 |
 
 별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(아래 2절 참고).
 
@@ -432,26 +434,27 @@
 ## 3. 통계
 
 ### GET /visit-stats
-오늘/어제/이틀 전(KST 기준), 로그인한 클리닉에 방문(시술기록이 있는)한 **실제 사람 수**(중복 제거 — 시술 건수가 아님).
+전날/금일(KST 기준) 로그인한 클리닉에 방문(시술기록이 있는)한, 그리고 익일 예약된 **실제 사람 수**(중복 제거 — 시술 건수가 아님). `(v0.2)` 이전엔 "오늘/어제/이틀 전"이었으나, 관리자 웹 대시보드 개편(어드민 프로토타입 `WHS_After_Mate_Admin_revised.html` 반영)으로 "전날/금일 방문 + 익일 예약"으로 바뀌었다.
 
 **DB**
-- `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`가 오늘/어제/이틀 전 중 하나) + `emr_patients` 조인 — `patient_id`, `care_date`, `patient.claimed_user_id`
+- `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`가 전날/금일/익일 중 하나) + `emr_patients` 조인 — `patient_id`, `care_date`, `patient.claimed_user_id`
 - `care_records` **SELECT** (`brand`=로그인 클리닉, 같은 날짜 조건) — `user_id`, `care_date`
 - 날짜별로 두 결과를 하나의 "신원 집합"으로 합친다: `emr_care_records` 쪽은 이미 회원가입한 환자면 `claimed_user_id`로, 아직이면 `patient_id`로 식별값을 만들고, `care_records` 쪽은 `user_id`를 그대로 쓴다. 같은 날 "가입 전 방문 기록(emr)"과 "가입 후 방문 기록(app)"이 같은 사람 걸로 둘 다 있어도(당일 가입 케이스) `claimed_user_id`로 환산되어 하나로 합쳐지므로 중복 집계되지 않는다.
+- **"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 그대로 재사용한다** — `POST .../care-records`의 `careDate`가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 취소 기능은 아직 미구현(추후 앱 연동과 함께 별도 작업 예정).
 
 **Response 200**
 ```json
 {
-  "today": { "date": "2026-08-16", "count": 3 },
   "yesterday": { "date": "2026-08-15", "count": 5 },
-  "twoDaysAgo": { "date": "2026-08-14", "count": 2 }
+  "today": { "date": "2026-08-16", "count": 3 },
+  "tomorrow": { "date": "2026-08-17", "count": 2 }
 }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `today` / `yesterday` / `twoDaysAgo` | object | 각각 `{ date, count }` |
+| `yesterday` / `today` / `tomorrow` | object | 각각 `{ date, count }`. `tomorrow`는 아직 시행 전이라 "방문"이 아니라 "예약" 의미 |
 | `.date` | string | `YYYY-MM-DD` (KST 기준) |
-| `.count` | number | 그 날짜에 방문한 고객 수(중복 제거) |
+| `.count` | number | 그 날짜에 방문(또는 예약)한 고객 수(중복 제거) |
 
 **에러**: 없음(빈 결과여도 `count: 0`으로 정상 응답, 인증 실패 시의 공통 401만 해당)
 

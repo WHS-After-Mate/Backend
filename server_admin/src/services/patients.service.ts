@@ -438,9 +438,9 @@ export async function deleteCareRecord(careRecordId: string, brand: string) {
   throw Errors.careRecordNotFound();
 }
 
-// KST(한국 시간) 기준 오늘로부터 daysAgo일 전 날짜를 YYYY-MM-DD로. server/의 aftercare.service.ts와
-// 동일한 패턴(toLocaleString으로 KST 시각을 만든 뒤 그 위에서 날짜 계산) — 서버가 어느 시간대에서
-// 돌아가든 "한국 기준 오늘"이 안정적으로 나온다.
+// KST(한국 시간) 기준 오늘로부터 daysAgo일 전 날짜를 YYYY-MM-DD로(음수를 넣으면 이후 날짜, 예:
+// daysAgo=-1은 내일). server/의 aftercare.service.ts와 동일한 패턴(toLocaleString으로 KST 시각을
+// 만든 뒤 그 위에서 날짜 계산) — 서버가 어느 시간대에서 돌아가든 "한국 기준 오늘"이 안정적으로 나온다.
 function kstDateString(daysAgo: number): string {
   const now = new Date();
   const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
@@ -448,9 +448,12 @@ function kstDateString(daysAgo: number): string {
   return kstNow.toLocaleDateString("en-CA");
 }
 
-// 오늘/어제/이틀 전 방문 고객 수 — 그 날짜에 시술기록이 있는 "실제 사람 수"(중복 제거, 시술 건수 아님).
-// 회원가입 전 고객은 emr_care_records, 회원가입 후 고객은 care_records에 각각 기록되므로
-// (addCareRecord 참고) 둘 다 조회해서 합친다.
+// 전날/금일 방문 + 익일 예약 고객 수 — 그 날짜에 시술기록이 있는 "실제 사람 수"(중복 제거, 시술 건수
+// 아님). 회원가입 전 고객은 emr_care_records, 회원가입 후 고객은 care_records에 각각 기록되므로
+// (addCareRecord 참고) 둘 다 조회해서 합친다. "익일"은 아직 시행 전이라 "방문"이 아니라 "예약"으로
+// 부르지만, 데이터 원본은 같은 시술기록 테이블이다 — care_date를 미래로 등록하면(관리 등록 화면의
+// "관리 날짜"에 내일 이후를 선택) 그 자체로 예약이 된다(별도 "예약" 테이블·엔드포인트 불필요, 관리
+// 등록 API가 이미 미래 날짜를 막지 않는다).
 //
 // 주의: 환자가 "당일 방문 기록(emr) → 당일 회원가입" 순서를 밟으면, claim 시 그 방문 기록이
 // care_records로 1회성 복사되기 때문에(server/의 signup()) 같은 사람의 같은 방문이 emr_care_records와
@@ -459,9 +462,9 @@ function kstDateString(daysAgo: number): string {
 // user_id 기준으로 환산해서 두 집합을 하나의 identity Set으로 합친 뒤 크기를 센다.
 export async function getVisitStats(brand: string) {
   const days = [
-    { key: "today", date: kstDateString(0) },
     { key: "yesterday", date: kstDateString(1) },
-    { key: "twoDaysAgo", date: kstDateString(2) },
+    { key: "today", date: kstDateString(0) },
+    { key: "tomorrow", date: kstDateString(-1) },
   ] as const;
   const dateList = days.map((d) => d.date);
 

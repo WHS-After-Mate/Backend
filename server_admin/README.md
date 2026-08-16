@@ -49,7 +49,7 @@ npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1
 | PATCH | `/api/v1/patients/:patientId` | 환자 프로필 수정 |
 | POST | `/api/v1/patients/:patientId/care-records` | 시술 기록 추가 — `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접 입력, 새 이용권 생성) 중 하나. claim 여부에 따라 스테이징(`emr_*`) 또는 실제 앱 테이블에 기록 |
 | DELETE | `/api/v1/care-records/:careRecordId` | 시술 기록 삭제 — 연결된 이용권도 함께 정리(유일 참조면 이용권 삭제, 아니면 `used_count` -1). 별도 "이용권 삭제" API는 없음 |
-| GET | `/api/v1/visit-stats` | 오늘/어제/이틀 전(KST) 로그인 클리닉 방문 고객 수 (중복 제거) |
+| GET | `/api/v1/visit-stats` | 전날/금일(KST) 방문 + 익일 예약 고객 수 (중복 제거) |
 
 ## 미확정/후속 과제
 
