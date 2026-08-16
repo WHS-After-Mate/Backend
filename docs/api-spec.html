@@ -468,7 +468,7 @@
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 Anthropic Claude API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다), 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
       <span class="badge">v0.6</span>
-      <span class="badge outline">환자번호+인증코드 기반 회원가입(가상 EMR)</span>
+      <span class="badge outline">환자번호+이름+생년월일 기반 회원가입(가상 EMR)</span>
       <span class="badge outline">LLM 일차별 사후관리</span>
       <span class="badge outline">API 유저플로우 기준 재정렬</span>
       <span class="badge outline">와이어프레임 검토 반영(v0.5, 구현·마이그레이션·시드 완료 9건)</span>
@@ -514,7 +514,7 @@
             <tr><th>Method</th><th>Path</th><th>설명</th><th>연관 요구사항</th><th>구현 파일</th></tr>
           </thead>
           <tbody>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup</td><td>회원가입 (환자번호+인증코드)</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.6</span></td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/auth/signup</td><td>회원가입 (환자번호+이름+생년월일 일치)</td><td>—</td><td class="mono">auth.routes.ts <span class="done-badge" style="margin-left:4px;">v0.6</span></td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/login</td><td>로그인 (이메일/비밀번호)</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/refresh</td><td>accessToken 재발급</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/auth/logout</td><td>로그아웃</td><td>—</td><td class="mono">auth.routes.ts</td></tr>
@@ -911,6 +911,19 @@
         </div>
         <div class="endpoint-body">
           <div>
+            <div class="block-label">Request Body</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">careRecordId</td><td class="mono">string</td><td><span class="field-optional">optional</span></td><td>생략 시 최근 관리 이력 기준</td></tr>
+                  <tr><td class="mono">category</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>GET /aftercare/question-categories 목록 중 하나</td></tr>
+                  <tr><td class="mono">question</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>1~1000자</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
             <div class="block-label">Response 200 — 정상 답변</div>
             <div class="table-wrap">
               <table>
@@ -1196,7 +1209,18 @@
           <span class="note">기본 정보 수정 (email/phone은 읽기 전용)</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">보낸 필드만 반영된다. 참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">name</td><td class="mono">string</td><td><span class="field-optional">optional</span></td><td>—</td></tr>
+                <tr><td class="mono">birthDate</td><td class="mono">string</td><td><span class="field-optional">optional</span></td><td>YYYY-MM-DD</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200: 수정된 프로필 — <span class="mono">GET /profile</span>과 동일 스키마</p>
+          <div class="status-row"><span class="status-chip err">403 NO_ACTIVE_CUSTOMER_PROFILE</span></div>
         </div>
       </div>
 
@@ -1322,6 +1346,7 @@
           <tbody>
             <tr><td class="mono">UNAUTHORIZED</td><td>토큰 없음 / 만료</td></tr>
             <tr><td class="mono">INVALID_REFRESH_TOKEN</td><td>refreshToken 만료 / 무효</td></tr>
+            <tr><td class="mono">INVALID_CREDENTIALS</td><td>로그인 이메일/비밀번호 불일치</td></tr>
             <tr><td class="mono">EMAIL_ALREADY_EXISTS</td><td>이미 가입된 이메일</td></tr>
             <tr><td class="mono">PATIENT_NOT_FOUND</td><td>존재하지 않는 환자번호 <span class="done-badge">v0.6</span></td></tr>
             <tr><td class="mono">PATIENT_ALREADY_CLAIMED</td><td>이미 가입 처리된 환자번호 <span class="done-badge">v0.6</span></td></tr>

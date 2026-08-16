@@ -363,6 +363,11 @@ accessToken 재발급.
 ```json
 { "careRecordId": "C-2001", "category": "운동·사우나", "question": "필링 후 사우나 언제부터 가능한가요?" }
 ```
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `careRecordId` | string | optional | 생략 시 최근 관리 이력 기준으로 컨텍스트 조립 |
+| `category` | string | required | `GET /aftercare/question-categories` 목록 중 하나 |
+| `question` | string | required | 1~1000자 |
 
 **Response 200 — 정상 답변**
 ```json
@@ -616,8 +621,21 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 `403 NO_ACTIVE_CUSTOMER_PROFILE`
 
 ### PATCH /profile
-이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·가입 시 입력값이라 이 엔드포인트로 변경 불가).
+이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·가입 시 입력값이라 이 엔드포인트로 변경 불가). 보낸 필드만 반영된다.
 - 참고: 유저플로우에는 "관심 목표 설정" 액션만 명시되어 있고 기본 정보 수정 액션 노드는 아직 없다 (프로필 화면에 편집 버튼 추가 예정).
+
+**Request** (모두 optional)
+```json
+{ "name": "홍길동", "birthDate": "1990-05-20" }
+```
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `name` | string | optional | |
+| `birthDate` | string | optional | `YYYY-MM-DD` |
+
+**Response 200**: 수정된 프로필 — `GET /profile`과 동일 스키마
+
+`403 NO_ACTIVE_CUSTOMER_PROFILE`
 
 ### POST /profile/password `(v0.5)`
 내 정보 화면의 비밀번호 변경(이전 비밀번호 확인 후 저장).
@@ -682,6 +700,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 |---|---|
 | `UNAUTHORIZED` | 토큰 없음/만료 |
 | `INVALID_REFRESH_TOKEN` | refreshToken 만료/무효 |
+| `INVALID_CREDENTIALS` | 로그인 이메일/비밀번호 불일치 |
 | `EMAIL_ALREADY_EXISTS` | 이미 가입된 이메일 |
 | `PATIENT_NOT_FOUND` | 존재하지 않는 환자번호 *(v0.6 신규)* |
 | `PATIENT_ALREADY_CLAIMED` | 이미 가입 처리된 환자번호 *(v0.6 신규)* |
@@ -724,7 +743,7 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 
 ## v0.6 — 가상 EMR 기반 회원가입으로 전면 교체
 
-실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+인증코드 기반 가입**으로 교체했다.
+실제 클리닉처럼 "환자가 앱에 가입하기 전에 의료진이 먼저 시술 이력을 입력해둔다"는 흐름을 반영해, 회원가입 방식을 이메일/비밀번호 자유 가입에서 **환자번호+이름+생년월일 일치 기반 가입**으로 교체했다(처음엔 인증코드 발급 방식으로 설계했다가 마이그레이션 010에서 지금 방식으로 대체됨 — 아래 참고).
 
 - **신규 관리자용 스택**: 관리자 웹(`admin-web`, 별도 GitHub 저장소)과 그 백엔드 `server_admin/`(포트 4100, `server/`와 동일 컨벤션)이 추가됨. 클리닉별 관리자 로그인(3계정)을 거쳐 환자 등록, 시술기록/이용권 입력을 수행한다. `server_admin`의 API는 이 문서(고객용 `server/`)의 범위 밖이며 `docs/admin-api-spec.md` 참고.
 - **신규 스테이징 테이블**(`server/db/migrations/006_add_admin_emr_staging_tables.sql`): `emr_patients`/`emr_care_records`/`emr_memberships`. `auth.users`와 완전히 무관하게 독립 존재하며, 가입(claim) 전까지의 "미연결" 데이터를 보관한다. 상세 스키마는 `db-schema.md` 참고.
