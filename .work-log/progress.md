@@ -27,6 +27,10 @@
   - `docs/api-spec.md`/`.html`, `docs/server-code-guide.md`/`.html`, `server/README.md`, `server/src/examples/api-call-example.html`(3버튼 흐름 + resetToken 변수 공유) 전부 갱신
   - 아티팩트 2종(API 명세서 `5cf6ed55`, 서버 코드 설명서 `65b8c9b6`) 재발행
   - commit+push (`df377e9`)
+- 사용자가 "api-spec을 admin-api처럼 response 컬럼도 표시되게" 요청 → `admin-api-spec.md`의 "예시 JSON 바로 아래 필드/타입/설명 표" 패턴을 확인 후 `api-spec.md`/`.html` 거의 전체 엔드포인트에 동일하게 적용(중첩 필드는 `a.b`/`items[].x` 표기)
+  - 작업 도중 `care_records.store`(009에서 삭제됐는데 예시 JSON엔 남아있었음), `partOfBody`(012에서 배열화됐는데 예시가 여전히 단일 문자열)를 발견해 같이 수정 — db-schema/server-code-guide는 이전 세션에 동기화했지만 api-spec의 예시 JSON까지는 손대지 않았어서 놓쳤던 부분
+  - `.html`에 `POST`/`DELETE /notifications/device-token` 카드 자체가 통째로 빠져있던 것도 발견(.md엔 있었음) — 추가
+  - table-wrap/`</table>` 개수 대조로 태그 균형 확인, 아티팩트(API 명세서) 재발행, commit+push (`4c72796`)
 - work-log 정리
 
 ## 2026-08-16
