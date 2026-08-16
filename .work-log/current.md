@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-16 08:00
+최종 업데이트: 2026-08-16 08:20
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
@@ -25,6 +25,9 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - commit+push 완료 (`df377e9`)
 - **`docs/api-spec.md`/`.html`에 `admin-api-spec.md` 스타일로 Response 필드 표 전면 추가** — 사용자 요청. 거의 모든 엔드포인트의 Response 예시 JSON 아래에 필드/타입/설명 표를 붙임(중첩 필드는 `a.b`/`items[].x` 표기로 admin-api-spec과 동일 컨벤션). 작업 중 이전 세션(db-schema/server-code-guide 동기화)에서 놓쳤던 stale 필드 2건 발견해 같이 수정: `care_records.store`(009에서 삭제됐는데 예시 JSON에 남아있었음), `partOfBody`(012에서 배열화됐는데 예시가 여전히 단일 문자열). `.html`엔 `POST`/`DELETE /notifications/device-token` 카드 자체가 아예 빠져있던 것도 발견해 추가(.md엔 있었음)
 - 아티팩트(API 명세서) 재발행, commit+push (`4c72796`)
+- 사용자가 "/auth/signup 설명에 오류가 있는 것 같다"고 지적 → 확인해보니 엔드포인트 요약 표/배지/v0.6 절 3곳에 "환자번호+인증코드"라는 옛 표현이 남아있었음(010에서 이미 이름+생년월일 대조 방식으로 바뀌었는데 이 3곳만 안 고쳐져 있었음) — 수정
+- 사용자 요청으로 validators 코드와 api-spec.md 전체를 대조하는 좀 더 넓은 점검 진행 — `PATCH /profile`(Request/Response 필드 표 자체가 없었음), `POST /aftercare/questions`(Request 표 없음, question 1000자 제한 미문서화), 공통 에러 코드 표에 `INVALID_CREDENTIALS` 누락 — 전부 발견해 보완
+- 아티팩트 재발행, commit+push (`3b7bff7`)
 
 ## 현재 작업 중
 - (없음 — 이번 세션 작업 전부 커밋+푸시+아티팩트 재발행까지 완료)
@@ -48,7 +51,7 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
 - `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 이번 세션에 007~012 마이그레이션 + reset-verify 반영해 재동기화
 - `server/src/services/auth.service.ts` — `verifyPasswordResetCode`(신규)/`confirmPasswordReset`(resetToken 방식으로 변경)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `4c72796`)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `3b7bff7`)
 
 ## 특이사항 / 결정 사항
 - **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서, Google이 이상 발송으로 계정을 잠그더라도 개인 계정에 영향이 없도록 격리함
