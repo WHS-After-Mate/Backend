@@ -605,7 +605,9 @@
                   <tr><td class="mono">accessToken</td><td class="mono">string</td><td>JWT, 짧은 만료</td></tr>
                   <tr><td class="mono">refreshToken</td><td class="mono">string</td><td>JWT, 재발급용</td></tr>
                   <tr><td class="mono">expiresIn</td><td class="mono">number</td><td>accessToken 만료(초)</td></tr>
-                  <tr><td class="mono">user.id / name / role</td><td class="mono">string</td><td>사용자 정보 (role: customer/expert/admin)</td></tr>
+                  <tr><td class="mono">user.id</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">user.name</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">user.role</td><td class="mono">string</td><td>customer / expert / admin</td></tr>
                 </tbody>
               </table>
             </div>
@@ -620,6 +622,15 @@
           <span class="note">accessToken 재발급</span>
         </div>
         <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">accessToken</td><td class="mono">string</td><td>새로 발급된 JWT</td></tr>
+                <tr><td class="mono">expiresIn</td><td class="mono">number</td><td>만료(초)</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="status-row"><span class="status-chip err">401 INVALID_REFRESH_TOKEN</span></div>
         </div>
       </div>
@@ -670,7 +681,15 @@
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">Response 200 — <span class="mono">{ "resetToken": "string" }</span></p>
+          <div class="block-label" style="margin-top:2px;">Response 200</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">resetToken</td><td class="mono">string</td><td><span class="mono">reset-confirm</span>에 그대로 넘길 값. Supabase recovery 세션의 <span class="mono">access_token</span></td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="status-row"><span class="status-chip err">400 INVALID_OR_EXPIRED_RESET_CODE</span></div>
         </div>
       </div>
@@ -713,11 +732,26 @@
               <table>
                 <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
                 <tbody>
-                  <tr><td class="mono">latestCare</td><td class="mono">object | null</td><td>최근 관리 요약. 이력 없는 신규 고객은 null</td></tr>
+                  <tr><td class="mono">latestCare</td><td class="mono">object | null</td><td>최근 관리 요약. 이력 없는 신규 고객은 null(프론트는 온보딩 카드 표시)</td></tr>
+                  <tr><td class="mono">latestCare.careRecordId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">latestCare.careName</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">latestCare.careDate</td><td class="mono">string</td><td>YYYY-MM-DD</td></tr>
                   <tr><td class="mono">latestCare.daysElapsed</td><td class="mono">number</td><td>관리일로부터 경과일</td></tr>
+                  <tr><td class="mono">latestCare.partOfBody</td><td class="mono">string[]</td><td>관리 부위(중복 선택 가능)</td></tr>
+                  <tr><td class="mono">aftercareCard</td><td class="mono">object | null</td><td>오늘자 캐시된 사후관리 카드. 아직 생성 전이면 null</td></tr>
+                  <tr><td class="mono">aftercareCard.guideId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">aftercareCard.elapsedRange</td><td class="mono">string</td><td>경과 구간(예: "3-7")</td></tr>
                   <tr><td class="mono">aftercareCard.cautions</td><td class="mono">string[]</td><td>경과 구간 대표 주의사항 (LLM 생성)</td></tr>
-                  <tr><td class="mono">aftercareCard.generatedAt</td><td class="mono">datetime</td><td>당일 LLM 생성/갱신 시각</td></tr>
-                  <tr><td class="mono">membershipSummary.nearestExpiry</td><td class="mono">object</td><td>가장 임박한 이용권</td></tr>
+                  <tr><td class="mono">aftercareCard.nextCheckDate</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">aftercareCard.generatedAt</td><td class="mono">datetime</td><td>당일 LLM 생성/갱신 시각(3절 참고)</td></tr>
+                  <tr><td class="mono">membershipSummary.totalMemberships</td><td class="mono">number</td><td>—</td></tr>
+                  <tr><td class="mono">membershipSummary.nearestExpiry</td><td class="mono">object | null</td><td>가장 임박한 이용권. 보유 이용권 없으면 null</td></tr>
+                  <tr><td class="mono">membershipSummary.nearestExpiry.membershipId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">membershipSummary.nearestExpiry.expiresAt</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">membershipSummary.nearestExpiry.remainingCount</td><td class="mono">number</td><td>—</td></tr>
+                  <tr><td class="mono">recommendation</td><td class="mono">object | null</td><td>다음 관리 추천. 근거 없으면 null</td></tr>
+                  <tr><td class="mono">recommendation.recommendationId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">recommendation.careName</td><td class="mono">string</td><td>—</td></tr>
                   <tr><td class="mono">recommendation.reasons</td><td class="mono">string[]</td><td>다음 관리 추천 이유</td></tr>
                 </tbody>
               </table>
@@ -732,7 +766,7 @@
     "careName": "브라이트닝 필링",
     "careDate": "2026-07-25",
     "daysElapsed": 5,
-    "partOfBody": "얼굴"
+    "partOfBody": ["얼굴"]
   },
   "aftercareCard": {
     "guideId": "G-31",
@@ -765,6 +799,8 @@
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
+                <tr><td class="mono">recommendationId</td><td class="mono">string</td><td>sha1("recommendation:"+userId) 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함</td></tr>
+                <tr><td class="mono">careName</td><td class="mono">string</td><td>—</td></tr>
                 <tr><td class="mono">reasons</td><td class="mono">string[]</td><td>추천 이유 2~3개</td></tr>
                 <tr><td class="mono">basis</td><td class="mono">string[]</td><td>적용 근거: latestCare / membership / goal</td></tr>
                 <tr><td class="mono">disclaimer</td><td class="mono">string</td><td>의료 진단 아님 고지</td></tr>
@@ -787,9 +823,15 @@
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
+                <tr><td class="mono">detailDescription</td><td class="mono">string</td><td>추천 상세 설명 문단</td></tr>
                 <tr><td class="mono">relatedRecentCares</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "최근 관리와 함께 확인해보세요" — 최근 관리 이력 여러 건 + 경과일. <span class="mono">care_records</span> 최신 N건 조회로 계산</td></tr>
+                <tr><td class="mono">relatedRecentCares[].careRecordId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">relatedRecentCares[].careName</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">relatedRecentCares[].daysElapsed</td><td class="mono">number</td><td>—</td></tr>
                 <tr><td class="mono">popularWithSimilarCustomers</td><td class="mono">string[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "비슷한 고객이 자주 찾는 관리" 태그. <span class="mono">care_type</span>별 사전 정의된 규칙 기반 매핑</td></tr>
                 <tr><td class="mono">clinicContacts</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "담당" chips. 사용자 최근 이력의 <span class="mono">brand</span> distinct 목록에서 파생</td></tr>
+                <tr><td class="mono">clinicContacts[].brand</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">clinicContacts[].label</td><td class="mono">string</td><td>화면에 표시할 클리닉명</td></tr>
               </tbody>
             </table>
           </div>
@@ -824,13 +866,17 @@
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
-                <tr><td class="mono">daysElapsed / elapsedRange</td><td class="mono">number / string</td><td>경과일 및 구간</td></tr>
+                <tr><td class="mono">guideId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">careName</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">daysElapsed / elapsedRange</td><td class="mono">number / string</td><td>경과일 및 구간(예: "3-7")</td></tr>
                 <tr><td class="mono">isToday</td><td class="mono">boolean</td><td><span class="done-badge">v0.5 · 구현 완료</span> <span class="mono">elapsedDay</span>가 오늘과 같거나 생략 시 true. false면 개인화 LLM 대신 <span class="mono">reference_guides</span> 원문 반환(<span class="mono">generatedBy: "reference_guide"</span>)</td></tr>
                 <tr><td class="mono">mustAvoid</td><td class="mono">string[]</td><td>피해야 할 행동</td></tr>
                 <tr><td class="mono">basicCare</td><td class="mono">string[]</td><td>기본 사후관리 방법</td></tr>
+                <tr><td class="mono">nextCheckDate</td><td class="mono">string | null</td><td>—</td></tr>
                 <tr><td class="mono">generatedAt</td><td class="mono">datetime</td><td>LLM 생성/갱신 시각</td></tr>
-                <tr><td class="mono">generatedBy</td><td class="mono">string</td><td>고정값 "llm"</td></tr>
-                <tr><td class="mono">cacheExpiresAt</td><td class="mono">datetime</td><td>캐시 만료(자정)</td></tr>
+                <tr><td class="mono">generatedBy</td><td class="mono">string</td><td>"llm" | "reference_guide"(LLM 실패 폴백)</td></tr>
+                <tr><td class="mono">cacheExpiresAt</td><td class="mono">datetime</td><td>캐시 만료(자정, KST)</td></tr>
               </tbody>
             </table>
           </div>
@@ -847,7 +893,14 @@
           <span class="note">챗봇 진입 시 최초 호출</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13.5px; color:var(--text-muted);">고정값: 세안·샤워, 화장·렌즈, 운동·사우나, 음주·흡연, 화장품·성분, 증상</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">categories</td><td class="mono">string[]</td><td>챗봇 질문 카테고리 select에 그대로 뿌릴 고정값: 세안·샤워, 화장·렌즈, 운동·사우나, 음주·흡연, 화장품·성분, 증상</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -858,13 +911,19 @@
         </div>
         <div class="endpoint-body">
           <div>
-            <div class="block-label">Response 상태값</div>
-            <div class="status-row">
-              <span class="status-chip ok">answered (LLM 생성)</span>
-              <span class="status-chip">out_of_scope</span>
-              <span class="status-chip err">expert_required (위험 신호 · 규칙 기반 사전 차단)</span>
-              <span class="status-chip err">422 UNSUPPORTED_CATEGORY</span>
-              <span class="status-chip err">503 ANSWER_GENERATION_FAILED</span>
+            <div class="block-label">Response 200 — 정상 답변</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">questionId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">status</td><td class="mono">string</td><td>answered | out_of_scope | expert_required(통증·출혈 등 위험 신호는 LLM 호출 전 규칙 기반 사전 차단)</td></tr>
+                  <tr><td class="mono">answer</td><td class="mono">string</td><td>status: "answered"일 때만 존재</td></tr>
+                  <tr><td class="mono">answeredBy</td><td class="mono">string</td><td>"llm"</td></tr>
+                  <tr><td class="mono">basedOn</td><td class="mono">object</td><td>status: "answered"일 때만 존재 — 답변 근거</td></tr>
+                  <tr><td class="mono">basedOn.careRecordId / daysElapsed / guideId</td><td class="mono">—</td><td>—</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
           <details class="example">
@@ -877,6 +936,20 @@
   "basedOn": { "careRecordId": "C-2001", "daysElapsed": 5, "guideId": "G-31" }
 }</pre>
           </details>
+          <div>
+            <div class="block-label">Response 200 — 범위 밖/위험 신호</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">questionId</td><td class="mono">string</td><td>—</td></tr>
+                  <tr><td class="mono">status</td><td class="mono">string</td><td>out_of_scope | expert_required</td></tr>
+                  <tr><td class="mono">message</td><td class="mono">string</td><td>화면에 그대로 띄울 안내 문구</td></tr>
+                  <tr><td class="mono">expertContactRequired</td><td class="mono">boolean</td><td>전문가 상담 유도 배너 표시 여부</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
           <details class="example">
             <summary>예시 JSON — 범위 밖 질문</summary>
             <pre>{
@@ -886,6 +959,10 @@
   "expertContactRequired": true
 }</pre>
           </details>
+          <div class="status-row">
+            <span class="status-chip err">422 UNSUPPORTED_CATEGORY</span>
+            <span class="status-chip err">503 ANSWER_GENERATION_FAILED</span>
+          </div>
         </div>
       </div>
 
@@ -895,6 +972,22 @@
           <span class="note">내 질문 이력, 최신순</span>
         </div>
         <div class="endpoint-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">items[].questionId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">items[].careRecordId</td><td class="mono">string | null</td><td>—</td></tr>
+                <tr><td class="mono">items[].category</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">items[].question</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">items[].status</td><td class="mono">string</td><td>answered | out_of_scope | expert_required</td></tr>
+                <tr><td class="mono">items[].answer</td><td class="mono">string | null</td><td>—</td></tr>
+                <tr><td class="mono">items[].answeredBy</td><td class="mono">string</td><td>"llm"</td></tr>
+                <tr><td class="mono">items[].expertContactRequired</td><td class="mono">boolean</td><td>—</td></tr>
+                <tr><td class="mono">items[].createdAt</td><td class="mono">datetime</td><td>질문 등록 시각</td></tr>
+              </tbody>
+            </table>
+          </div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 현재 유저플로우에는 이 화면으로 가는 명시적 진입점이 없다 (향후 챗봇 내 "지난 질문 보기" 등으로 연결 예정).</p>
         </div>
       </div>
@@ -965,10 +1058,23 @@
                   <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>관리 이력 ID</td></tr>
                   <tr><td class="mono">careName</td><td class="mono">string</td><td>관리명</td></tr>
                   <tr><td class="mono">careDate</td><td class="mono">date</td><td>관리일</td></tr>
-                  <tr><td class="mono">partOfBody</td><td class="mono">string</td><td>부위</td></tr>
-                  <tr><td class="mono">brand / store</td><td class="mono">string</td><td>이용 브랜드 · 매장</td></tr>
-                  <tr><td class="mono">practitioner</td><td class="mono">string</td><td>담당자</td></tr>
+                  <tr><td class="mono">partOfBody</td><td class="mono">string[]</td><td>관리 부위(중복 선택 가능)</td></tr>
+                  <tr><td class="mono">brand</td><td class="mono">string | null</td><td>이용 브랜드. <span class="mono">store</span> 필드는 더 이상 존재하지 않음(클리닉당 지점 1곳뿐이라 brand와 중복이라 판단해 제거됨)</td></tr>
+                  <tr><td class="mono">practitioner</td><td class="mono">string | null</td><td>담당자</td></tr>
                   <tr><td class="mono">status</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 이력 목록의 "완료" 등 상태 칩</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">Response 200 필드 (페이지네이션)</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">page</td><td class="mono">number</td><td>—</td></tr>
+                  <tr><td class="mono">size</td><td class="mono">number</td><td>—</td></tr>
+                  <tr><td class="mono">totalCount</td><td class="mono">number</td><td>—</td></tr>
                 </tbody>
               </table>
             </div>
@@ -987,9 +1093,19 @@
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
-                <tr><td class="mono">daysElapsed</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> "결과일: 관리 후 N일차". <span class="mono">careDate</span>로부터 서버 계산</td></tr>
-                <tr><td class="mono">session.number / session.total</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> "관리 회차: 2/3회차"</td></tr>
-                <tr><td class="mono">membership</td><td class="mono">object</td><td><span class="done-badge">v0.5 · 구현 완료</span> 이 시술이 차감한 이용권 참조(<span class="mono">membershipId</span>, <span class="mono">productName</span>)</td></tr>
+                <tr><td class="mono">careRecordId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">careName</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">careDate</td><td class="mono">date</td><td>—</td></tr>
+                <tr><td class="mono">partOfBody</td><td class="mono">string[]</td><td>관리 부위(중복 선택 가능). <span class="mono">store</span> 필드는 더 이상 존재하지 않음(제거됨)</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">string | null</td><td>—</td></tr>
+                <tr><td class="mono">practitioner</td><td class="mono">string | null</td><td>—</td></tr>
+                <tr><td class="mono">status</td><td class="mono">string</td><td><span class="done-badge">v0.5</span></td></tr>
+                <tr><td class="mono">daysElapsed</td><td class="mono">number</td><td><span class="done-badge">v0.5 · 구현 완료</span> "경과일: 관리 후 N일차". <span class="mono">careDate</span>로부터 서버 계산(<span class="mono">daysElapsedSince</span> 유틸 재사용)</td></tr>
+                <tr><td class="mono">session</td><td class="mono">object | null</td><td><span class="done-badge">v0.5 · 구현 완료</span> "관리 회차: 2/3회차". 회차 개념이 없는 단건 시술은 null</td></tr>
+                <tr><td class="mono">session.number / session.total</td><td class="mono">number</td><td>—</td></tr>
+                <tr><td class="mono">membership</td><td class="mono">object | null</td><td><span class="done-badge">v0.5 · 구현 완료</span> 이 시술이 차감한 이용권 참조(<span class="mono">care_records.membership_id</span> FK). 없으면 null</td></tr>
+                <tr><td class="mono">membership.membershipId / productName</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">basicAftercareGuide</td><td class="mono">string[]</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
@@ -1000,9 +1116,8 @@
   "careRecordId": "C-2001",
   "careName": "브라이트닝 필링",
   "careDate": "2026-07-25",
-  "partOfBody": "얼굴",
+  "partOfBody": ["얼굴"],
   "brand": "AMRED CLINIC",
-  "store": "AMRED CLINIC 청담점",
   "practitioner": "김OO 원장",
   "status": "completed",
   "daysElapsed": 19,
@@ -1029,7 +1144,8 @@
                 <tr><td class="mono">expiresAt</td><td class="mono">date</td><td>유효기간</td></tr>
                 <tr><td class="mono">lastUsedAt</td><td class="mono">date</td><td>최근 사용일</td></tr>
                 <tr><td class="mono">availableCareNames</td><td class="mono">string[]</td><td>이용 가능 관리 목록</td></tr>
-                <tr><td class="mono">usageHistory</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "1회차 2026.01.01" 등 회차별 사용일자. <span class="mono">{ sessionNumber, usedAt }</span>. 신규 테이블 <span class="mono">membership_usages</span> 필요</td></tr>
+                <tr><td class="mono">usageHistory</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "1회차 2026.01.01" 등 회차별 사용일자. <span class="mono">usedCount</span>처럼 집계값이 아니라 개별 사용 이력이라 별도 테이블(<span class="mono">membership_usages</span>)에서 조회</td></tr>
+                <tr><td class="mono">usageHistory[].sessionNumber / usedAt</td><td class="mono">number / date</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
@@ -1056,17 +1172,21 @@
           <span class="method get">GET</span><span class="path mono">/profile</span>
         </div>
         <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">알림 설정은 더 이상 이 응답에 없다 — 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 <span class="mono">GET</span>/<span class="mono">PATCH /notifications/settings</span>와 함께 제거됨.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
-                <tr><td class="mono">name / email</td><td class="mono">string</td><td>기본 정보</td></tr>
-                <tr><td class="mono">birthDate</td><td class="mono">date</td><td><span class="done-badge">v0.5 · 구현 완료</span> 내 정보 화면의 생년월일</td></tr>
-                <tr><td class="mono">phone</td><td class="mono">string</td><td><span class="done-badge">v0.5 · 구현 완료</span> 가입 시 <span class="mono">emr_patients</span>(병원 원본)에서 가져온 번호, 조회 전용</td></tr>
+                <tr><td class="mono">userId</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">name</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">birthDate</td><td class="mono">date | null</td><td><span class="done-badge">v0.5 · 구현 완료</span> 내 정보 화면의 생년월일</td></tr>
+                <tr><td class="mono">email</td><td class="mono">string</td><td><span class="mono">profiles</span> 테이블이 아니라 Supabase Auth에서 조회(진실 소스)</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">string | null</td><td><span class="done-badge">v0.5 · 구현 완료</span> 가입 시 <span class="mono">emr_patients</span>(병원 원본)에서 가져온 번호, 조회 전용</td></tr>
                 <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td>관심 목표</td></tr>
               </tbody>
             </table>
           </div>
+          <div class="status-row"><span class="status-chip err">403 NO_ACTIVE_CUSTOMER_PROFILE</span></div>
         </div>
       </div>
 
@@ -1103,13 +1223,74 @@
       <div class="endpoint-card">
         <div class="endpoint-head">
           <span class="method put">PUT</span><span class="path mono">/profile/interests</span>
-          <span class="note">관심 목표 설정</span>
+          <span class="note">관심 목표 설정 · 다음 관리 추천(basis: goal)의 입력값</span>
         </div>
         <div class="endpoint-body">
+          <div>
+            <div class="block-label">Request Body</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">goals</td><td class="mono">string[]</td><td>—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="block-label">Response 200</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">interestGoals</td><td class="mono">string[]</td><td>저장된 값 그대로 반환</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
           <details class="example">
             <summary>예시 JSON</summary>
             <pre>{ "goals": ["수분 개선", "탄력 관리"] }</pre>
           </details>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method post">POST</span><span class="path mono">/notifications/device-token</span>
+          <span class="note">FCM 토큰 등록 (Android 전용)</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">Android 클라이언트가 FCM 토큰을 발급받은 뒤 서버에 등록. 앱 시작 시 또는 토큰 갱신(<span class="mono">onNewToken</span>) 시 호출.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">fcmToken</td><td class="mono">string</td><td>—</td></tr>
+                <tr><td class="mono">platform</td><td class="mono">string</td><td>"android"</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip">204 No Content</span></div>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method delete">DELETE</span><span class="path mono">/notifications/device-token</span>
+          <span class="note">FCM 토큰 해제 (Android 전용)</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">로그아웃 등으로 더 이상 해당 기기에 푸시를 보내지 않아야 할 때 호출.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">fcmToken</td><td class="mono">string</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip">204 No Content</span></div>
         </div>
       </div>
 
@@ -1122,7 +1303,7 @@
           <thead><tr><th>모델</th><th>핵심 필드</th></tr></thead>
           <tbody>
             <tr><td class="mono">User</td><td class="mono">id, name, email, phone, role(customer/expert/admin)</td></tr>
-            <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide, <b>status, daysElapsed, session{number,total}, membership{id,productName}</b> <span class="done-badge">v0.5</span></td></tr>
+            <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, <b>status, daysElapsed, session{number,total}, membership{id,productName}</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, <b>usageHistory[]</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt</td></tr>

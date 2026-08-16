@@ -97,6 +97,15 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
   "user": { "id": "U-1001", "name": "홍길동", "role": "customer" }
 }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `accessToken` | string | JWT, 짧은 만료 |
+| `refreshToken` | string | JWT, 재발급용 |
+| `expiresIn` | number | `accessToken` 만료(초) |
+| `user.id` | string | |
+| `user.name` | string | |
+| `user.role` | string | `customer` / `expert` / `admin` |
+
 `401 INVALID_CREDENTIALS`
 
 ### POST /auth/refresh
@@ -106,7 +115,15 @@ accessToken 재발급.
 ```json
 { "refreshToken": "jwt..." }
 ```
-**Response 200**: `{ "accessToken": "jwt...", "expiresIn": 3600 }`
+**Response 200**
+```json
+{ "accessToken": "jwt...", "expiresIn": 3600 }
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `accessToken` | string | 새로 발급된 JWT |
+| `expiresIn` | number | 만료(초) |
+
 `401 INVALID_REFRESH_TOKEN`
 
 ### POST /auth/logout
@@ -135,6 +152,10 @@ accessToken 재발급.
 ```json
 { "resetToken": "string" }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `resetToken` | string | `reset-confirm`에 그대로 넘길 값. Supabase recovery 세션의 `access_token` |
+
 `400 INVALID_OR_EXPIRED_RESET_CODE`
 - 서버는 `code`를 Supabase의 `auth.verifyOtp({ email, token: code, type: "recovery" })`로 그대로 넘겨 검증한다(직접 만든 코드 저장/대조 로직이 아니라 Supabase가 발급·검증을 전담). 검증에 성공하면 Supabase가 그 코드를 발급한 계정에 대한 1회성 recovery 세션을 돌려주는데 — **코드 자체는 이 호출로 소진되어 재사용 불가** — 그 세션의 `access_token`을 `resetToken`으로 그대로 클라이언트에 내려준다(`auth.service.ts`의 `verifyPasswordResetCode` 참고).
 
@@ -167,7 +188,7 @@ accessToken 재발급.
     "careName": "브라이트닝 필링",
     "careDate": "2026-07-25",
     "daysElapsed": 5,
-    "partOfBody": "얼굴"
+    "partOfBody": ["얼굴"]
   },
   "aftercareCard": {
     "guideId": "G-31",
@@ -187,9 +208,31 @@ accessToken 재발급.
   }
 }
 ```
-- `latestCare`가 없는 신규 고객: `null` (프론트는 온보딩 카드 표시)
-- `aftercareCard.generatedAt`: 해당 일자 LLM 생성/갱신 시각 (3절 참고)
-- `403 NO_ACTIVE_CUSTOMER_PROFILE`: 연결된 고객 프로필 없음
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `latestCare` | object \| null | 최근 관리 요약. 이력 없는 신규 고객은 `null`(프론트는 온보딩 카드 표시) |
+| `latestCare.careRecordId` | string | |
+| `latestCare.careName` | string | |
+| `latestCare.careDate` | string | `YYYY-MM-DD` |
+| `latestCare.daysElapsed` | number | 관리일로부터 경과일 |
+| `latestCare.partOfBody` | string[] | 관리 부위(중복 선택 가능) |
+| `aftercareCard` | object \| null | 오늘자 캐시된 사후관리 카드. 아직 생성 전이면 `null` |
+| `aftercareCard.guideId` | string | |
+| `aftercareCard.elapsedRange` | string | 경과 구간(예: `"3-7"`) |
+| `aftercareCard.cautions` | string[] | 경과 구간 대표 주의사항(LLM 생성) |
+| `aftercareCard.nextCheckDate` | string | |
+| `aftercareCard.generatedAt` | datetime | 당일 LLM 생성/갱신 시각(3절 참고) |
+| `membershipSummary.totalMemberships` | number | |
+| `membershipSummary.nearestExpiry` | object \| null | 가장 임박한 이용권. 보유 이용권 없으면 `null` |
+| `membershipSummary.nearestExpiry.membershipId` | string | |
+| `membershipSummary.nearestExpiry.expiresAt` | string | |
+| `membershipSummary.nearestExpiry.remainingCount` | number | |
+| `recommendation` | object \| null | 다음 관리 추천. 근거 없으면 `null` |
+| `recommendation.recommendationId` | string | |
+| `recommendation.careName` | string | |
+| `recommendation.reasons` | string[] | 다음 관리 추천 이유 |
+
+`403 NO_ACTIVE_CUSTOMER_PROFILE`: 연결된 고객 프로필 없음
 
 ### GET /recommendations/next-care
 규칙 기반 추천 후보 1개 + 이유. 홈의 추천 카드.
@@ -208,6 +251,14 @@ accessToken 재발급.
   "disclaimer": "의료적 진단이 아니며 최종 관리는 전문가 상담 후 결정하세요."
 }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `recommendationId` | string | `sha1("recommendation:"+userId)` 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함 |
+| `careName` | string | |
+| `reasons` | string[] | 추천 이유 2~3개 |
+| `basis` | string[] | 적용 근거: `latestCare` / `membership` / `goal` |
+| `disclaimer` | string | 의료 진단 아님 고지 |
+
 `204 NO_RECOMMENDATION_AVAILABLE`: 추천 근거 부족(관리 이력 없음 등)
 - 참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 `GET /home/summary`의 `recommendation` 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.
 
@@ -231,9 +282,17 @@ accessToken 재발급.
   ]
 }
 ```
-- `relatedRecentCares` `(v0.5)`: "최근 관리와 함께 확인해보세요" 섹션. `latestCare` 1건이 아니라 최근 관리 이력 여러 건 + 각각의 경과일. `care_records`에서 최신순 N건 조회로 계산 (신규 테이블 불필요)
-- `popularWithSimilarCustomers` `(v0.5)`: "비슷한 고객이 자주 찾는 관리" 태그. MVP에서는 추천 대상 `care_type`별로 사전 정의된 연관 태그 목록을 반환하는 규칙 기반 매핑(실제 유사도 계산 아님)
-- `clinicContacts` `(v0.5)`: "담당" chips. 사용자의 최근 관리 이력에 등장한 `brand` distinct 목록에서 파생 (신규 테이블 불필요)
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `detailDescription` | string | 추천 상세 설명 문단 |
+| `relatedRecentCares` | object[] | `(v0.5)` "최근 관리와 함께 확인해보세요" — `latestCare` 1건이 아니라 최근 관리 이력 여러 건. `care_records` 최신순 N건 조회로 계산(신규 테이블 불필요) |
+| `relatedRecentCares[].careRecordId` | string | |
+| `relatedRecentCares[].careName` | string | |
+| `relatedRecentCares[].daysElapsed` | number | |
+| `popularWithSimilarCustomers` | string[] | `(v0.5)` "비슷한 고객이 자주 찾는 관리" 태그. `care_type`별 사전 정의된 연관 태그 목록(규칙 기반 매핑, 실제 유사도 계산 아님) |
+| `clinicContacts` | object[] | `(v0.5)` "담당" chips. 사용자의 최근 관리 이력에 등장한 `brand` distinct 목록에서 파생(신규 테이블 불필요) |
+| `clinicContacts[].brand` | string | |
+| `clinicContacts[].label` | string | 화면에 표시할 클리닉명 |
 
 ---
 
@@ -267,7 +326,21 @@ accessToken 재발급.
   "cacheExpiresAt": "2026-07-31T00:00:00Z"
 }
 ```
-- `isToday` `(v0.5 신규)`: `elapsedDay`가 실제 오늘 경과일과 같거나 생략된 경우 `true`. 이 경우에만 기존 로직대로 LLM 개인화 생성 + 캐시를 사용
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `guideId` | string | |
+| `careRecordId` | string | |
+| `careName` | string | |
+| `daysElapsed` | number | |
+| `elapsedRange` | string | 경과 구간(예: `"3-7"`) |
+| `isToday` | boolean | `(v0.5)` `elapsedDay`가 실제 오늘 경과일과 같거나 생략된 경우 `true`. 이 경우에만 LLM 개인화 생성+캐시를 사용 |
+| `mustAvoid` | string[] | |
+| `basicCare` | string[] | |
+| `nextCheckDate` | string \| null | |
+| `generatedAt` | datetime | |
+| `generatedBy` | string | `"llm"` \| `"reference_guide"`(LLM 실패 폴백) |
+| `cacheExpiresAt` | datetime | 자정(KST) 기준 캐시 만료 시각 |
+
 - `elapsedDay`로 다른 탭(과거/미래 경과일)을 조회하면 개인화 LLM 호출 없이 `reference_guides`(검수된 가이드 원문)를 그대로 반환한다 — `generatedBy: "reference_guide"`. 가상의 경과일에 대해 매번 LLM을 호출하는 비용·안전 부담을 피하기 위함
 `404 GUIDE_NOT_AVAILABLE`: 지원하지 않는 관리 유형/경과일 구간
 `503 GUIDE_GENERATION_FAILED`: LLM 생성 실패 시 재시도 안내(폴백: 검수된 기본 가이드 문구로 대체)
@@ -279,6 +352,9 @@ accessToken 재발급.
 ```json
 { "categories": ["세안·샤워", "화장·렌즈", "운동·사우나", "음주·흡연", "화장품·성분", "증상"] }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `categories` | string[] | 챗봇 질문 카테고리 select에 그대로 뿌릴 고정값 6종 |
 
 ### POST /aftercare/questions
 챗봇 질문 등록 및 LLM 답변 조회(동기 응답). 최근 관리·경과일·검수 가이드를 컨텍스트로 답변을 생성한다.
@@ -298,6 +374,16 @@ accessToken 재발급.
   "basedOn": { "careRecordId": "C-2001", "daysElapsed": 5, "guideId": "G-31" }
 }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `questionId` | string | |
+| `status` | string | `answered` \| `out_of_scope` \| `expert_required`(통증·출혈 등 위험 신호는 LLM 호출 전 규칙 기반으로 우선 차단) |
+| `answer` | string | `status: "answered"`일 때만 존재 |
+| `answeredBy` | string | `"llm"` |
+| `basedOn` | object | `status: "answered"`일 때만 존재 — 답변 근거 |
+| `basedOn.careRecordId` | string | |
+| `basedOn.daysElapsed` | number | |
+| `basedOn.guideId` | string | |
 
 **Response 200 — 범위 밖/위험 신호**
 ```json
@@ -308,14 +394,49 @@ accessToken 재발급.
   "expertContactRequired": true
 }
 ```
-- `status`: `answered` | `out_of_scope` | `expert_required`(통증·출혈 등 위험 신호는 LLM 호출 전 규칙 기반으로 우선 차단)
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `questionId` | string | |
+| `status` | string | `out_of_scope` \| `expert_required` |
+| `message` | string | 화면에 그대로 띄울 안내 문구 |
+| `expertContactRequired` | boolean | 전문가 상담 유도 배너 표시 여부 |
+
 - `422 UNSUPPORTED_CATEGORY`
 - `503 ANSWER_GENERATION_FAILED`
 
 ### GET /aftercare/questions
 내 질문 이력 조회 (최신순).
 
-**Response 200**: `POST /aftercare/questions` 응답 항목의 배열 + `createdAt`
+**Response 200**
+```json
+{
+  "items": [
+    {
+      "questionId": "Q-7001",
+      "careRecordId": "C-2001",
+      "category": "운동·사우나",
+      "question": "필링 후 사우나 언제부터 가능한가요?",
+      "status": "answered",
+      "answer": "브라이트닝 필링 후 경과일 5일차 기준...",
+      "answeredBy": "llm",
+      "expertContactRequired": false,
+      "createdAt": "2026-07-30T10:00:00Z"
+    }
+  ]
+}
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `items[].questionId` | string | |
+| `items[].careRecordId` | string \| null | |
+| `items[].category` | string | |
+| `items[].question` | string | |
+| `items[].status` | string | `answered` \| `out_of_scope` \| `expert_required` |
+| `items[].answer` | string \| null | |
+| `items[].answeredBy` | string | `"llm"` |
+| `items[].expertContactRequired` | boolean | |
+| `items[].createdAt` | datetime | 질문 등록 시각 |
+
 - 참고: 현재 유저플로우에는 이 화면으로 가는 명시적 진입점이 없다 (향후 챗봇 내 "지난 질문 보기" 등으로 연결 예정).
 
 ---
@@ -338,6 +459,13 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   ]
 }
 ```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `month` | string | `YYYY-MM`, 요청값 그대로 |
+| `dates` | object[] | 그 달에 시술이 있었던 날짜만 포함(없는 날짜는 배열에 없음) |
+| `dates[].date` | string | `YYYY-MM-DD` |
+| `dates[].count` | number | 그 날짜의 시술 건수 |
+
 - 특정 날짜 클릭 후 "시술 내역" 목록은 별도 엔드포인트 없이 `GET /care-records?dateFrom={date}&dateTo={date}` 재사용
 
 ### GET /care-records
@@ -355,9 +483,8 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
       "careRecordId": "C-2001",
       "careName": "브라이트닝 필링",
       "careDate": "2026-07-25",
-      "partOfBody": "얼굴",
+      "partOfBody": ["얼굴"],
       "brand": "AMRED CLINIC",
-      "store": "AMRED CLINIC 청담점",
       "practitioner": "김OO 원장",
       "status": "completed"
     }
@@ -365,7 +492,18 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "page": 1, "size": 20, "totalCount": 12
 }
 ```
-- `status` `(v0.5)`: 이력 목록 화면의 "완료" 등 상태 칩. 현재 값 후보는 `completed` 하나뿐이나(EMR 동기화 데이터가 이미 끝난 시술 위주) 스키마상 문자열로 열어둠
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `items[].careRecordId` | string | |
+| `items[].careName` | string | |
+| `items[].careDate` | string | `YYYY-MM-DD` |
+| `items[].partOfBody` | string[] | 관리 부위(중복 선택 가능) |
+| `items[].brand` | string \| null | `store` 필드는 더 이상 존재하지 않음(클리닉당 지점 1곳뿐이라 `brand`와 중복이라 판단해 제거됨) |
+| `items[].practitioner` | string \| null | |
+| `items[].status` | string | `(v0.5)` 이력 목록 화면의 "완료" 등 상태 칩. 현재 값 후보는 `completed` 하나뿐이나(EMR 동기화 데이터가 이미 끝난 시술 위주) 스키마상 문자열로 열어둠 |
+| `page` | number | |
+| `size` | number | |
+| `totalCount` | number | |
 
 ### GET /care-records/{careRecordId}
 관리 상세 + 기본 사후관리 안내. 캘린더 경로와 이력 경로 모두 동일한 이 화면으로 연결된다. 상세 화면의 "AI 사후관리 가이드" 버튼은 `GET /aftercare/daily-guide?careRecordId={careRecordId}`로 이동한다(3절 참고).
@@ -376,9 +514,8 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "careRecordId": "C-2001",
   "careName": "브라이트닝 필링",
   "careDate": "2026-07-25",
-  "partOfBody": "얼굴",
+  "partOfBody": ["얼굴"],
   "brand": "AMRED CLINIC",
-  "store": "AMRED CLINIC 청담점",
   "practitioner": "김OO 원장",
   "status": "completed",
   "daysElapsed": 19,
@@ -387,9 +524,24 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "basicAftercareGuide": ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"]
 }
 ```
-- `daysElapsed` `(v0.5)`: 관리 상세 화면의 "결과일: 관리 후 N일차". `careDate`로부터 서버가 계산(기존 `daysElapsedSince` 유틸 재사용, 신규 로직 아님)
-- `session` `(v0.5)`: "관리 회차: 2/3회차". 이 시술 건이 연결된 이용권 안에서 몇 번째 사용인지
-- `membership` `(v0.5)`: 이 시술이 차감한 이용권 참조. `care_records.membership_id` FK로 연결(db-schema.md 참고)
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `careRecordId` | string | |
+| `careName` | string | |
+| `careDate` | string | `YYYY-MM-DD` |
+| `partOfBody` | string[] | 관리 부위(중복 선택 가능). `store` 필드는 더 이상 존재하지 않음(제거됨) |
+| `brand` | string \| null | |
+| `practitioner` | string \| null | |
+| `status` | string | `(v0.5)` |
+| `daysElapsed` | number | `(v0.5)` 관리 상세 화면의 "경과일: 관리 후 N일차". `careDate`로부터 서버가 계산(`daysElapsedSince` 유틸 재사용) |
+| `session` | object \| null | `(v0.5)` "관리 회차: 2/3회차". 회차 개념이 없는 단건 시술은 `null` |
+| `session.number` | number | 이 시술 건이 연결된 이용권 안에서 몇 번째 사용인지 |
+| `session.total` | number | 그 이용권의 총 횟수 |
+| `membership` | object \| null | `(v0.5)` 이 시술이 차감한 이용권 참조(`care_records.membership_id` FK, db-schema.md 참고). 없으면 `null` |
+| `membership.membershipId` | string | |
+| `membership.productName` | string | |
+| `basicAftercareGuide` | string[] | |
+
 `404 CARE_RECORD_NOT_FOUND`
 
 ### GET /memberships
@@ -416,7 +568,19 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   ]
 }
 ```
-- `usageHistory` `(v0.5)`: 이용권 화면의 "1회차 2026.01.01(일)", "2회차 2026.03.01(일)" — 회차별 사용일자 목록. `usedCount`처럼 집계값이 아니라 개별 사용 이력이라 신규 테이블(`membership_usages`) 필요 (db-schema.md 참고)
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `items[].membershipId` | string | |
+| `items[].productName` | string | |
+| `items[].totalCount` | number | |
+| `items[].usedCount` | number | |
+| `items[].remainingCount` | number | 생성 컬럼(`totalCount - usedCount`) — 직접 계산 불필요 |
+| `items[].expiresAt` | string \| null | |
+| `items[].lastUsedAt` | string \| null | |
+| `items[].availableCareNames` | string[] | |
+| `items[].usageHistory` | object[] | `(v0.5)` 이용권 화면의 "1회차 2026.01.01(일)" 등 회차별 사용일자 목록. `usedCount`처럼 집계값이 아니라 개별 사용 이력이라 별도 테이블(`membership_usages`)에서 조회(db-schema.md 참고) |
+| `items[].usageHistory[].sessionNumber` | number | |
+| `items[].usageHistory[].usedAt` | string | |
 
 ### GET /memberships/{membershipId}
 이용권 상세. 응답 스키마는 목록 항목과 동일(`usageHistory` 포함).
@@ -427,7 +591,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 ## 5. 설정 / 프로필
 
 ### GET /profile
-프로필 조회 (이름, 생년월일, 이메일, 휴대폰번호, 관심 목표, 알림 설정 요약).
+프로필 조회 (이름, 생년월일, 이메일, 휴대폰번호, 관심 목표). 알림 설정은 더 이상 이 응답에 없다 — 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 `GET`/`PATCH /notifications/settings`와 함께 제거됨(`db/migrations/005_remove_notification_settings.sql`).
 
 **Response 200**
 ```json
@@ -440,8 +604,16 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "interestGoals": ["수분 개선", "탄력 관리"]
 }
 ```
-- `birthDate` `(v0.5)`: 내 정보 화면의 "생년월일"
-- `phone` `(v0.5)`: 내 정보 화면의 "휴대폰 번호". 가입 시 `emr_patients`(병원 원본)에서 가져온 번호를 조회 전용으로 노출(변경은 범위 밖 — 별도 논의 필요)
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `userId` | string | |
+| `name` | string | |
+| `birthDate` | string \| null | `(v0.5)` 내 정보 화면의 "생년월일" |
+| `email` | string | `profiles` 테이블이 아니라 Supabase Auth에서 조회(진실 소스) |
+| `phone` | string \| null | `(v0.5)` 내 정보 화면의 "휴대폰 번호". 가입 시 `emr_patients`(병원 원본)에서 가져온 번호를 조회 전용으로 노출(변경은 범위 밖 — 별도 논의 필요) |
+| `interestGoals` | string[] | |
+
+`403 NO_ACTIVE_CUSTOMER_PROFILE`
 
 ### PATCH /profile
 이름, 생년월일 등 기본 정보 수정 (`email`/`phone`은 읽기 전용 — 각각 계정 식별자·가입 시 입력값이라 이 엔드포인트로 변경 불가).
@@ -464,7 +636,13 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 ```json
 { "goals": ["수분 개선", "탄력 관리"] }
 ```
-**Response 200**: 저장된 `interestGoals` 배열 반환
+**Response 200**
+```json
+{ "interestGoals": ["수분 개선", "탄력 관리"] }
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `interestGoals` | string[] | 저장된 값 그대로 반환 |
 
 ### POST /notifications/device-token
 Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 뒤 서버에 등록. 앱 시작 시 또는 토큰 갱신(`onNewToken`) 시 호출.
@@ -491,7 +669,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | 모델 | 핵심 필드 |
 |---|---|
 | User | id, name, email, phone, role(customer/expert/admin) |
-| CareRecord | id, careName, careDate, partOfBody, brand, store, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName}** *(굵은 필드 v0.5)* |
+| CareRecord | id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName}** *(굵은 필드 v0.5)* |
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
 | AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)* |
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt |
