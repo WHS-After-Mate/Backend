@@ -97,19 +97,19 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 ## 1. 환자
 
 ### GET /care-types
-`careType`은 관리자가 자유 입력하는 값이 아니라, 전문가 검수를 거쳐 `reference_guides`에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 `/aftercare/daily-guide`가 항상 응답 가능함이 보장됨). 이 목록은 클리닉 공통 자료라 브랜드 격리 대상이 아니다.
+`careType`은 관리자가 자유 입력하는 값이 아니라, `reference_guides`에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 `/aftercare/daily-guide`가 항상 응답 가능함이 보장됨). 이 목록은 클리닉 공통 자료라 브랜드 격리 대상이 아니다.
 
 **DB**: `reference_guides` **SELECT** — `care_type` 컬럼만 조회해서 중복 제거(`Set`) 후 정렬. `brand` 조건 없이 테이블 전체 대상(공용 자료라서).
 
 **Response 200**
 ```json
-{ "careTypes": ["laser_toning", "peeling"] }
+{ "careTypes": ["botox", "energy_lifting", "filler", "hair_removal", "laser_toning", "peeling", "skin_booster"] }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `careTypes` | string[] | D 화면 careType select에 그대로 뿌릴 선택 가능 값 목록 |
 
-현재 검수 등록된 값은 `peeling`/`laser_toning` 2개뿐 — 리프팅류(울쎄라 등)는 아직 검수된 가이드가 없어 이 목록에 없다.
+현재 등록된 값은 7개(`peeling`/`laser_toning`/`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`) `(v0.5)`. **주의**: 이 목록에 있다고 전부 전문가 검수를 마친 것은 아니다 — `peeling`/`laser_toning`은 기존 검수 문구, 나머지 5종은 2026-08-17에 `treatment_catalog` 등록을 위해 추가한 미검수 스텁이다(자세한 내용은 `server/README.md` TODO 절 참고). `reference_guides.reviewed_by`가 코드에서 실제로 검사되지 않아, `GET /care-types`만으로는 검수 여부를 구분할 수 없다.
 
 ### GET /body-parts
 관리 상세 화면(와이어프레임 11번)처럼 한 시술이 여러 부위에 동시에 해당할 수 있어, 시술기록의 관리 부위는 중복 선택 가능한 배열이다. `reference_guides`처럼 검수 테이블은 아니고 고정된 신체 부위 분류 상수라 브랜드 격리 대상도 아니다.

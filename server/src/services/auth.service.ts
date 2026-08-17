@@ -2,19 +2,10 @@ import { env } from "../config/env";
 import { supabaseAdmin, supabaseAnon } from "../config/supabase";
 import { ApiError, Errors } from "../lib/errors";
 
-// 회원가입 = "병원에서 이미 시술받은 환자가 앱 계정을 처음 만드는 순간"이다.
-// 인증코드 발송 없이 환자번호(patientNo)+이름+생년월일+전화번호 네 값이 emr_patients 레코드와
-// 정확히 일치하는지로 신원을 확인하고, 그 시점까지 쌓여있던 emr_care_records/emr_memberships를
-// 실제 테이블로 1회성 이관(claim)한다.
-export async function signup(input: {
-  patientNo: string;
-  name: string;
-  birthDate: string;
-  phone: string;
-  email: string;
-  password: string;
-  interestGoals: string[];
-}) {
+// 회원가입 1~2단계(pre-check/signup) 공통 — 환자번호(patientNo)+이름+생년월일+전화번호 네 값이
+// emr_patients 레코드와 정확히 일치하는지로 신원을 확인한다. 일치하지 않으면 throw, 일치하면
+// 그 emr_patients 행을 반환(signup()이 claim 처리에 그대로 재사용).
+async function checkPatientIdentity(input: { patientNo: string; name: string; birthDate: string; phone: string }) {
   const { data: patient } = await supabaseAdmin
     .from("emr_patients")
     .select("id, name, birth_date, phone, notes, claimed_user_id")
@@ -30,6 +21,35 @@ export async function signup(input: {
   ) {
     throw Errors.patientIdentityMismatch();
   }
+
+  return patient;
+}
+
+// 회원가입 1단계(2페이지 분리, 프론트 요청) — 계정을 만들지 않고 신원 일치 여부만 먼저 확인한다.
+// 실패 시 signup()과 동일한 에러 코드(404/409/400)를 던지므로 프론트가 두 단계에서 같은 에러
+// 처리 로직을 재사용할 수 있다. 부수효과 없음(emr_patients 조회만, claim 안 함).
+export async function preCheckSignup(input: {
+  patientNo: string;
+  name: string;
+  birthDate: string;
+  phone: string;
+}): Promise<void> {
+  await checkPatientIdentity(input);
+}
+
+// 회원가입 2단계 = "병원에서 이미 시술받은 환자가 앱 계정을 처음 만드는 순간"이다.
+// 신원 확인(checkPatientIdentity) 후, 그 시점까지 쌓여있던 emr_care_records/emr_memberships를
+// 실제 테이블로 1회성 이관(claim)한다.
+export async function signup(input: {
+  patientNo: string;
+  name: string;
+  birthDate: string;
+  phone: string;
+  email: string;
+  password: string;
+  interestGoals: string[];
+}) {
+  const patient = await checkPatientIdentity(input);
 
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email: input.email,

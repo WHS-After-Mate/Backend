@@ -376,10 +376,11 @@ flowchart TD
         <li>검수된 관리 가이드(RAG 소스) 문서를 어떤 형식·어디에 저장할지 (DB 테이블 vs 정적 파일) — 아직 스키마에 없음</li>
         <li>위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)</li>
         <li>출력 검증(금지어 필터) 실패 시 재시도 vs 즉시 폴백 정책</li>
+        <li><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종(<span class="mono">energy_lifting</span>/<span class="mono">botox</span>/<span class="mono">filler</span>/<span class="mono">skin_booster</span>/<span class="mono">hair_removal</span>)이 미검수 스텁</b> <span class="tag" style="background:var(--error-soft,#F5E9E8); color:var(--error,#A83C3C);">설계 원칙 위반</span> — 위 "검수된 가이드만 근거로 삼는다" 원칙과 달리, <span class="mono">reviewed_by</span>/<span class="mono">reviewed_at</span> 컬럼을 코드가 검사하지 않아 미검수 문구도 <span class="mono">peeling</span>/<span class="mono">laser_toning</span>과 동일하게 LLM에 근거로 주입됨(2026-08-17 발견, <span class="mono">server/README.md</span> TODO 참고)</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 · db-schema v0.6 기준 · LLM 호출 지점(daily-guide/questions) 파이프라인 자체는 최초 작성 이후 변경 없음 · 재확인 2026-08-16</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.8 · db-schema v0.8 기준 · LLM 호출 지점(daily-guide/questions) 파이프라인 자체는 최초 작성 이후 변경 없음 · 재확인 2026-08-17</footer>
   </main>
 </div>
 

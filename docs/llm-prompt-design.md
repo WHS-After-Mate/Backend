@@ -143,3 +143,4 @@ daily-guide와 동일 (`care_name`, `days_elapsed`, `doctor_comment`, `allergies
 ## 미확정 사항
 - 위험 신호 키워드 목록의 구체적 범위 — `server/src/lib/riskKeywords.ts`에 초안만 작성, 전문가(의료진) 검수 필요
 - 실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요
+- **`reference_guides`의 care_type 7종 중 5종(`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`)이 미검수 스텁** *(2026-08-17 발견, 설계 원칙과 어긋남)* — 위 "공통 원칙"이 "LLM은 검수된 관리 가이드만을 사실 근거로 삼는다"고 명시하지만, `reviewed_by`/`reviewed_at` 컬럼을 어느 서비스 코드도 검사하지 않아 이 5종의 미검수 문구도 `peeling`/`laser_toning`과 동일하게 "검수된 근거"로 LLM에 주입되고 있다. 전문가 검수 후 문구를 교체하거나, 최소한 `reviewed_by` 체크를 추가해 미검수 care_type은 daily-guide/questions에서 제외해야 함(`server/README.md` TODO 절 참고)

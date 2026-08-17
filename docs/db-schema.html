@@ -695,7 +695,7 @@ erDiagram
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
                 <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
-                <tr><td class="mono">care_name / care_type / care_date</td><td class="mono">text / text / date</td><td>not null</td><td><span class="mono">care_type</span>은 <span class="mono">reference_guides</span> 매칭 키 (현재 peeling/laser_toning만 지원)</td></tr>
+                <tr><td class="mono">care_name / care_type / care_date</td><td class="mono">text / text / date</td><td>not null</td><td><span class="mono">care_type</span>은 <span class="mono">reference_guides</span> 매칭 키 (현재 7종 지원, <span class="done-badge">v0.5</span> — 5종은 미검수 스텁, <span class="mono">server/README.md</span> TODO 참고)</td></tr>
                 <tr><td class="mono">part_of_body</td><td class="mono">text[]</td><td>not null, default '{}'</td><td><span class="done-badge">v0.6·012</span> 단일 텍스트에서 배열로 변경. <span class="mono">GET /body-parts</span> 목록 안에서만 검증</td></tr>
                 <tr><td class="mono">brand / practitioner</td><td class="mono">text</td><td>—</td><td><span class="mono">store</span>는 v0.6(009)에서 제거</td></tr>
                 <tr><td class="mono">basic_aftercare_guide / doctor_comment</td><td class="mono">text[] / text</td><td>—</td><td>claim 시 그대로 <span class="mono">care_records</span>로 복사</td></tr>

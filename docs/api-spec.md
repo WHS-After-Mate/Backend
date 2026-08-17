@@ -1,4 +1,4 @@
-# WHS After Mate — API 명세서 (v0.8, MVP)
+# WHS After Mate — API 명세서 (v0.9, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
@@ -6,6 +6,8 @@
 v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화면) 검토 결과 기존 명세에 없던 화면 요소 9건을 반영. 아래 "v0.5에서 추가된 항목" 절 참고 — **서버 코드(`server/src`) 구현, DB 마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`) 적용, 데모 데이터 재시드까지 전부 완료되어 실제 Supabase 프로젝트에 반영된 상태다.**
 
 v0.8 변경: 다음 관리 추천(`/recommendations/next-care`)을 실제 사업장(엠레드/더나/윔) 시술 카탈로그 46종 기반으로 전면 교체. 아래 "v0.8 — 관리 추천을 실제 사업장 카탈로그 기반으로 교체" 절 참고.
+
+v0.9 변경: 회원가입 화면을 2페이지로 분리하는 프론트 요청에 맞춰 `POST /auth/signup/pre-check` 신규 — 1페이지(환자번호+이름+생년월일+전화번호)에서 계정 생성 없이 신원 일치 여부만 먼저 확인한다.
 
 범위:
 - 로그인은 **실제 계정** 기반 (이메일/비밀번호, access/refresh 토큰)
@@ -28,6 +30,7 @@ v0.8 변경: 다음 관리 추천(`/recommendations/next-care`)을 실제 사업
 
 | Method | Path | 구현 파일 |
 |---|---|---|
+| POST | `/auth/signup/pre-check` | `auth.routes.ts` *(v0.9, 회원가입 2페이지 분리용)* |
 | POST | `/auth/signup` | `auth.routes.ts` |
 | POST | `/auth/login` | `auth.routes.ts` |
 | POST | `/auth/refresh` | `auth.routes.ts` |
@@ -59,6 +62,24 @@ v0.8 변경: 다음 관리 추천(`/recommendations/next-care`)을 실제 사업
 ## 1. 인증 / 온보딩
 
 회원가입은 **병원(관리자용 admin-web/server_admin)에서 등록한 환자번호(patientNo) + 이름 + 생년월일 + 전화번호가 전부 일치해야만 가능하다** — 실제 시술 이력 없는 자유 가입은 막혀있다(별도 인증코드 발급 절차는 없음). 의료진(데스크)이 환자 방문 시 먼저 `emr_patients`에 환자 정보와 시술 이력을 입력해두면, 환자가 그 환자번호 + 본인 이름 + 생년월일 + 전화번호로 신원을 증명하고 앱 계정을 만드는 순서다. 로그인은 이메일/비밀번호만 사용한다.
+
+### POST /auth/signup/pre-check `(v0.9)`
+회원가입 화면을 2페이지로 나눌 때 1페이지(환자번호+이름+생년월일+전화번호)에서 신원 일치 여부만 먼저 확인하는 용도. 계정을 만들지 않고 `emr_patients` 조회만 한다(부수효과 없음, claim 안 함) — 이후 2페이지(이메일/비밀번호/관심목표)까지 받아 실제로 `POST /auth/signup`을 호출할 때 신원을 다시 한번 확인한다.
+
+**Request**
+```json
+{
+  "patientNo": "EMR-P-A1B2C3",
+  "name": "홍길동",
+  "birthDate": "1990-05-20",
+  "phone": "01011112222"
+}
+```
+**Response 200**
+```json
+{ "verified": true }
+```
+에러 코드는 `POST /auth/signup`과 동일 — `404 PATIENT_NOT_FOUND` / `409 PATIENT_ALREADY_CLAIMED` / `400 PATIENT_IDENTITY_MISMATCH`. 프론트가 두 단계에서 같은 에러 처리 로직을 재사용할 수 있다.
 
 ### POST /auth/signup
 환자번호+이름+생년월일+전화번호 일치 기반 회원가입. `phone`은 `emr_patients`에 등록된 원본과 정확히 같아야 하며(하이픈 없는 숫자 9~11자리, 관리자 쪽 환자 등록과 동일 포맷), 일치가 확인된 뒤에도 그대로 `patient.phone`(EMR 원본)을 `profiles`에 채운다 — 클라이언트가 입력한 값을 그대로 저장하는 게 아니라 신원확인 용도로만 쓴다. `interestGoals`는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 `PUT /profile/interests`로 언제든 바꿀 수 있음).
@@ -789,3 +810,13 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 - **하위호환 없음**: 이용권 기반 추천을 기대하던 기존 프론트 로직이 있다면 재검토 필요 — 특히 신규 고객이라도 관심 목표/최근 시술과 연관된 시술이 있으면 이용권 없이도 추천이 나올 수 있다(기존엔 불가능했음).
 - 실계정으로 라이브 검증 완료: 관심목표 "색소침착 개선" + 최근 시술 "울쎄라피 프라임"(엠레드) → "티타늄 리프팅" 추천(`basis: goal, recentCare`), 상세 응답의 `detailDescription`/`popularWithSimilarCustomers`/`clinicContacts` 전부 실데이터로 확인.
 - 참고: 같은 날 별도로 진행하던 관리자 웹(EMR 등록용) 담당의/사업장 연락처 작업(`014_add_treatment_description_clinic_info_doctors.sql`, `treatment_catalog`/`clinics`/`clinic_doctors`)은 이 변경과 별개이며 **보류 상태**(마이그레이션 미적용) — `admin-api-spec.md` 대상이며 이 문서(고객용 `server/`) 범위 밖.
+
+## v0.9 — 회원가입 1단계 신원 사전 확인 API 추가
+
+프론트가 회원가입 화면을 "환자번호+이름+생년월일+전화번호 확인" 1페이지와 "이메일+비밀번호+관심목표 입력" 2페이지로 분리하기로 결정 — 내용이 많아 한 화면에 다 넣기엔 복잡하다는 이유. 1페이지에서 신원이 틀렸는지를 바로 알려줘야 해서, 계정 생성 없이 신원 일치 여부만 확인하는 `POST /auth/signup/pre-check`를 신규 추가했다.
+
+- **DB 변경 없음** — 신규 마이그레이션 불필요. `emr_patients` 조회만 하고 아무것도 쓰지 않는다(claim 안 함, 계정 생성 안 함).
+- **구현**: `auth.service.ts`의 `signup()` 안에 있던 신원확인 로직(환자번호로 조회 → claim 여부 → 이름/생년월일/전화번호 대조)을 `checkPatientIdentity()`로 분리해 `signup()`과 `preCheckSignup()` 둘 다 재사용한다. 즉 신원확인 규칙은 한 곳에만 존재하고, pre-check와 실제 가입이 서로 다른 기준으로 판정될 여지가 없다.
+- **에러 코드는 `POST /auth/signup`과 완전히 동일**(`PATIENT_NOT_FOUND`/`PATIENT_ALREADY_CLAIMED`/`PATIENT_IDENTITY_MISMATCH`) — 프론트가 두 단계에서 같은 에러 처리 로직을 재사용할 수 있도록 의도적으로 맞췄다.
+- **부수효과 없음을 라이브로 검증** — 실제 환자(`EMR-P-A1C085`)로 정상 일치(200)/전화번호 불일치(400)/존재하지 않는 환자번호(404) 3가지 경로를 확인 후, pre-check 호출 전후로 `emr_patients.claimed_user_id`가 계속 `null`인 것을 재조회로 확인(claim이 실제로 안 일어남).
+- **주의**: pre-check를 통과했다고 2단계(실제 `POST /auth/signup`)가 반드시 성공하는 건 아니다 — 두 요청 사이에 다른 계정이 같은 환자번호로 먼저 가입하면(레이스 컨디션) 2단계에서 `409 PATIENT_ALREADY_CLAIMED`가 날 수 있다. 프론트는 2단계 실패도 여전히 처리해야 한다.

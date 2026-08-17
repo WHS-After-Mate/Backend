@@ -273,6 +273,7 @@ create table public.reference_guides (
 
 - `llm-prompt-design.md`의 "미확정 사항"이었던 "검수 가이드 저장 형식/위치"를 DB 테이블로 확정. daily-guide/questions 두 LLM 호출 지점 모두 이 테이블을 `care_type`+`days_elapsed` 구간으로 조회해 유일한 사실 근거로 주입
 - 정적 파일이 아닌 테이블로 택한 이유: 관리 유형×경과구간 조합이 적어(수십 건 이내) 운영 중 검수자가 직접 값을 수정하기 쉬움
+- **`reviewed_by`/`reviewed_at`가 코드에서 검사되지 않음** *(설계와 실제 구현의 괴리, 2026-08-17 발견)* — 컬럼은 있지만 daily-guide/questions 어느 서비스 코드도 이 값을 조회 조건에 넣지 않는다. 그 결과 이 테이블에 row만 있으면 검수 여부와 무관하게 LLM의 "검수된 사실 근거"로 그대로 쓰인다. v0.5에서 `treatment_catalog` 등록을 위해 추가한 5개 신규 care_type(`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`)은 실제로는 미검수 스텁 문구인데도 기존 검수 문구(`peeling`/`laser_toning`)와 구분 없이 동일하게 노출된다 — 프로덕션 전 반드시 처리 필요(`server/README.md` TODO 절)
 
 ### public.businesses — 실제 사업장 정보 *(v0.8 신설 015)*
 
@@ -374,7 +375,7 @@ create index idx_emr_care_records_patient on public.emr_care_records (patient_id
 create index idx_emr_care_records_membership on public.emr_care_records (membership_id);
 ```
 
-- 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문. `care_type`은 `reference_guides`와 매칭되는 값(현재 `peeling`/`laser_toning`)만 실제 일차별 가이드가 생성되고, 그 외 값은 클레임 후 `404 GUIDE_NOT_AVAILABLE`로 안전하게 폴백된다
+- 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문. `care_type`은 `reference_guides`와 매칭되는 값(현재 7종 — `peeling`/`laser_toning`/`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`, `(v0.5)`)만 실제 일차별 가이드가 생성되고, 그 외 값은 클레임 후 `404 GUIDE_NOT_AVAILABLE`로 안전하게 폴백된다. **주의**: 7종 중 `peeling`/`laser_toning`만 전문가 검수 문구고 나머지 5종은 미검수 스텁이다 — `reviewed_by`/`reviewed_at` 컬럼(아래 `reference_guides` 정의 참고)이 있지만 코드에서 실제로 검사되지 않아 검수 여부와 무관하게 전부 같은 방식으로 LLM에 근거로 주입된다(`server/README.md` TODO 절 참고)
 - `store` 컬럼은 v0.6(009)에서 제거됐다(순수 중복 컬럼, `care_records`와 동일한 이유)
 - `part_of_body` *(v0.6, 마이그레이션 012)*: 단일 텍스트에서 배열로 변경. 값은 `server_admin`이 정해진 목록(`GET /body-parts`) 안에서만 검증
 - `membership_id` *(v0.6, 마이그레이션 011)*: 이 시술기록이 어떤 이용권을 소비했는지 연결. 시술기록을 삭제할 때 그 이용권 차감을 자동으로 되돌리기 위해 추가(`server_admin/patients.service.ts`)

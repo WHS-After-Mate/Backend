@@ -183,8 +183,12 @@ app.ts
   조회하도록 강제하고, 조회할 때마다 `medical_data_access_log`에 "누가/언제/어떤 요청 컨텍스트로
   이 필드를 봤는지" 감사 로그를 남긴다 — 의료 인접 도메인이라는 특성을 반영한 설계.
 - **`services/referenceGuides.service.ts`**: `care_type` + `daysElapsed`로 검수 가이드 구간을
-  찾는 단순 lookup. 현재 시드 데이터는 `peeling`/`laser_toning` 2종뿐이라 다른 관리 유형은
-  404 `GUIDE_NOT_AVAILABLE`이 발생한다(확장 필요).
+  찾는 단순 lookup. `(v0.5)` 현재 시드 데이터는 7종(`peeling`/`laser_toning`/`energy_lifting`/
+  `botox`/`filler`/`skin_booster`/`hair_removal`)이라 이 7종 밖의 관리 유형만 404
+  `GUIDE_NOT_AVAILABLE`이 발생한다. **주의**: 7종 중 `peeling`/`laser_toning`만 전문가 검수
+  문구고 나머지 5종은 `treatment_catalog` 등록을 위해 추가한 미검수 스텁이다 — `reviewed_by`
+  컬럼이 있지만 이 서비스가 검사하지 않아 검수 여부와 무관하게 동일하게 조회된다(`server/README.md`
+  TODO 절 참고).
 
 ---
 

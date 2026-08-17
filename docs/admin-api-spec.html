@@ -594,14 +594,14 @@
           <span class="note">D 화면의 careType select용</span>
         </div>
         <div class="endpoint-body">
-          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careType</span>은 관리자가 자유 입력하는 값이 아니라, 전문가 검수를 거쳐 <span class="mono">reference_guides</span>에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 <span class="mono">/aftercare/daily-guide</span>가 항상 응답 가능함이 보장됨). 클리닉 공통 자료라 브랜드 격리 대상이 아니다.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careType</span>은 관리자가 자유 입력하는 값이 아니라, <span class="mono">reference_guides</span>에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 <span class="mono">/aftercare/daily-guide</span>가 항상 응답 가능함이 보장됨). 클리닉 공통 자료라 브랜드 격리 대상이 아니다.</p>
           <div>
             <div class="block-label">DB</div>
             <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">reference_guides</span> <b>SELECT</b> — <span class="mono">care_type</span> 컬럼만 조회해서 중복 제거 후 정렬. <span class="mono">brand</span> 조건 없이 테이블 전체 대상(공용 자료라서).</p>
           </div>
           <details class="example">
             <summary>예시 JSON</summary>
-            <pre>{ "careTypes": ["laser_toning", "peeling"] }</pre>
+            <pre>{ "careTypes": ["botox", "energy_lifting", "filler", "hair_removal", "laser_toning", "peeling", "skin_booster"] }</pre>
           </details>
           <div class="table-wrap">
             <table>
@@ -611,7 +611,7 @@
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">현재 검수 등록된 값은 <span class="mono">peeling</span>/<span class="mono">laser_toning</span> 2개뿐 — 리프팅류(울쎄라 등)는 아직 검수된 가이드가 없어 이 목록에 없다.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">현재 등록된 값은 7개(<span class="mono">peeling</span>/<span class="mono">laser_toning</span>/<span class="mono">energy_lifting</span>/<span class="mono">botox</span>/<span class="mono">filler</span>/<span class="mono">skin_booster</span>/<span class="mono">hair_removal</span>) <span class="done-badge">v0.5</span>. <b>주의</b>: 전부 전문가 검수를 마친 건 아니다 — <span class="mono">peeling</span>/<span class="mono">laser_toning</span>만 기존 검수 문구이고 나머지 5종은 2026-08-17에 <span class="mono">treatment_catalog</span> 등록을 위해 추가한 미검수 스텁이다(<span class="mono">server/README.md</span> TODO 절 참고). <span class="mono">reference_guides.reviewed_by</span>가 코드에서 실제로 검사되지 않아 이 목록만으로는 검수 여부를 구분할 수 없다.</p>
         </div>
       </div>
 

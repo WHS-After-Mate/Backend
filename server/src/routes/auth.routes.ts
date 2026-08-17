@@ -8,6 +8,7 @@ import {
   passwordResetRequestSchema,
   passwordResetVerifySchema,
   refreshSchema,
+  signupPreCheckSchema,
   signupSchema,
 } from "../validators/auth.validators";
 
@@ -17,6 +18,18 @@ import {
 // 시술 이력 없는 계정 방지).
 
 export const authRouter = Router();
+
+// 회원가입 1단계(2페이지 분리, 프론트 요청) — 환자번호+이름+생년월일+전화번호 일치 여부만 먼저
+// 확인한다. 계정을 만들지 않는다(부수효과 없음) — 2단계(POST /signup)에서 이메일/비밀번호까지
+// 받아 실제로 계정을 만들 때 신원을 다시 한번 확인한다.
+authRouter.post(
+  "/signup/pre-check",
+  asyncHandler(async (req, res) => {
+    const input = signupPreCheckSchema.parse(req.body);
+    await authService.preCheckSignup(input);
+    res.status(200).json({ verified: true });
+  }),
+);
 
 // 회원가입: 환자번호+이름+생년월일+전화번호 일치 확인으로 emr_patients를 claim하며 이메일/비밀번호 계정 생성
 authRouter.post(

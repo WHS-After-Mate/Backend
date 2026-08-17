@@ -15,6 +15,16 @@ export const signupSchema = z.object({
   interestGoals: z.array(z.string().min(1)).default([]),
 });
 
+// 회원가입 1단계(2페이지 분리) — 환자번호+이름+생년월일+전화번호 일치 여부만 먼저 확인한다.
+// signupSchema에서 이메일/비밀번호/관심목표를 뺀 부분집합이라 pick으로 파생시켜 필드 정의가
+// 어긋나지 않게 한다.
+export const signupPreCheckSchema = signupSchema.pick({
+  patientNo: true,
+  name: true,
+  birthDate: true,
+  phone: true,
+});
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
