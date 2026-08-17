@@ -55,3 +55,12 @@ export const createCareRecordSchema = z
 export const listPatientsQuerySchema = z.object({
   search: z.string().optional(),
 });
+
+// 미지정 시 오늘(KST) — getVisitStats의 어제/오늘/내일 카드 중 하나를 클릭해 그 날짜의
+// 예약(=그 날짜 careDate를 가진 시술기록) 목록을 펼쳐보는 용도.
+export const listReservationsQuerySchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});

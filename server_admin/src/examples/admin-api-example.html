@@ -235,6 +235,24 @@
     <pre id="visitStatsResult">(아직 실행 안 함)</pre>
   </div>
 
+  <h2>G. 예약 목록/취소 — GET /reservations?date= + DELETE /care-records/:careRecordId</h2>
+  <p class="desc">
+    F(<code>visit-stats</code>)는 날짜별 <b>건수</b>만 알려준다 — "누구를 취소할지" 고르려면 개별 항목이
+    필요한데, 그게 이 <code>GET /reservations</code>다. 날짜를 비우면 오늘(KST) 기준으로 조회한다.
+    각 행의 "취소" 버튼은 별도 "취소" API가 아니라 위 D에서 쓴 것과 똑같은
+    <code>DELETE /care-records/:careRecordId</code>를 그 행의 <code>careRecordId</code>로 호출할 뿐이다
+    (이용권 환불도 그 로직 그대로 적용됨) — 취소 후 목록이 자동으로 다시 조회된다.
+  </p>
+
+  <label>date (비우면 오늘)</label>
+  <input id="reservationDate" type="date" />
+
+  <button id="loadReservationsBtn">예약 목록 조회 — GET /reservations</button>
+  <div class="step">
+    <span id="reservationsStatus" class="status"></span>
+    <div id="reservationsResult" class="scroll-box">(아직 실행 안 함)</div>
+  </div>
+
 <script>
   // ================================================================================
   // 이 페이지 전체의 동작 원리 (처음 보는 사람을 위한 요약)
@@ -704,6 +722,84 @@
       setResult(resultEl, statusEl, res.ok, data);
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
+    }
+  });
+
+  // ============================================================
+  // G: 예약 목록/취소 — GET /reservations?date= 로 목록을 받아 표로 그리고,
+  // 각 행의 "취소" 버튼은 그 행의 careRecordId로 D와 똑같은 DELETE /care-records/:careRecordId를 호출한다.
+  // 별도의 "예약 취소" 엔드포인트는 없다 — 취소=삭제, 이용권 환불까지 기존 로직이 그대로 처리한다.
+  // ============================================================
+
+  // items 배열을 careRecordId·환자명·전화번호·관리명·날짜·source·취소버튼 열의 <table>로 그린다.
+  // 취소 버튼엔 data-care-record-id 속성에 id를 그대로 심어두고, 클릭 이벤트는 이 함수가 아니라
+  // 아래 reservationsResult 컨테이너에 한 번만 걸어둔 이벤트 위임(delegation)으로 처리한다
+  // (행이 새로 그려질 때마다 매번 리스너를 다시 붙일 필요가 없어서 더 간단하다).
+  function renderReservationList(items) {
+    if (items.length === 0) return "(해당 날짜에 예약이 없습니다)";
+    const rows = items
+      .map(
+        (item) => `<tr>
+          <td>${escapeHtml(item.patientName ?? "—")}</td>
+          <td>${escapeHtml(item.phone ?? "—")}</td>
+          <td>${escapeHtml(item.careName)}</td>
+          <td>${escapeHtml(item.careDate)}</td>
+          <td>${escapeHtml(item.source)}</td>
+          <td><button class="danger cancel-reservation-btn" data-care-record-id="${escapeHtml(item.careRecordId)}">취소</button></td>
+        </tr>`,
+      )
+      .join("");
+    return `<table class="patient-list"><thead><tr><th>환자이름</th><th>전화번호</th><th>관리명</th><th>날짜</th><th>source</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  async function loadReservations() {
+    const resultEl = $("reservationsResult");
+    const statusEl = $("reservationsStatus");
+    const date = $("reservationDate").value; // 비어있으면 서버가 오늘(KST)로 기본 처리
+    const url = adminUrl("/reservations") + (date ? `?date=${date}` : "");
+
+    try {
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json();
+      statusEl.textContent = res.ok ? "성공" : "실패";
+      statusEl.className = "status " + (res.ok ? "ok" : "err");
+      resultEl.innerHTML = res.ok ? renderReservationList(data.items ?? []) : escapeHtml(JSON.stringify(data));
+    } catch (err) {
+      statusEl.textContent = "실패";
+      statusEl.className = "status err";
+      resultEl.textContent = String(err);
+    }
+  }
+
+  $("loadReservationsBtn").addEventListener("click", loadReservations);
+
+  // 이벤트 위임: reservationsResult 안에서 발생하는 클릭을 전부 여기서 받아, 실제로 클릭된
+  // 요소(e.target)가 취소 버튼인지 closest()로 확인한다 — renderReservationList가 매번
+  // 새 <button>을 새로 그려도(=innerHTML 교체) 이 리스너 하나로 전부 대응된다.
+  $("reservationsResult").addEventListener("click", async (e) => {
+    const btn = e.target.closest(".cancel-reservation-btn");
+    if (!btn) return;
+    const careRecordId = btn.dataset.careRecordId;
+    btn.disabled = true;
+    btn.textContent = "취소 중...";
+
+    try {
+      const res = await fetch(adminUrl(`/care-records/${careRecordId}`), {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (res.status === 204 || res.ok) {
+        loadReservations(); // 목록을 다시 불러와 방금 취소한 예약이 사라졌는지 바로 확인
+        return;
+      }
+      const data = await res.json();
+      alert("취소 실패: " + JSON.stringify(data));
+      btn.disabled = false;
+      btn.textContent = "취소";
+    } catch (err) {
+      alert("취소 실패: " + String(err));
+      btn.disabled = false;
+      btn.textContent = "취소";
     }
   });
 </script>

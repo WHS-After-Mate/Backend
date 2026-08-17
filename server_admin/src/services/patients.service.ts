@@ -555,3 +555,63 @@ export async function getVisitStats(brand: string) {
   }
   return result;
 }
+
+// 특정 날짜(미지정 시 오늘)의 예약(=그 날짜 careDate를 가진 시술기록) 목록 — 대시보드의
+// 어제/오늘/내일 카드를 클릭해 "누구를 예약 취소할지" 고를 수 있도록 careRecordId까지 내려준다.
+// 실제 취소는 이 목록에서 careRecordId를 골라 기존 DELETE /care-records/:careRecordId를 그대로 쓴다
+// (별도 "취소" 엔드포인트 없음 — 취소=삭제, 이용권 환불까지 기존 로직이 그대로 처리).
+export async function listReservations(brand: string, date?: string) {
+  const targetDate = date ?? kstDateString(0);
+
+  const [{ data: emrRows, error: emrError }, { data: appRows, error: appError }] = await Promise.all([
+    supabaseAdmin
+      .from("emr_care_records")
+      .select("id, care_name, care_date, patient:emr_patients(name, phone)")
+      .eq("brand", brand)
+      .eq("care_date", targetDate)
+      .returns<
+        { id: string; care_name: string; care_date: string; patient: { name: string; phone: string } | null }[]
+      >(),
+    supabaseAdmin
+      .from("care_records")
+      .select("id, care_name, care_date, user_id")
+      .eq("brand", brand)
+      .eq("care_date", targetDate)
+      .returns<{ id: string; care_name: string; care_date: string; user_id: string }[]>(),
+  ]);
+  if (emrError) throw Errors.internal(emrError.message);
+  if (appError) throw Errors.internal(appError.message);
+
+  // care_records.user_id는 profiles와 직접 FK 임베드가 안 돼(둘 다 auth.users만 참조) 별도 조회 후 병합.
+  const appUserIds = [...new Set((appRows ?? []).map((r) => r.user_id))];
+  const profilesById = new Map<string, { name: string; phone: string | null }>();
+  if (appUserIds.length > 0) {
+    const { data: profiles, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("user_id, name, phone")
+      .in("user_id", appUserIds);
+    if (profileError) throw Errors.internal(profileError.message);
+    for (const p of profiles ?? []) profilesById.set(p.user_id, { name: p.name, phone: p.phone });
+  }
+
+  const items = [
+    ...(emrRows ?? []).map((r) => ({
+      careRecordId: r.id,
+      careName: r.care_name,
+      careDate: r.care_date,
+      patientName: r.patient?.name ?? null,
+      phone: r.patient?.phone ?? null,
+      source: "emr" as const,
+    })),
+    ...(appRows ?? []).map((r) => ({
+      careRecordId: r.id,
+      careName: r.care_name,
+      careDate: r.care_date,
+      patientName: profilesById.get(r.user_id)?.name ?? null,
+      phone: profilesById.get(r.user_id)?.phone ?? null,
+      source: "app" as const,
+    })),
+  ];
+
+  return { date: targetDate, items };
+}

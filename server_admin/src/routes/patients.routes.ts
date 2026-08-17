@@ -5,6 +5,7 @@ import {
   createCareRecordSchema,
   createPatientSchema,
   listPatientsQuerySchema,
+  listReservationsQuerySchema,
   updatePatientSchema,
 } from "../validators/patients.validators";
 
@@ -106,5 +107,16 @@ patientsRouter.get(
   asyncHandler(async (req, res) => {
     const stats = await patientsService.getVisitStats(req.admin!.brand);
     res.status(200).json(stats);
+  }),
+);
+
+// visit-stats 카드(어제/오늘/내일)를 클릭했을 때 그 날짜의 예약 목록(careRecordId 포함)을 보여준다 —
+// 예약 취소는 여기서 careRecordId를 골라 기존 DELETE /care-records/:careRecordId를 그대로 호출하면 된다.
+patientsRouter.get(
+  "/reservations",
+  asyncHandler(async (req, res) => {
+    const { date } = listReservationsQuerySchema.parse(req.query);
+    const result = await patientsService.listReservations(req.admin!.brand, date);
+    res.status(200).json(result);
   }),
 );

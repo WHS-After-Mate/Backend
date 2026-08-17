@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.3)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.4)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.4 변경: 예약 취소 기능 구현 — `GET /reservations?date=`(신규) 엔드포인트로 특정 날짜(미지정 시 오늘)에 `careDate`가 잡힌 시술기록(=예약)을 `careRecordId`·환자명·전화번호와 함께 목록 조회할 수 있게 됐다. `visit-stats`의 전날/금일/익일 카드를 클릭해 "이 날짜에 누가 예약돼 있는지" 확인한 뒤, 실제 취소는 그 목록에서 얻은 `careRecordId`로 기존 `DELETE /care-records/{careRecordId}`를 그대로 호출한다(별도 "취소" 엔드포인트 없음 — 취소는 삭제와 동일하게 처리되고 이용권 환불도 기존 로직 그대로 적용됨). 자세한 내용은 하단 "4. 통계" 절 참고.
 
 v0.3 변경: 관리자 웹 프로토타입(`docs/WHS_After_Mate_Admin_revised.html`)의 치료-부위 카탈로그 방식을 도입 — ① 치료명→기본 careType/관리 부위를 매핑하는 `treatment_catalog` 테이블과 관리자 CRUD API 신규(`GET`/`POST`/`PATCH`/`DELETE /treatment-catalog`, 클리닉 공통 자료) ② 이용권 만료일(`expires_at`) 실제 계산·적용 — 생성일(=첫 시술일) 기준 +1년, 만료된 이용권은 차감 시 `409 MEMBERSHIP_EXPIRED`로 거부 ③ `totalSessions`(직접입력)로 시술기록을 추가할 때 같은 치료명+같은 횟수권의 기존 이용권이 아직 유효하면 새로 만들지 않고 자동으로 이어서 차감(응답의 `membershipCreated`로 신규 생성 여부 구분) — 자세한 내용은 하단 "2. 치료-부위 카탈로그", "3. 시술기록 / 이용권" 절 참고.
 
@@ -39,6 +41,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | POST | `/patients/{patientId}/care-records` | 필요 | 시술기록 추가 (이용권 처리 포함, 회원가입 여부 무관) |
 | DELETE | `/care-records/{careRecordId}` | 필요 | 시술기록 삭제 (이용권 정리 포함) |
 | GET | `/visit-stats` | 필요 | 전날/금일 방문 + 익일 예약 고객 수 |
+| GET | `/reservations?date=` | 필요 | 특정 날짜(미지정 시 오늘)의 예약 목록 (예약 취소 대상 조회용) |
 
 별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(아래 3절 참고). 치료-부위 카탈로그(`treatment_catalog`)는 이용권과 별개로, 치료명 선택 시 careType/관리 부위 후보를 자동 제안하기 위한 참조 데이터일 뿐이다(아래 2절 참고) — 시술기록 저장 자체는 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다(카탈로그로 강제 대체하지 않음).
 
@@ -519,7 +522,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 - `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`가 전날/금일/익일 중 하나) + `emr_patients` 조인 — `patient_id`, `care_date`, `patient.claimed_user_id`
 - `care_records` **SELECT** (`brand`=로그인 클리닉, 같은 날짜 조건) — `user_id`, `care_date`
 - 날짜별로 두 결과를 하나의 "신원 집합"으로 합친다: `emr_care_records` 쪽은 이미 회원가입한 환자면 `claimed_user_id`로, 아직이면 `patient_id`로 식별값을 만들고, `care_records` 쪽은 `user_id`를 그대로 쓴다. 같은 날 "가입 전 방문 기록(emr)"과 "가입 후 방문 기록(app)"이 같은 사람 걸로 둘 다 있어도(당일 가입 케이스) `claimed_user_id`로 환산되어 하나로 합쳐지므로 중복 집계되지 않는다.
-- **"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 그대로 재사용한다** — `POST .../care-records`의 `careDate`가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 취소 기능은 아직 미구현(추후 앱 연동과 함께 별도 작업 예정).
+- **"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 그대로 재사용한다** — `POST .../care-records`의 `careDate`가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 각 날짜별 예약 목록·취소는 아래 `GET /reservations` 참고(v0.4).
 
 **Response 200**
 ```json
@@ -536,6 +539,42 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | `.count` | number | 그 날짜에 방문(또는 예약)한 고객 수(중복 제거) |
 
 **에러**: 없음(빈 결과여도 `count: 0`으로 정상 응답, 인증 실패 시의 공통 401만 해당)
+
+### GET /reservations?date= (v0.4)
+특정 날짜에 `careDate`가 잡힌 로그인 클리닉의 시술기록(=예약) 목록을 `careRecordId`와 함께 반환한다. `date` 미지정 시 오늘(KST). `visit-stats`가 날짜별 **건수**만 알려주는 것과 달리, 이 엔드포인트는 "누구를 취소할지" 고를 수 있도록 개별 항목을 내려준다 — **예약 취소 자체는 별도 엔드포인트가 아니라, 여기서 얻은 `careRecordId`로 기존 `DELETE /care-records/{careRecordId}`를 그대로 호출**하면 된다(위 3절 참고 — 삭제 시 이용권도 함께 환불됨).
+
+**DB**
+- `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`=대상 날짜) + `emr_patients` 조인 — `id`, `care_name`, `care_date`, `patient.name`, `patient.phone`
+- `care_records` **SELECT** (같은 조건) — `id`, `care_name`, `care_date`, `user_id`
+- `care_records`는 `profiles`와 직접 FK 임베드가 안 돼(둘 다 `auth.users`만 참조) `user_id` 목록으로 `profiles`를 별도 조회한 뒤 애플리케이션 레벨에서 병합
+
+**Response 200**
+```json
+{
+  "date": "2026-08-18",
+  "items": [
+    {
+      "careRecordId": "uuid",
+      "careName": "토닝 레이저",
+      "careDate": "2026-08-18",
+      "patientName": "홍길동",
+      "phone": "01012345678",
+      "source": "emr"
+    }
+  ]
+}
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `date` | string | 조회 기준 날짜(`YYYY-MM-DD`, KST) |
+| `items[].careRecordId` | string(uuid) | `DELETE /care-records/{careRecordId}`에 그대로 사용 |
+| `items[].careName` | string | |
+| `items[].careDate` | string | |
+| `items[].patientName` | string \| null | 회원가입 완료 환자인데 `profiles`에서 못 찾은 등 예외 상황에서만 `null` |
+| `items[].phone` | string \| null | 위와 동일 |
+| `items[].source` | string | `"emr"`(미가입) \| `"app"`(가입 완료) |
+
+**에러**: 없음(빈 결과여도 `items: []`로 정상 응답, 인증 실패 시의 공통 401만 해당)
 
 ---
 

@@ -467,13 +467,14 @@
     <h1>관리자 API 명세서</h1>
     <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(3절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
     <div class="badges">
-      <span class="badge">v0.3</span>
+      <span class="badge">v0.4</span>
       <span class="badge outline">클리닉 로그인 3계정</span>
       <span class="badge outline">시술기록↔이용권 1:1</span>
       <span class="badge outline">브랜드 격리(404)</span>
       <span class="badge outline">전날/금일 방문 + 익일 예약</span>
       <span class="badge outline">치료-부위 카탈로그</span>
       <span class="badge outline">이용권 만료/자동 이어쓰기</span>
+      <span class="badge outline">예약 취소</span>
     </div>
     <div class="infobar">
       <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
@@ -524,6 +525,7 @@
             <tr><td><span class="method post">POST</span></td><td class="mono">/patients/{patientId}/care-records</td><td>필요</td><td>시술기록 추가(이용권 처리 포함, 회원가입 여부 무관)</td></tr>
             <tr><td><span class="method delete">DELETE</span></td><td class="mono">/care-records/{careRecordId}</td><td>필요</td><td>시술기록 삭제(이용권 정리 포함)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/visit-stats</td><td>필요</td><td>전날/금일 방문 + 익일 예약 고객 수</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/reservations?date=</td><td>필요</td><td>특정 날짜(미지정 시 오늘)의 예약 목록(취소 대상 조회용)</td></tr>
           </tbody>
         </table>
       </div>
@@ -1128,7 +1130,7 @@
               <li><span class="mono">emr_care_records</span> <b>SELECT</b> (<span class="mono">brand</span>=로그인 클리닉, <span class="mono">care_date</span>가 전날/금일/익일 중 하나) + <span class="mono">emr_patients</span> 조인 — <span class="mono">patient_id, care_date, patient.claimed_user_id</span></li>
               <li><span class="mono">care_records</span> <b>SELECT</b> (<span class="mono">brand</span>=로그인 클리닉, 같은 날짜 조건) — <span class="mono">user_id, care_date</span></li>
               <li>날짜별로 두 결과를 하나의 "신원 집합"으로 합친다: <span class="mono">emr_care_records</span> 쪽은 이미 회원가입한 환자면 <span class="mono">claimed_user_id</span>로, 아직이면 <span class="mono">patient_id</span>로 식별값을 만들고, <span class="mono">care_records</span> 쪽은 <span class="mono">user_id</span>를 그대로 쓴다. 같은 날 "가입 전 방문 기록(emr)"과 "가입 후 방문 기록(app)"이 같은 사람 걸로 둘 다 있어도(당일 가입 케이스) <span class="mono">claimed_user_id</span>로 환산되어 하나로 합쳐지므로 중복 집계되지 않는다.</li>
-              <li><b>"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 재사용한다</b> — <span class="mono">POST .../care-records</span>의 <span class="mono">careDate</span>가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 취소 기능은 아직 미구현(추후 앱 연동과 함께 별도 작업 예정).</li>
+              <li><b>"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 재사용한다</b> — <span class="mono">POST .../care-records</span>의 <span class="mono">careDate</span>가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 각 날짜별 예약 목록·취소는 아래 <span class="mono">GET /reservations</span> 참고(v0.4).</li>
             </ul>
           </div>
           <div>
@@ -1153,6 +1155,58 @@
             </div>
           </div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);">에러: 없음(빈 결과여도 <span class="mono">count: 0</span>으로 정상 응답, 인증 실패 시의 공통 401만 해당)</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/reservations?date=</span>
+          <span class="note">예약 목록 + 취소 대상 조회 <span class="done-badge">v0.4</span></span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">특정 날짜에 <span class="mono">careDate</span>가 잡힌 로그인 클리닉의 시술기록(=예약) 목록을 <span class="mono">careRecordId</span>와 함께 반환한다. <span class="mono">date</span> 미지정 시 오늘(KST). <span class="mono">visit-stats</span>가 날짜별 <b>건수</b>만 알려주는 것과 달리, 이 엔드포인트는 "누구를 취소할지" 고를 수 있도록 개별 항목을 내려준다 — <b>예약 취소 자체는 별도 엔드포인트가 아니라, 여기서 얻은 <span class="mono">careRecordId</span>로 기존 <span class="mono">DELETE /care-records/{careRecordId}</span>를 그대로 호출</b>하면 된다(위 3절 참고 — 삭제 시 이용권도 함께 환불됨).</p>
+          <div>
+            <div class="block-label">DB</div>
+            <ul style="margin:0; padding-left:20px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+              <li><span class="mono">emr_care_records</span> <b>SELECT</b> (<span class="mono">brand</span>=로그인 클리닉, <span class="mono">care_date</span>=대상 날짜) + <span class="mono">emr_patients</span> 조인 — <span class="mono">id, care_name, care_date, patient.name, patient.phone</span></li>
+              <li><span class="mono">care_records</span> <b>SELECT</b> (같은 조건) — <span class="mono">id, care_name, care_date, user_id</span></li>
+              <li><span class="mono">care_records</span>는 <span class="mono">profiles</span>와 직접 FK 임베드가 안 돼(둘 다 <span class="mono">auth.users</span>만 참조) <span class="mono">user_id</span> 목록으로 <span class="mono">profiles</span>를 별도 조회한 뒤 애플리케이션 레벨에서 병합</li>
+            </ul>
+          </div>
+          <div>
+            <div class="block-label">Response 200</div>
+            <details class="example">
+              <summary>예시 JSON</summary>
+              <pre>{
+  "date": "2026-08-18",
+  "items": [
+    {
+      "careRecordId": "uuid",
+      "careName": "토닝 레이저",
+      "careDate": "2026-08-18",
+      "patientName": "홍길동",
+      "phone": "01012345678",
+      "source": "emr"
+    }
+  ]
+}</pre>
+            </details>
+            <div class="table-wrap" style="margin-top:8px;">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">date</td><td class="mono">string</td><td>조회 기준 날짜(<span class="mono">YYYY-MM-DD</span>, KST)</td></tr>
+                  <tr><td class="mono">items[].careRecordId</td><td class="mono">string(uuid)</td><td><span class="mono">DELETE /care-records/{careRecordId}</span>에 그대로 사용</td></tr>
+                  <tr><td class="mono">items[].careName</td><td class="mono">string</td><td></td></tr>
+                  <tr><td class="mono">items[].careDate</td><td class="mono">string</td><td></td></tr>
+                  <tr><td class="mono">items[].patientName</td><td class="mono">string | null</td><td>회원가입 완료 환자인데 <span class="mono">profiles</span>에서 못 찾은 등 예외 상황에서만 <span class="mono">null</span></td></tr>
+                  <tr><td class="mono">items[].phone</td><td class="mono">string | null</td><td>위와 동일</td></tr>
+                  <tr><td class="mono">items[].source</td><td class="mono">string</td><td><span class="mono">"emr"</span>(미가입) | <span class="mono">"app"</span>(가입 완료)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">에러: 없음(빈 결과여도 <span class="mono">items: []</span>로 정상 응답, 인증 실패 시의 공통 401만 해당)</p>
         </div>
       </div>
     </section>
@@ -1226,6 +1280,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · server_admin 관리자 API · v0.3 · 2026-08-16</footer>
+    <footer>WHS After Mate · server_admin 관리자 API · v0.4 · 2026-08-17</footer>
   </main>
 </div>

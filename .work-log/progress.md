@@ -1,3 +1,30 @@
+## 2026-08-17 (2, 신규 세션)
+- 새 세션 시작, work-log 브리핑 후 사용자가 "예약 취소 구현해야 돼"라고 요청
+- AskUserQuestion으로 두 가지 확인: 구현 위치(고객 앱 vs 관리자 웹) → "관리자 웹" 선택, 취소 시 데이터 처리(소프트 취소 vs 완전 삭제) → "완전 삭제(기존 방식과 동일)" 선택
+- 조사 결과 기존 `DELETE /care-records/:careRecordId`가 이미 "예약"(미래 careDate 시술기록) 삭제+이용권 환불을 처리하고 있었음(admin-web 프로토타입 미구현 상태로만 남아있었음) — 실제로 빠진 건 "어느 careRecordId를 지울지 찾는 목록 조회" 하나뿐이었다고 판단
+- **`GET /reservations?date=` 신규 구현** — `server_admin/src/services/patients.service.ts`(`listReservations`), `routes/patients.routes.ts`, `validators/patients.validators.ts`(`listReservationsQuerySchema`). 특정 날짜(미지정 시 오늘 KST)의 예약을 `careRecordId`+환자명+전화번호+source(emr/app)와 함께 반환. `emr_care_records`는 `emr_patients` FK 임베드로, `care_records`는 `profiles`와 직접 FK가 없어 `user_id`로 별도 조회 후 JS에서 병합(`getVisitStats`와 동일한 `kstDateString` 패턴 재사용)
+- `npm run typecheck`/`build` 통과 확인
+- 실서버(4100) 기동 후 curl로 테스트 환자 등록 → 내일 날짜(`2026-08-18`) 시술기록(예약) 생성 → `GET /reservations?date=2026-08-18`로 careRecordId 확인 → 기존 `DELETE /care-records/:careRecordId`로 취소 → 목록에서 사라짐까지 종단 검증. 테스트 환자(서비스role 스크립트)/시술기록/이용권 전부 정리, 서버 종료
+- `docs/admin-api-spec.md`/`.html`(v0.3→v0.4): 엔드포인트 요약 표, "4. 통계" 절에 `GET /reservations` 신규 섹션, 배지 추가, 푸터 버전 갱신. `server_admin/README.md`: 엔드포인트 표 갱신 + "예약 취소 기능 미구현" 항목 제거. `server_admin/src/examples/admin-api-example.html`: "G. 예약 목록/취소" 섹션 신규(목록 테이블 렌더링 + 이벤트 위임으로 행별 취소 버튼 처리, 취소 성공 시 자동 재조회)
+- HTML 태그(`<table>`/`</table>`, `<section>`, `.endpoint-card`) 개수 대조로 admin-api-spec.html 균형 확인
+- claude-in-chrome 브라우저 확장이 연결 안 돼 있어 admin-api-example.html의 실제 클릭 동작은 브라우저로 검증 못 함 — 대신 `node --check`로 인라인 스크립트 문법 확인 + curl로 확인한 실제 API 응답 형태와 JS가 참조하는 필드명(`item.patientName`/`item.phone`/`item.careName`/`item.careDate`/`item.source`/`item.careRecordId`)이 정확히 일치하는지 대조
+- 작업 중 생성한 임시 스크립트(`cleanup-test-patient.mjs`, `extracted-script.js`) 전부 삭제 확인. 스크립트 경로 문제로 스크래치패드에 잘못 남았던 파일(`Users...extracted-script.js`)도 발견해 삭제
+- 사용자가 "예약이 내일뿐만 아니라 다른 날도 취소 가능하지?" 질문 → `GET /reservations`가 `date` 쿼리파라미터로 임의의 날짜를 그대로 받고(미래/오늘/과거 제한 없음), 취소에 쓰는 `DELETE /care-records/:careRecordId`도 날짜 조건이 전혀 없다는 점을 코드 근거로 확인해 답변
+- 사용자가 커밋+푸시 요청 → work-log(`current.md`/`progress.md`) 갱신 후 진행 예정
+
+## 2026-08-17
+- 새 세션 시작, work-log 브리핑
+- 사용자가 "관리자 페이지 환자 등록은 이름+생년월일+전화번호 중복 판정을 하는데, 사용자 앱은 전화번호를 안 받는 것 같다"고 질문 → `docs/api-spec.md`/`admin-api-spec.md` 확인해 v0.6 설계 의도(전화번호는 EMR 원본을 그대로 신뢰, 클라이언트 재입력 안 받음)를 설명, 두 "등록" 흐름(관리자 환자 등록 vs 앱 회원가입 EMR claim)이 다르다는 것 정리해 답변
+- 사용자가 "전화번호까지 체크하도록 수정하자"고 결정 → `POST /auth/signup` 신원확인을 patientNo+이름+생년월일 3종에서 4종(+전화번호)으로 강화
+  - `server/src/validators/auth.validators.ts`: `signupSchema`에 `phone: z.string().regex(/^\d{9,11}$/)` 추가(관리자 쪽 포맷과 동일하게 맞춤)
+  - `server/src/services/auth.service.ts`: `signup()` 신원확인 조건에 `patient.phone !== input.phone` 추가
+  - `server/src/lib/errors.ts`/`server/src/routes/auth.routes.ts` 메시지·주석 갱신
+  - tsc 타입체크 통과 확인
+- `docs/api-spec.md`/`.html`에 v0.7 반영: §1 설명, `POST /auth/signup` 요청 필드·에러 표, 에러 코드 표, v0.7 체인지로그 신규 절, 목차/배지/푸터 버전 갱신
+- 아티팩트("WHS After Mate — API 명세서", `5cf6ed55-908b-4567-aa90-6357b35c52b6`) WebFetch로 최신본 확인 후 재발행
+- 사용자 요청으로 commit+push — auth 관련 서버 파일 4개 + `docs/api-spec.md`/`.html`만 스테이징(세션 시작 시점부터 있던 미추적 파일 `docs/AAC_클리닉_자산_조사.docx`, `docs/WHS_After_Mate_Admin_revised.html`은 이번 작업과 무관해 제외), commit+push (`13d2d76`)
+- work-log 정리 — `/기록저장`으로 저장
+
 ## 2026-08-16 (4, 이어서)
 - (이어서) 사용자가 "프로토타입을 따라갈 경우 생길 변수는?" 질문 → 4가지(careType 이중화 위험, 만료일 개념 부재, 자동 회차 매칭 오차 위험, 정적 카탈로그를 DB로 옮길 필요성) 설명하며 해커톤 범위엔 부담이 크다는 의견 제시 → 사용자가 "프로토타입을 따라가자. 2번(만료+차감 차단), 3번(자동 이어쓰기), 4번(새 테이블)"으로 명확히 결정
   - 구현 전 AskUserQuestion으로 3가지 확인: 카탈로그 클리닉별 vs 공통 → **전체 공통**, 만료 기준일(생성일+1년 vs 최근 시술일+1년 매번 갱신) → **생성일(첫 시술일)+1년 고정**, 카탈로그 관리 방식(시드만 vs 관리자 CRUD) → **관리자 CRUD API까지 구현**
