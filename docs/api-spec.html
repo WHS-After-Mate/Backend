@@ -467,7 +467,8 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 Anthropic Claude API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다), 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.9</span>
+      <span class="badge">v0.10</span>
+      <span class="badge outline">다중 클리닉 자동 연결(형제 행 일괄 claim)</span>
       <span class="badge outline">회원가입 2페이지 분리 — 신원 사전 확인 API</span>
       <span class="badge outline">관리 추천 실제 사업장 카탈로그(46종) 기반 전면 교체</span>
       <span class="badge outline">환자번호+이름+생년월일+전화번호 기반 회원가입(가상 EMR)</span>
@@ -497,6 +498,7 @@
     <a href="#v07new">v0.7 — 회원가입 신원확인에 전화번호 추가</a>
     <a href="#v08new">v0.8 — 관리 추천 실제 사업장 카탈로그 기반 교체</a>
     <a href="#v09new">v0.9 — 회원가입 신원 사전 확인 API</a>
+    <a href="#v10new">v0.10 — 다중 클리닉 자동 연결</a>
     <a href="#open">미확정 사항</a>
   </nav>
 
@@ -593,6 +595,10 @@
         </div>
         <div class="endpoint-body">
           <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">phone</span>은 <span class="mono">emr_patients</span>에 등록된 원본과 정확히 같아야 한다(하이픈 없는 숫자 9~11자리, 관리자 쪽 환자 등록과 동일 포맷). 일치 확인 후에도 <span class="mono">profiles</span>에 채우는 값은 클라이언트가 보낸 값이 아니라 그대로 <span class="mono">emr_patients</span> 원본이다 — <span class="mono">phone</span>은 신원확인 용도로만 쓰인다. <span class="mono">interestGoals</span>는 회원가입 화면에서 중복 선택한 값을 그대로 저장하며, 생략하면 빈 배열로 시작한다(가입 후 <span class="mono">PUT /profile/interests</span>로 언제든 바꿀 수 있음). 가입 성공 시 그때까지 쌓여있던 시술 이력·이용권(<span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>)이 실제 <span class="mono">care_records</span>/<span class="mono">memberships</span>로 <b>1회성 이관(claim)</b> 된다 — claim 이후에도 병원(<span class="mono">server_admin</span>)에서 새 시술기록을 추가하면 이번엔 실제 앱 테이블에 곧바로 기록되며, 같은 환자번호 재가입은 <span class="mono">409 PATIENT_ALREADY_CLAIMED</span>로 막힌다.</p>
+          <div class="callout" style="border:1px solid var(--patch); border-radius:8px; padding:10px 12px; background:color-mix(in srgb, var(--patch) 8%, transparent); margin:10px 0;">
+            <p style="margin:0 0 6px; font-size:13px; font-weight:600;"><span class="done-badge">v0.10</span> 다른 클리닉의 미가입 형제 행 일괄 연결</p>
+            <p style="margin:0; font-size:13px; color:var(--text-muted);">AAC 산하 여러 클리닉(엠레드/더나/웜)을 다닌 고객이 아직 <b>어느 클리닉에서도 회원가입 전</b>이면, 클리닉마다 별도 <span class="mono">emr_patients</span> 행이 생겨 있는 상태다. 이 상태에서 그중 한 클리닉 환자번호로 회원가입하면, 이름+생년월일+전화번호가 일치하면서 아직 <span class="mono">claimed_user_id</span>가 없는 <b>다른 클리닉의 행 전부</b>를 같은 시점에 같은 계정으로 함께 claim한다(각 형제 행의 시술 이력·이용권도 전부 이 계정으로 이관됨) — 방문 순서·가입 순서와 무관하게, 결과적으로 한 사람은 하나의 앱 계정으로 합쳐진다. 형제 행이 없으면 이 단계는 아무 일도 하지 않는다. <span class="mono">server_admin</span> <span class="mono">POST /patients</span>의 "다중 클리닉 자동 연결"(이미 가입된 계정에 새로 등록하는 행을 즉시 연결하는 반대 방향 케이스, <span class="mono">admin-api-spec.html</span> 참고)과 짝을 이룬다.</p>
+          </div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
@@ -1486,6 +1492,19 @@
       </ul>
     </section>
 
+    <section id="v10new">
+      <h2>v0.10 — 사업장:회원 1:1 한계 해결 (다중 클리닉 자동 연결)</h2>
+      <p class="desc">Slack에서 "AAC 산하 여러 클리닉을 다니는 고객이 두 번째 클리닉부터는 앱에 기록을 남길 수 없다"는 문제가 보고됐다. 원인 분석: <span class="mono">emr_patients.brand</span>로 환자 행을 클리닉별로 완전히 격리해둔 구조라, 같은 사람이 클리닉 A/B를 각각 방문하면 행이 두 개 생기는데 앱 계정(claim)은 그중 하나에만 걸 수 있었다 — 이미 A 번호로 가입한 사람이 B 번호로 다시 가입을 시도하면 <span class="mono">profiles.phone</span> unique 제약에 걸려(신원확인은 통과한 뒤) 일반화된 <span class="mono">500 INTERNAL_ERROR</span>로 실패했다. 결과적으로 두 번째로 방문한 클리닉은 이 고객의 시술기록을 영원히 스테이징 테이블(<span class="mono">emr_care_records</span>)에만 쌓을 수 있고 실제 앱에는 반영할 방법이 없었다.</p>
+      <p class="desc"><b>DB 스키마 변경 없이</b> 두 가지 방문 순서를 모두 커버하도록 해결:</p>
+      <ul class="open-q">
+        <li><b>먼저 등록된 클리닉 → 나중 가입</b>(이 문서 범위) — 여러 클리닉에 미가입 상태로 흩어져 있던 "같은 사람" 행이, 그중 한 클리닉 번호로 가입하는 순간 전부 같은 계정으로 한꺼번에 claim된다(위 "1. 인증/온보딩"의 "다른 클리닉의 미가입 형제 행 일괄 연결" 참고). <span class="mono">auth.service.ts</span>에 <span class="mono">migrateEmrDataToApp()</span>을 공용 함수로 뽑아, 본인 patientId뿐 아니라 형제 행 각각에도 동일하게 적용한다.</li>
+        <li><b>이미 가입된 계정 → 다른 클리닉에 새로 등록</b>(<span class="mono">server_admin</span> 쪽, <span class="mono">admin-api-spec.md</span> "다중 클리닉 자동 연결과 마스킹" 참고) — <span class="mono">POST /patients</span>가 새 환자 행을 만들 때 이름+생년월일+전화번호가 일치하는 다른 클리닉의 이미 claim된 행이 있으면, 그 계정으로 등록 즉시 자동 연결한다. 순수하게 <span class="mono">server_admin</span> 응답/로직 변경이라 이 문서 범위 밖이지만, 결과적으로 이 문서의 <span class="mono">GET /home/summary</span>/<span class="mono">GET /care-records</span>/<span class="mono">GET /memberships</span> 등에서 고객이 보는 데이터가 여러 클리닉 걸 다 포함하게 되는 원인이라 함께 남겨둔다.</li>
+        <li><b>라이브 검증 완료</b> — 두 방문 순서 시나리오 모두 실제 회원가입 → 시술기록 추가 → <span class="mono">GET /home/summary</span>/<span class="mono">GET /care-records</span>로 고객 앱 화면에 다른 클리닉 기록까지 정상적으로 합쳐져 보이는지 end-to-end로 확인, 테스트 데이터는 전부 정리함.</li>
+        <li><b>안내 발송(SMS 등)은 아직 미구현</b> — 다른 클리닉에서 자동 연결됐을 때 고객에게 알려주는 로직은 <span class="mono">notifyExistingAccountLinked</span>(<span class="mono">server_admin</span>) 스텁으로 로그만 남긴다. SMS 인프라가 비용 문제로 이미 한 번 제거된 바 있어(<span class="mono">server/README.md</span> 참고) 재도입 여부·수단은 미정.</li>
+        <li><b>claim 판별에 신규 컬럼을 쓰지 않음</b> — 자동 연결된 행은 <span class="mono">created_at</span>과 <span class="mono">claimed_at</span>을 INSERT 시점에 동일한 값으로 채워 "등록과 동시에 claim됨"을 구분한다. 이 구분은 <span class="mono">server_admin</span> 응답 마스킹에만 쓰이고, 고객용 <span class="mono">server/</span> API 응답에는 영향 없음(claim된 계정 하나로 보이는 건 동일).</li>
+      </ul>
+    </section>
+
     <section id="open">
       <h2>미확정 사항 <span class="req-id">기획 확인 필요</span></h2>
       <ul class="open-q">
@@ -1494,6 +1513,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.9 MVP · 2026-08-17 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.10 MVP · 2026-08-18 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

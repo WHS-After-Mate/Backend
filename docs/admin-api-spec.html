@@ -467,7 +467,7 @@
     <h1>관리자 API 명세서</h1>
     <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(3절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
     <div class="badges">
-      <span class="badge">v0.5</span>
+      <span class="badge">v0.6</span>
       <span class="badge outline">클리닉 로그인 3계정</span>
       <span class="badge outline">시술기록↔이용권 1:1</span>
       <span class="badge outline">브랜드 격리(404)</span>
@@ -476,6 +476,7 @@
       <span class="badge outline">이용권 만료/자동 이어쓰기</span>
       <span class="badge outline">예약 취소</span>
       <span class="badge outline">클리닉 정보(카톡/전화/의료진)</span>
+      <span class="badge outline">다중 클리닉 자동 연결 + 마스킹</span>
     </div>
     <div class="infobar">
       <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
@@ -520,7 +521,7 @@
             <tr><td><span class="method post">POST</span></td><td class="mono">/treatment-catalog</td><td>필요</td><td>치료-부위 카탈로그 항목 등록</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/treatment-catalog/{treatmentId}</td><td>필요</td><td>치료-부위 카탈로그 항목 수정</td></tr>
             <tr><td><span class="method delete">DELETE</span></td><td class="mono">/treatment-catalog/{treatmentId}</td><td>필요</td><td>치료-부위 카탈로그 항목 삭제</td></tr>
-            <tr><td><span class="method post">POST</span></td><td class="mono">/patients</td><td>필요</td><td>환자 등록(환자번호 발급, 이름+생년월일+전화번호 중복 시 기존 환자 재사용 후 200)</td></tr>
+            <tr><td><span class="method post">POST</span></td><td class="mono">/patients</td><td>필요</td><td>환자 등록(환자번호 발급, 이름+생년월일+전화번호 중복 시 기존 환자 재사용 후 200. 다른 클리닉에서 이미 가입된 동일인이면 <span class="done-badge">v0.6</span> 자동 연결)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/patients?search=</td><td>필요</td><td>환자 목록/검색(로그인 클리닉만)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/patients/{patientId}</td><td>필요</td><td>환자 상세(프로필+시술기록+이용권)</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/patients/{patientId}</td><td>필요</td><td>환자 프로필 수정</td></tr>
@@ -648,10 +649,20 @@
         </div>
         <div class="endpoint-body">
           <p style="margin:0; font-size:13px; color:var(--text-muted);">성공하면 환자번호(<span class="mono">patientNo</span>)만 발급한다 — <b>인증코드는 없음</b>. 회원가입(<span class="mono">POST /auth/signup</span> — 고객용 <span class="mono">server/</span>)은 이 환자번호+이름+생년월일이 정확히 일치해야 진행된다. <span class="mono">brand</span>는 요청에 없다 — 로그인한 관리자 계정에서 그대로 기록된다.</p>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);">같은 클리닉에 <span class="mono">name</span>+<span class="mono">birthDate</span>+<span class="mono">phone</span>이 전부 일치하는 환자가 이미 있으면 <b>새로 만들지 않고 그 환자를 그대로 재사용</b>한다(접수 직원의 실수 중복 등록 방지). 이때 <span class="mono">notes</span>가 기존 값과 다르면(재방문 사이 알러지 등이 바뀌었을 수 있으므로) 그 자리에서 새 값으로 갱신한다. 앱 회원가입(claim) 여부는 이 판단과 무관 — <span class="mono">emr_patients</span>에 있는지만 본다. 다른 클리닉에 같은 사람이 등록돼 있어도 이 판단에 영향을 주지 않는다(클리닉 데이터 격리 원칙 — 다른 클리닉 데이터의 존재를 알려주지 않음).</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">같은 클리닉에 <span class="mono">name</span>+<span class="mono">birthDate</span>+<span class="mono">phone</span>이 전부 일치하는 환자가 이미 있으면 <b>새로 만들지 않고 그 환자를 그대로 재사용</b>한다(접수 직원의 실수 중복 등록 방지). 이때 <span class="mono">notes</span>가 기존 값과 다르면(재방문 사이 알러지 등이 바뀌었을 수 있으므로) 그 자리에서 새 값으로 갱신한다. 앱 회원가입(claim) 여부는 이 판단과 무관 — <span class="mono">emr_patients</span>에 있는지만 본다. 다른 클리닉에 같은 사람이 등록돼 있어도 이 판단에 영향을 주지 않는다(클리닉 데이터 격리 원칙 — 다른 클리닉 데이터의 존재를 알려주지 않음). <b>단, "새로 만드는" 경로에서는 다른 클리닉 자동 연결 확인이 추가로 들어간다 — 아래 참고.</b></p>
           <div>
             <div class="block-label">DB</div>
-            <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">emr_patients</span> <b>SELECT</b> (<span class="mono">brand</span>+<span class="mono">name</span>+<span class="mono">birth_date</span>+<span class="mono">phone</span> 전부 일치하는 행 확인) → 있으면 <span class="mono">notes</span>가 다를 때만 <b>UPDATE</b>(<span class="mono">notes</span>, <span class="mono">updated_at</span>) 후 그 행을 반환하고 종료(아래 "중복 시" 참고). 없으면 <b>INSERT</b> — <span class="mono">patient_no</span>(서버가 자동 생성), <span class="mono">name</span>, <span class="mono">birth_date</span>, <span class="mono">phone</span>, <span class="mono">notes</span>, <span class="mono">brand</span>(토큰에서 가져옴). <span class="mono">patient_no</span> unique 충돌 시 새 번호로 최대 5회 재시도.</p>
+            <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">emr_patients</span> <b>SELECT</b> (<span class="mono">brand</span>+<span class="mono">name</span>+<span class="mono">birth_date</span>+<span class="mono">phone</span> 전부 일치하는 행 확인) → 있으면 <span class="mono">notes</span>가 다를 때만 <b>UPDATE</b>(<span class="mono">notes</span>, <span class="mono">updated_at</span>) 후 그 행을 반환하고 종료(아래 "중복 시" 참고). 없으면 다른 클리닉 자동 연결 확인(아래) 후 <b>INSERT</b> — <span class="mono">patient_no</span>(서버가 자동 생성), <span class="mono">name</span>, <span class="mono">birth_date</span>, <span class="mono">phone</span>, <span class="mono">notes</span>, <span class="mono">brand</span>(토큰에서 가져옴), 자동 연결 대상이 있으면 <span class="mono">claimed_user_id</span>/<span class="mono">claimed_at</span>/<span class="mono">created_at</span>도 같이. <span class="mono">patient_no</span> unique 충돌 시 새 번호로 최대 5회 재시도.</p>
+          </div>
+          <div class="callout" style="border:1px solid var(--patch); border-radius:8px; padding:10px 12px; background:color-mix(in srgb, var(--patch) 8%, transparent);">
+            <p style="margin:0 0 6px; font-size:13px; font-weight:600;"><span class="done-badge">v0.6</span> 다른 클리닉 자동 연결</p>
+            <p style="margin:0 0 6px; font-size:13px; color:var(--text-muted);">신규 등록(중복 재사용이 아닌 경우) 시, <span class="mono">emr_patients</span>에서 <span class="mono">brand</span>만 다르고 <span class="mono">name</span>+<span class="mono">birth_date</span>+<span class="mono">phone</span>이 전부 일치하며 이미 <span class="mono">claimed_user_id</span>가 있는(=다른 클리닉에서 이미 회원가입 완료된) 행이 있는지 먼저 확인한다(<span class="mono">findLinkedAccountFromOtherClinic</span>). 있으면:</p>
+            <ul style="margin:0; padding-left:20px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+              <li>이 클리닉 소유의 새 환자 행은 정상적으로 만들되(별도 <span class="mono">patient_no</span> 발급, 이 클리닉 차트로 독립적으로 취급), <span class="mono">claimed_user_id</span>를 그 기존 계정 id로, <span class="mono">claimed_at</span>을 <b>INSERT 시점의 <span class="mono">created_at</span>과 동일한 시각</b>으로 함께 채운다 — 별도 회원가입 절차 없이 등록 즉시 claim 완료 상태가 됨</li>
+              <li>이후 이 클리닉이 이 환자에게 시술기록을 추가하면(3절) <span class="mono">claimed_user_id</span>가 있으니 스테이징이 아니라 곧바로 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 쓰인다 — 그 계정으로 로그인한 고객 앱에도 바로 반영됨</li>
+              <li>안내 발송(<span class="mono">notifyExistingAccountLinked</span>)을 시도한다 — <b>현재는 로그만 남기는 스텁</b>, 실제 SMS 등은 미구현(아래 "알려진 제한사항" 참고)</li>
+              <li>이 클리닉 관리자에게는 이 사실이 응답에 노출되지 않는다 — 아래 "다중 클리닉 자동 연결과 마스킹" 참고</li>
+            </ul>
           </div>
           <div>
             <div class="block-label">Request Body</div>
@@ -696,8 +707,8 @@
                   <tr><td class="mono">phone</td><td class="mono">string</td><td></td></tr>
                   <tr><td class="mono">notes</td><td class="mono">string | null</td><td>기타사항</td></tr>
                   <tr><td class="mono">brand</td><td class="mono">string</td><td>소속 클리닉</td></tr>
-                  <tr><td class="mono">claimed_user_id</td><td class="mono">uuid | null</td><td>회원가입 완료 시 연결된 앱 계정 id. 미가입이면 <span class="mono">null</span> — 이 값으로 가입 여부 판단</td></tr>
-                  <tr><td class="mono">claimed_at</td><td class="mono">string | null</td><td>회원가입 완료 시각</td></tr>
+                  <tr><td class="mono">claimed_user_id</td><td class="mono">uuid | null</td><td>회원가입 완료 시 연결된 앱 계정 id. 미가입이면 <span class="mono">null</span> — 이 값으로 가입 여부 판단. <span class="done-badge">v0.6</span> <b>다른 클리닉에서 자동 연결된 경우는 항상 <span class="mono">null</span>로 마스킹</b>되어 내려온다 — 실제 DB엔 값이 있어도 이 클리닉 응답엔 노출 안 됨(아래 참고)</td></tr>
+                  <tr><td class="mono">claimed_at</td><td class="mono">string | null</td><td>회원가입 완료 시각. <span class="mono">claimed_user_id</span>와 동일한 마스킹 규칙 적용</td></tr>
                   <tr><td class="mono">created_at</td><td class="mono">string</td><td></td></tr>
                   <tr><td class="mono">updated_at</td><td class="mono">string</td><td></td></tr>
                 </tbody>
@@ -705,6 +716,15 @@
             </div>
           </div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">patient_no</span>는 <span class="mono">EMR-P-XXXXXX</span>(6자리 대문자 hex) 형태로 서버가 자동 발급하며, 충돌 시 최대 5회 재시도한다. 이 응답 형태는 <span class="mono">PATCH /patients/{patientId}</span>의 Response와 완전히 동일하다.</p>
+          <div class="callout" style="border:1px solid var(--patch); border-radius:8px; padding:10px 12px; background:color-mix(in srgb, var(--patch) 8%, transparent);">
+            <p style="margin:0 0 6px; font-size:13px; font-weight:600;"><span class="done-badge">v0.6</span> 다중 클리닉 자동 연결과 마스킹</p>
+            <p style="margin:0 0 6px; font-size:13px; color:var(--text-muted);"><span class="mono">claimed_user_id</span>/<span class="mono">claimed_at</span>을 이 클리닉 응답에서 숨겨야 하는지는 <b>"언제 claim됐는지"만으로 판별</b>한다 — 스키마 변경 없이, INSERT 시점에 <span class="mono">created_at</span>과 <span class="mono">claimed_at</span>을 의도적으로 완전히 같은 값으로 채워두는 방식(<span class="mono">maskAutoLinkedClaim</span>):</p>
+            <ul style="margin:0 0 6px; padding-left:20px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+              <li><b>다른 클리닉 자동 연결</b>: <span class="mono">created_at === claimed_at</span>(등록과 동시에 claim됨) → 응답에서 <span class="mono">claimed_user_id</span>/<span class="mono">claimed_at</span>을 <span class="mono">null</span>로 마스킹. 이 클리닉 관리자에게 "이 환자가 다른 클리닉에도 다닌다"는 사실을 알려주지 않기 위함</li>
+              <li><b>이 클리닉 자체 patientNo로 정상 회원가입</b>: 등록 시각과 가입 시각이 (보통) 다르므로 <span class="mono">created_at !== claimed_at</span> → 그대로 노출. "이 환자가 가입했는지"는 이 클리닉 입장에서 유의미한 정보라 숨기지 않음</li>
+            </ul>
+            <p style="margin:0; font-size:13px; color:var(--patch);">⚠️ 마스킹은 응답 표현에만 적용되고 실제 동작에는 영향 없음 — DB엔 실제 <span class="mono">claimed_user_id</span>가 그대로 저장돼 있고, 시술기록 추가(3절)는 내부적으로 이 값을 그대로 써서 정상적으로 실제 앱 테이블에 기록한다. 마스킹은 <span class="mono">POST /patients</span>(신규/중복 응답 모두), <span class="mono">GET /patients?search=</span>, <span class="mono">GET /patients/{patientId}</span>, <span class="mono">PATCH /patients/{patientId}</span> 네 응답 전부에 동일하게 적용된다.</p>
+          </div>
           <div>
             <div class="block-label">Response 200 — 중복(이미 등록된 환자)인 경우</div>
             <p style="margin:0 0 8px; font-size:13px; color:var(--text-muted);">새로 만든 게 아니라 기존 환자를 재사용했다는 뜻이라 <span class="mono">201</span>이 아니라 <span class="mono">200</span>으로 응답하고, 위 필드에 두 개가 추가된다:</p>
@@ -786,8 +806,8 @@
                 <tr><td class="mono">birth_date</td><td class="mono">string</td><td></td></tr>
                 <tr><td class="mono">phone</td><td class="mono">string</td><td></td></tr>
                 <tr><td class="mono">brand</td><td class="mono">string</td><td></td></tr>
-                <tr><td class="mono">claimed_user_id</td><td class="mono">uuid | null</td><td></td></tr>
-                <tr><td class="mono">claimed_at</td><td class="mono">string | null</td><td></td></tr>
+                <tr><td class="mono">claimed_user_id</td><td class="mono">uuid | null</td><td><span class="done-badge">v0.6</span> 다른 클리닉 자동 연결 시 마스킹됨 — 위 <span class="mono">POST /patients</span> "다중 클리닉 자동 연결과 마스킹" 참고</td></tr>
+                <tr><td class="mono">claimed_at</td><td class="mono">string | null</td><td>위와 동일한 마스킹 규칙</td></tr>
                 <tr><td class="mono">created_at</td><td class="mono">string</td><td></td></tr>
                 <tr><td class="mono">latestCareName</td><td class="mono">string | null</td><td>camelCase, 서버가 계산해 붙이는 파생 필드. 가장 최근 시술명, 없으면 <span class="mono">null</span> — 목록 화면에서 빈 칸으로 표시</td></tr>
               </tbody>
@@ -822,7 +842,7 @@
   "memberships": [ /* emr_memberships 또는 memberships 전체 컬럼 + source */ ]
 }</pre>
           </details>
-          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">patient</span>: 위 <span class="mono">POST /patients</span> Response와 완전히 동일한 필드 구성.</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">patient</span>: 위 <span class="mono">POST /patients</span> Response와 완전히 동일한 필드 구성, 마스킹 규칙도 동일하게 적용됨. <span class="done-badge">v0.6</span> 다른 클리닉 자동 연결로 마스킹된 경우에도 <span class="mono">careRecords</span>/<span class="mono">memberships</span>의 <span class="mono">source: "app"</span> 항목은 정상적으로 채워진다 — 마스킹은 <span class="mono">patient</span> 필드 표현에만 적용되고, 서버 내부에서 실제 앱 테이블을 조회할 땐 진짜 <span class="mono">claimed_user_id</span>를 그대로 쓴다.</p>
           <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careRecords</span>(배열, 최신순) 각 항목 — 스테이징(<span class="mono">emr_care_records</span>)이면 <span class="mono">patient_id</span>, 실제 앱(<span class="mono">care_records</span>)이면 <span class="mono">user_id</span>를 갖는다(둘 중 하나만 존재):</p>
           <div class="table-wrap">
             <table>
@@ -1339,9 +1359,11 @@
         <li><b>이용권 자동 이어쓰기 매칭은 <span class="mono">product_name</span>+<span class="mono">total_count</span> 정확히 일치할 때만 동작</b> — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음</li>
         <li><b><span class="mono">clinic_doctors</span>(담당 의료진)는 CRUD API 없음</b> <span class="done-badge">v0.5</span> — <span class="mono">treatment-catalog</span>와 달리 관리자 웹에서 추가/수정/삭제할 수 없고, <span class="mono">server_admin/db/seed/seedClinicCatalog.ts</span> 시드 스크립트로만 채워진다(3개 클리닉 고정 전제, <span class="mono">admin_accounts</span>와 동일한 관리 방식). 새 의료진이 합류하면 시드 스크립트를 갱신해 재실행해야 함</li>
         <li><b><span class="mono">practitioner</span>는 여전히 자유 텍스트라 <span class="mono">clinic_doctors</span> 목록과 무관하게 아무 값이나 저장 가능</b> — <span class="mono">GET /clinic-info</span>의 <span class="mono">doctors</span>는 프론트 select의 후보 제안일 뿐, 서버가 <span class="mono">POST .../care-records</span>의 <span class="mono">practitioner</span> 값을 이 목록과 대조해 검증하지 않는다</li>
+        <li><b><span class="done-badge">v0.6</span> 다른 클리닉 자동 연결 안내는 로그만 남기고 실제 발송되지 않음</b> — <span class="mono">notifyExistingAccountLinked</span>가 콘솔 로그만 찍는 스텁으로 배선만 돼 있다. SMS 인프라는 비용 문제로 MVP 범위 밖으로 확정되어 이미 한 번 제거된 바 있어(<span class="mono">server/README.md</span> 참고), 재도입 여부·수단은 미정</li>
+        <li><b><span class="done-badge">v0.6</span> 다른 클리닉 자동 연결은 이름+생년월일+전화번호 완전 일치로만 판별</b> — 같은 사람이 클리닉마다 전화번호를 다르게 등록했다면(번호 변경 등) 자동 연결되지 않고 별개 환자로 남는다 — 이 경우 기존과 동일하게 그 클리닉 patientNo로 별도 회원가입해야 함</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · server_admin 관리자 API · v0.5 · 2026-08-17</footer>
+    <footer>WHS After Mate · server_admin 관리자 API · v0.6 · 2026-08-18</footer>
   </main>
 </div>

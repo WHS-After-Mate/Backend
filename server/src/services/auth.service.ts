@@ -37,6 +37,55 @@ export async function preCheckSignup(input: {
   await checkPatientIdentity(input);
 }
 
+// emr_care_records/emr_memberships를 실제 care_records/memberships로 1회성 이관한다.
+// signup()이 본인 patientId뿐 아니라, 다른 클리닉에 남아있던 동일 인물의 미가입 형제 행
+// (아래 signup()의 "형제 행 일괄 claim" 참고)에도 그대로 재사용한다.
+async function migrateEmrDataToApp(patientId: string, userId: string) {
+  const { data: emrCareRecords } = await supabaseAdmin
+    .from("emr_care_records")
+    .select("*")
+    .eq("patient_id", patientId);
+  if (emrCareRecords && emrCareRecords.length > 0) {
+    const { error: careRecordsError } = await supabaseAdmin.from("care_records").insert(
+      emrCareRecords.map((r) => ({
+        user_id: userId,
+        care_name: r.care_name,
+        care_type: r.care_type,
+        care_date: r.care_date,
+        part_of_body: r.part_of_body,
+        brand: r.brand,
+        practitioner: r.practitioner,
+        basic_aftercare_guide: r.basic_aftercare_guide,
+        doctor_comment: r.doctor_comment,
+        session_number: r.session_number,
+        total_sessions: r.total_sessions,
+        source_system: "aac_emr",
+        synced_at: new Date().toISOString(),
+      })),
+    );
+    if (careRecordsError) throw careRecordsError;
+  }
+
+  const { data: emrMemberships } = await supabaseAdmin
+    .from("emr_memberships")
+    .select("*")
+    .eq("patient_id", patientId);
+  if (emrMemberships && emrMemberships.length > 0) {
+    const { error: membershipsError } = await supabaseAdmin.from("memberships").insert(
+      emrMemberships.map((m) => ({
+        user_id: userId,
+        product_name: m.product_name,
+        total_count: m.total_count,
+        used_count: m.used_count,
+        expires_at: m.expires_at,
+        last_used_at: m.last_used_at,
+        available_care_names: m.available_care_names,
+      })),
+    );
+    if (membershipsError) throw membershipsError;
+  }
+}
+
 // 회원가입 2단계 = "병원에서 이미 시술받은 환자가 앱 계정을 처음 만드는 순간"이다.
 // 신원 확인(checkPatientIdentity) 후, 그 시점까지 쌓여있던 emr_care_records/emr_memberships를
 // 실제 테이블로 1회성 이관(claim)한다.
@@ -91,48 +140,28 @@ export async function signup(input: {
     });
     if (medicalProfileError) throw medicalProfileError;
 
-    const { data: emrCareRecords } = await supabaseAdmin
-      .from("emr_care_records")
-      .select("*")
-      .eq("patient_id", patient.id);
-    if (emrCareRecords && emrCareRecords.length > 0) {
-      const { error: careRecordsError } = await supabaseAdmin.from("care_records").insert(
-        emrCareRecords.map((r) => ({
-          user_id: userId,
-          care_name: r.care_name,
-          care_type: r.care_type,
-          care_date: r.care_date,
-          part_of_body: r.part_of_body,
-          brand: r.brand,
-          practitioner: r.practitioner,
-          basic_aftercare_guide: r.basic_aftercare_guide,
-          doctor_comment: r.doctor_comment,
-          session_number: r.session_number,
-          total_sessions: r.total_sessions,
-          source_system: "aac_emr",
-          synced_at: new Date().toISOString(),
-        })),
-      );
-      if (careRecordsError) throw careRecordsError;
-    }
+    await migrateEmrDataToApp(patient.id, userId);
 
-    const { data: emrMemberships } = await supabaseAdmin
-      .from("emr_memberships")
-      .select("*")
-      .eq("patient_id", patient.id);
-    if (emrMemberships && emrMemberships.length > 0) {
-      const { error: membershipsError } = await supabaseAdmin.from("memberships").insert(
-        emrMemberships.map((m) => ({
-          user_id: userId,
-          product_name: m.product_name,
-          total_count: m.total_count,
-          used_count: m.used_count,
-          expires_at: m.expires_at,
-          last_used_at: m.last_used_at,
-          available_care_names: m.available_care_names,
-        })),
-      );
-      if (membershipsError) throw membershipsError;
+    // 다른 클리닉(브랜드)에 남아있는 "같은 사람"의 미가입 형제 행도 한꺼번에 이 계정으로
+    // claim한다 — 어느 클리닉 patientNo로 먼저 회원가입하든, 결과적으로 계정이 하나로
+    // 합쳐지게 하기 위함. 형제 행이 없으면(다른 클리닉 방문 이력이 없으면) 그냥 빈 배열.
+    const { data: siblings, error: siblingsError } = await supabaseAdmin
+      .from("emr_patients")
+      .select("id")
+      .neq("id", patient.id)
+      .is("claimed_user_id", null)
+      .eq("name", input.name)
+      .eq("birth_date", input.birthDate)
+      .eq("phone", input.phone);
+    if (siblingsError) throw siblingsError;
+
+    for (const sibling of siblings ?? []) {
+      await migrateEmrDataToApp(sibling.id, userId);
+      const { error: siblingClaimError } = await supabaseAdmin
+        .from("emr_patients")
+        .update({ claimed_user_id: userId, claimed_at: new Date().toISOString() })
+        .eq("id", sibling.id);
+      if (siblingClaimError) throw siblingClaimError;
     }
 
     await supabaseAdmin

@@ -13,6 +13,55 @@ function generatePatientNo() {
   return `EMR-P-${randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
+// 다른 클리닉(브랜드)에 이미 등록·회원가입까지 끝난 "같은 사람"인지 확인한다 — 이름+생년월일+
+// 전화번호가 일치하는 다른 브랜드의 emr_patients 행 중 이미 앱 계정에 연결된(claimed_user_id
+// not null) 것이 있으면 그 userId를 반환한다. AAC 산하 여러 클리닉이 같은 앱을 공유하는 구조라,
+// 이 값이 있으면 이번에 새로 만드는 행을 처음부터 그 계정에 바로 연결(claim)해서 별도 회원가입
+// 없이도 이 클리닉이 곧바로 실제 계정에 시술기록을 쓸 수 있게 한다(아래 createPatient 참고).
+async function findLinkedAccountFromOtherClinic(
+  input: { name: string; birthDate: string; phone: string },
+  brand: string,
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("emr_patients")
+    .select("claimed_user_id")
+    .neq("brand", brand)
+    .eq("name", input.name)
+    .eq("birth_date", input.birthDate)
+    .eq("phone", input.phone)
+    .not("claimed_user_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw Errors.internal(error.message);
+  return data?.claimed_user_id ?? null;
+}
+
+// 다른 클리닉에서 이미 가입된 계정과 "등록 즉시" 자동 연결된 행인지 판별해, 그런 경우에만
+// claimed_user_id/claimed_at을 응답에서 숨긴다 — 이 클리닉 관리자에게 "이 환자가 다른 클리닉에도
+// 다닌다"는 사실이 노출되지 않게 하기 위함(사용자 요청). 이 클리닉 자체 patientNo로 정상 회원가입한
+// 경우는(보통 등록일과 가입일 시각이 다름) 그대로 노출한다 — "가입 여부"는 그 클리닉 입장에선 유의미한
+// 정보라 명세서에도 문서화돼 있다. 신규 컬럼 없이 구분하기 위해, createPatient가 자동 연결 시
+// created_at/claimed_at을 동일한 값으로 명시적으로 채워두고 여기서 그 둘이 정확히 같은지로 판별한다.
+function maskAutoLinkedClaim<
+  T extends { claimed_user_id: string | null; claimed_at: string | null; created_at: string },
+>(patient: T): T {
+  if (patient.claimed_user_id && patient.claimed_at === patient.created_at) {
+    return { ...patient, claimed_user_id: null, claimed_at: null };
+  }
+  return patient;
+}
+
+// SMS 발송 연동 전 임시 스텁 — 2026-08-11 Tier 1에서 SMS 인프라를 비용 문제로 통째로 제거했었는데
+// (server/README.md TODO 참고), 다른 클리닉에서 이미 가입된 고객을 자동 연결할 때 안내가 필요해져
+// 다시 마주쳤다. 실제 발송 수단(SMS 업체 재연동 vs 이메일 등)은 아직 미정이라 일단 로그만 남기고
+// 배선만 해둔다 — push.service.ts의 sendPushToUser와 동일한 패턴.
+async function notifyExistingAccountLinked(phone: string): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[notify] 다른 클리닉에서 이미 가입된 계정과 자동 연결됨 — 안내 발송 대상: ${phone} (발송 로직 미구현, 로그만 남김)`,
+  );
+}
+
 // 등록하면 인증코드 없이 환자번호(patientNo)만 발급한다 — 회원가입은 patientNo+이름+생년월일
 // 조합으로 신원을 확인하는 방식으로 바뀌어서(server/의 signup()) 별도 코드 발급이 필요 없다.
 export async function createPatient(
@@ -41,7 +90,7 @@ export async function createPatient(
   if (existingError) throw Errors.internal(existingError.message);
   if (existing) {
     const newNotes = input.notes ?? null;
-    if (newNotes === existing.notes) return { patient: existing, duplicate: true };
+    if (newNotes === existing.notes) return { patient: maskAutoLinkedClaim(existing), duplicate: true };
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from("emr_patients")
@@ -50,8 +99,13 @@ export async function createPatient(
       .select()
       .single();
     if (updateError) throw Errors.internal(updateError.message);
-    return { patient: updated, duplicate: true };
+    return { patient: maskAutoLinkedClaim(updated), duplicate: true };
   }
+
+  const linkedUserId = await findLinkedAccountFromOtherClinic(input, brand);
+  // 자동 연결 케이스는 created_at/claimed_at을 동일한 값으로 명시적으로 채워 maskAutoLinkedClaim이
+  // 정상 가입(등록일 ≠ 가입일)과 구분할 수 있게 한다.
+  const linkedAt = new Date().toISOString();
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const patientNo = generatePatientNo();
@@ -64,11 +118,21 @@ export async function createPatient(
         phone: input.phone,
         notes: input.notes ?? null,
         brand,
+        // 다른 클리닉에서 이미 가입된 같은 사람이면 이 행을 만드는 즉시 그 계정에 연결한다 —
+        // 이 클리닉만의 독립된 차트(행)는 그대로 새로 만들되, 회원가입 절차 없이도 바로
+        // 실제 앱 테이블(care_records/memberships)에 기록을 쓸 수 있게 하기 위함.
+        ...(linkedUserId && { claimed_user_id: linkedUserId, claimed_at: linkedAt, created_at: linkedAt }),
       })
       .select()
       .single();
 
-    if (!error) return { patient: data, duplicate: false };
+    if (!error) {
+      if (linkedUserId) await notifyExistingAccountLinked(input.phone);
+      // duplicate는 그대로 false — 관리자 화면에는 평소 신규 등록과 동일하게 보인다. claimed_user_id는
+      // maskAutoLinkedClaim이 자동 연결인 경우에만 숨긴다(다른 클리닉에 이미 계정이 있다는 사실을
+      // 이 클리닉 관리자에게 노출하지 않기 위함).
+      return { patient: maskAutoLinkedClaim(data), duplicate: false };
+    }
     // 23505 = unique_violation (patient_no 충돌) — 새 번호로 재시도
     if (error.code !== "23505") throw Errors.internal(error.message);
   }
@@ -143,7 +207,7 @@ export async function listPatients(brand: string, search?: string) {
     }
   }
 
-  return patients.map((p) => ({ ...p, latestCareName: latestByPatient.get(p.id)?.name ?? null }));
+  return patients.map((p) => ({ ...maskAutoLinkedClaim(p), latestCareName: latestByPatient.get(p.id)?.name ?? null }));
 }
 
 // 다른 클리닉 환자를 id로 직접 찍어 조회하는 것도 막는다 — 존재 자체를 숨기기 위해 403이 아니라 404로 통일.
@@ -201,7 +265,10 @@ export async function getPatient(patientId: string, brand: string) {
     );
   }
 
-  return { patient, careRecords, memberships };
+  // patient.claimed_user_id는 위에서 app 쪽 데이터를 가져오는 데 실제 값 그대로 이미 사용했다 —
+  // 마스킹은 응답 필드에만 적용하고, 방금 조회한 careRecords/memberships(자동 연결이어도 실제
+  // 시술기록은 정상적으로 다 보여줘야 함)에는 영향 없다.
+  return { patient: maskAutoLinkedClaim(patient), careRecords, memberships };
 }
 
 export async function updatePatient(
@@ -230,7 +297,7 @@ export async function updatePatient(
     .single();
 
   if (error) throw Errors.internal(error.message);
-  return data;
+  return maskAutoLinkedClaim(data);
 }
 
 type MembershipTable = "emr_memberships" | "memberships";

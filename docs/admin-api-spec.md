@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.5)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.6)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.6 변경: "사업장:회원이 구조적으로 1:1"이던 문제를 해결 — 같은 사람이 여러 AAC 산하 클리닉(엠레드/더나/웜)을 다니면 클리닉마다 별도 환자 행이 생기지만, 앱 계정은 그중 어느 한 곳 patientNo로만 회원가입할 수 있어 나머지 클리닉은 실제 앱 테이블에 기록을 남길 방법이 없었다(재가입 시도는 `profiles.phone` unique 제약에 걸려 500으로 실패). ① `POST /patients`에서 이름+생년월일+전화번호가 일치하는 "이미 다른 클리닉에서 회원가입 완료된" 환자를 발견하면, 새 환자 행을 이 클리닉 소유로 정상 생성하되 그 자리에서 곧바로 기존 계정에 자동 연결(claim)한다 — 별도 회원가입 절차 없이 등록 즉시 이 클리닉도 실제 앱 테이블에 기록 가능. ② 응답에서는 이 자동 연결 사실을 이 클리닉 관리자에게 숨긴다(다른 클리닉 방문 이력이 노출되지 않도록) — `claimed_user_id`/`claimed_at`이 이 경우엔 `null`로 마스킹되어 내려온다(이 클리닉 자체 patientNo로 정상 회원가입한 경우는 그대로 노출, 아래 "다중 클리닉 자동 연결과 마스킹" 참고). ③ 아직 어느 클리닉에서도 가입 전인 "형제 행"이 여러 클리닉에 흩어져 있는 채로 그중 하나로 먼저 회원가입하면(`server/` `POST /auth/signup`, `api-spec.md` 참고), 그 형제 행 전부를 한 번에 같은 계정으로 쓸어 담는다 — 방문 순서·가입 순서와 무관하게 결과적으로 계정이 하나로 합쳐짐. SMS 등 자동 연결 안내 발송은 아직 미구현(로그만 남기는 스텁, 발송 수단 미정).
 
 v0.5 변경: 사용자가 전달한 실제 사업장 데이터(엠레드/더나 의료진 명단, 시술 5종씩)를 반영 — ① `treatment_catalog`에 `description`(시술 설명) 컬럼 추가 ② 클리닉별 담당 의료진 이름 목록을 담는 신규 테이블 `clinic_doctors` + `GET /clinic-info` 신규(로그인한 클리닉의 카카오톡/전화번호 + 담당 의료진 목록을 한 번에 반환). 카카오톡/전화번호는 별도 테이블을 새로 만들지 않고, 같은 날 고객용 `server/`에 추가된 관리 추천 카탈로그의 `businesses` 테이블(마이그레이션 015)을 그대로 재사용한다(중복 방지). 자세한 내용은 하단 "2. 치료-부위 카탈로그", "5. 클리닉 정보" 절 참고.
 
@@ -36,7 +38,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | POST | `/treatment-catalog` | 필요 | 치료-부위 카탈로그 항목 등록 |
 | PATCH | `/treatment-catalog/{treatmentId}` | 필요 | 치료-부위 카탈로그 항목 수정 |
 | DELETE | `/treatment-catalog/{treatmentId}` | 필요 | 치료-부위 카탈로그 항목 삭제 |
-| POST | `/patients` | 필요 | 환자 등록 (환자번호 발급, 이름+생년월일+전화번호 중복 시 기존 환자 재사용 후 200) |
+| POST | `/patients` | 필요 | 환자 등록 (환자번호 발급, 이름+생년월일+전화번호 중복 시 기존 환자 재사용 후 200. 다른 클리닉에서 이미 가입된 동일인이면 `(v0.6)` 자동 연결) |
 | GET | `/patients?search=` | 필요 | 환자 목록/검색 (로그인 클리닉만) |
 | GET | `/patients/{patientId}` | 필요 | 환자 상세 (프로필+시술기록+이용권) |
 | PATCH | `/patients/{patientId}` | 필요 | 환자 프로필 수정 |
@@ -140,9 +142,15 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 
 `brand`는 요청에 없다 — 로그인한 관리자 계정에서 그대로 기록된다(수동 선택 시 실수로 다른 클리닉을 고를 여지를 없앰).
 
-같은 클리닉에 `name`+`birthDate`+`phone`이 전부 일치하는 환자가 이미 있으면 **새로 만들지 않고 그 환자를 그대로 재사용**한다(접수 직원의 실수 중복 등록 방지). 이때 `notes`가 기존 값과 다르면(재방문 사이 알러지 등이 바뀌었을 수 있으므로) 그 자리에서 새 값으로 갱신한다. 앱 회원가입(claim) 여부는 이 판단과 무관 — `emr_patients`에 있는지만 본다. 다른 클리닉에 같은 사람이 등록돼 있어도 이 판단에 영향을 주지 않는다(클리닉 데이터 격리 원칙 — 다른 클리닉 데이터의 존재를 알려주지 않음).
+같은 클리닉에 `name`+`birthDate`+`phone`이 전부 일치하는 환자가 이미 있으면 **새로 만들지 않고 그 환자를 그대로 재사용**한다(접수 직원의 실수 중복 등록 방지). 이때 `notes`가 기존 값과 다르면(재방문 사이 알러지 등이 바뀌었을 수 있으므로) 그 자리에서 새 값으로 갱신한다. 앱 회원가입(claim) 여부는 이 판단과 무관 — `emr_patients`에 있는지만 본다. 다른 클리닉에 같은 사람이 등록돼 있어도 이 판단에 영향을 주지 않는다(클리닉 데이터 격리 원칙 — 다른 클리닉 데이터의 존재를 알려주지 않음). **단, "새로 만드는" 경로에서는 다른 클리닉 자동 연결 확인이 추가로 들어간다 — 바로 아래 참고.**
 
-**DB**: `emr_patients` **SELECT** (`brand`+`name`+`birth_date`+`phone` 전부 일치하는 행 확인) → 있으면 `notes`가 다를 때만 **UPDATE**(`notes`, `updated_at`) 후 그 행을 반환하고 종료(아래 "중복 시" 참고). 없으면 **INSERT** — `patient_no`(서버가 자동 생성), `name`, `birth_date`, `phone`, `notes`, `brand`(토큰에서 가져옴). `patient_no` unique 충돌(`23505`) 시 새 번호로 최대 5회 재시도.
+**DB**: `emr_patients` **SELECT** (`brand`+`name`+`birth_date`+`phone` 전부 일치하는 행 확인) → 있으면 `notes`가 다를 때만 **UPDATE**(`notes`, `updated_at`) 후 그 행을 반환하고 종료(아래 "중복 시" 참고). 없으면 다른 클리닉 자동 연결 확인(아래) 후 **INSERT** — `patient_no`(서버가 자동 생성), `name`, `birth_date`, `phone`, `notes`, `brand`(토큰에서 가져옴), 자동 연결 대상이 있으면 `claimed_user_id`/`claimed_at`/`created_at`도 같이(아래 참고). `patient_no` unique 충돌(`23505`) 시 새 번호로 최대 5회 재시도.
+
+**`(v0.6)` 다른 클리닉 자동 연결**: 신규 등록(중복 재사용이 아닌 경우) 시, `emr_patients`에서 `brand`만 다르고 `name`+`birth_date`+`phone`이 전부 일치하며 이미 `claimed_user_id`가 있는(=다른 클리닉에서 이미 회원가입 완료된) 행이 있는지 먼저 확인한다(`findLinkedAccountFromOtherClinic`). 있으면:
+- 이 클리닉 소유의 새 환자 행은 정상적으로 만들되(별도 `patient_no` 발급, 이 클리닉 차트로 독립적으로 취급), `claimed_user_id`를 그 기존 계정 id로, `claimed_at`을 **`created_at`과 동일한 시각**으로 INSERT 시점에 함께 채운다 — 별도 회원가입 절차 없이 등록 즉시 claim 완료 상태가 됨. `created_at`/`claimed_at`을 의도적으로 똑같이 맞추는 이유는 아래 "다중 클리닉 자동 연결과 마스킹" 참고
+- 이후 이 클리닉이 이 환자에게 시술기록을 추가하면(3절) `claimed_user_id`가 있으니 스테이징이 아니라 곧바로 실제 앱 테이블(`care_records`/`memberships`)에 쓰인다 — 그 계정으로 로그인한 고객 앱에도 바로 반영됨
+- 안내 발송(`notifyExistingAccountLinked`)을 시도한다 — **현재는 로그만 남기는 스텁**이며 실제 SMS 등은 미구현(발송 수단 미정, 의도적으로 보류된 범위 — 아래 "알려진 제한사항" 참고)
+- 이 클리닉 관리자에게는 이 사실이 응답에 노출되지 않는다 — 아래 참고
 
 **Response 201** — 새로 등록된 경우, `emr_patients` 행 그대로(스네이크 케이스)
 ```json
@@ -169,12 +177,21 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | `phone` | string | |
 | `notes` | string \| null | 기타사항 |
 | `brand` | string | 소속 클리닉(로그인 계정에서 자동 기록) |
-| `claimed_user_id` | string(uuid) \| null | 회원가입(claim) 완료 시 연결된 실제 앱 계정 id. 미가입이면 `null` — 이 값으로 "가입 여부"를 판단하면 됨 |
-| `claimed_at` | string \| null | 회원가입 완료 시각. 미가입이면 `null` |
+| `claimed_user_id` | string(uuid) \| null | 회원가입(claim) 완료 시 연결된 실제 앱 계정 id. 미가입이면 `null` — 이 값으로 "가입 여부"를 판단하면 됨. `(v0.6)` **다른 클리닉에서 자동 연결된 경우는 항상 `null`로 마스킹되어 내려온다** — 실제 DB엔 값이 있어도 이 클리닉 응답에는 노출 안 됨(아래 "다중 클리닉 자동 연결과 마스킹" 참고) |
+| `claimed_at` | string \| null | 회원가입 완료 시각. 미가입이면 `null`. `claimed_user_id`와 동일한 마스킹 규칙 적용 |
 | `created_at` | string | 환자 등록 시각(ISO 8601) |
 | `updated_at` | string | 마지막 수정 시각 |
 
 이 응답 형태는 아래 `PATCH /patients/{patientId}`의 Response와 완전히 동일하다.
+
+#### `(v0.6)` 다중 클리닉 자동 연결과 마스킹
+
+`claimed_user_id`/`claimed_at`을 이 클리닉 응답에서 숨겨야 하는지는 **"언제 claim됐는지"만으로 판별**한다 — 스키마 변경 없이, INSERT 시점에 `created_at`과 `claimed_at`을 의도적으로 완전히 같은 값으로 채워두는 방식(`maskAutoLinkedClaim`):
+
+- **다른 클리닉 자동 연결**: `created_at === claimed_at`(등록과 동시에 claim됨) → 응답에서 `claimed_user_id`/`claimed_at`을 `null`로 마스킹. 이 클리닉 관리자에게 "이 환자가 다른 클리닉에도 다닌다"는 사실을 알려주지 않기 위함(클리닉 데이터 격리 원칙의 연장)
+- **이 클리닉 자체 patientNo로 정상 회원가입**: 등록 시각과 가입 시각이 (보통) 다르므로 `created_at !== claimed_at` → 그대로 노출. "이 환자가 가입했는지"는 이 클리닉 입장에서 유의미한 정보라 숨기지 않음
+
+⚠️ **마스킹은 응답 표현에만 적용되고 실제 동작에는 영향 없음** — DB엔 실제 `claimed_user_id`가 그대로 저장돼 있고, 시술기록 추가(3절)는 내부적으로 이 값을 그대로 써서 정상적으로 실제 앱 테이블(`care_records`/`memberships`)에 기록한다. 마스킹은 `POST /patients`(신규/중복 응답 모두), `GET /patients?search=`, `GET /patients/{patientId}`, `PATCH /patients/{patientId}` 네 응답 전부에 동일하게 적용된다.
 
 **Response 200 — 중복(이미 등록된 환자)인 경우.** 새로 만든 게 아니라 기존 환자를 재사용했다는 뜻이라 `201`이 아니라 `200`으로 응답하고, 위 필드에 두 개가 추가된다:
 ```json
@@ -240,8 +257,8 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | `birth_date` | string | |
 | `phone` | string | |
 | `brand` | string | |
-| `claimed_user_id` | string(uuid) \| null | |
-| `claimed_at` | string \| null | |
+| `claimed_user_id` | string(uuid) \| null | `(v0.6)` 다른 클리닉 자동 연결 시 마스킹됨 — 위 `POST /patients`의 "다중 클리닉 자동 연결과 마스킹" 참고 |
+| `claimed_at` | string \| null | 위와 동일한 마스킹 규칙 |
 | `created_at` | string | |
 | `latestCareName` | string \| null | camelCase, 서버가 계산해 붙이는 파생 필드. 이 환자의 가장 최근 시술명, 없으면 `null` — 목록 화면에서 빈 칸으로 표시 |
 
@@ -268,7 +285,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
   "memberships": [ { "...emr_memberships 또는 memberships 전체 컬럼 + source": "..." } ]
 }
 ```
-- `patient`: 위 `POST /patients` Response와 완전히 동일한 필드 구성(`id`/`patient_no`/`name`/`birth_date`/`phone`/`notes`/`brand`/`claimed_user_id`/`claimed_at`/`created_at`/`updated_at`)
+- `patient`: 위 `POST /patients` Response와 완전히 동일한 필드 구성(`id`/`patient_no`/`name`/`birth_date`/`phone`/`notes`/`brand`/`claimed_user_id`/`claimed_at`/`created_at`/`updated_at`), 마스킹 규칙도 동일하게 적용됨. `(v0.6)` 다른 클리닉 자동 연결로 마스킹된 경우에도 `careRecords`/`memberships`의 `source: "app"` 항목은 정상적으로 채워진다 — 마스킹은 `patient` 필드 표현에만 적용되고, 서버 내부에서 실제 앱 테이블을 조회할 땐 진짜 `claimed_user_id`를 그대로 쓴다
 - `careRecords`(배열, 최신순) 각 항목 — 스테이징(`emr_care_records`)이면 `patient_id`, 실제 앱(`care_records`)이면 `user_id`를 갖는다(둘 중 하나만 존재):
 
 | 필드 | 타입 | 설명 |
@@ -679,3 +696,5 @@ CareRecord/Membership이 어느 테이블에서 왔는지는 환자의 회원가
 - **이용권 자동 이어쓰기 매칭은 `product_name`+`total_count` 정확히 일치할 때만 동작** — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음
 - **`clinic_doctors`(담당 의료진)는 CRUD API 없음** `(v0.5)` — `treatment-catalog`와 달리 관리자 웹에서 추가/수정/삭제할 수 없고, `server_admin/db/seed/seedClinicCatalog.ts` 시드 스크립트로만 채워진다(3개 클리닉 고정 전제, `admin_accounts`와 동일한 관리 방식). 새 의료진이 합류하면 시드 스크립트를 갱신해 재실행해야 함
 - **`practitioner`는 여전히 자유 텍스트라 `clinic_doctors` 목록과 무관하게 아무 값이나 저장 가능** — `GET /clinic-info`의 `doctors`는 프론트 select의 후보 제안일 뿐, 서버가 `POST .../care-records`의 `practitioner` 값을 이 목록과 대조해 검증하지 않는다
+- **`(v0.6)` 다른 클리닉 자동 연결 안내는 로그만 남기고 실제 발송되지 않음** — `notifyExistingAccountLinked`가 콘솔 로그만 찍는 스텁으로 배선만 돼 있다. SMS 인프라는 비용 문제로 MVP 범위 밖으로 확정되어 이미 한 번 제거된 바 있어(`server/README.md` 참고), 재도입 여부·수단(SMS 재연동 vs 이메일 등)은 미정 — 실제 발송이 필요해지면 이 스텁을 교체해야 함
+- **`(v0.6)` 다른 클리닉 자동 연결은 이름+생년월일+전화번호 완전 일치로만 판별** — 동명이인이 우연히 생년월일까지 같고 같은 번호를 쓸 순 없지만(전화번호가 사실상 유일한 식별자 역할), 반대로 같은 사람이 클리닉마다 전화번호를 다르게 등록했다면(번호 변경 등) 자동 연결되지 않고 별개 환자로 남는다 — 이 경우 기존과 동일하게 그 클리닉 patientNo로 별도 회원가입해야 함
