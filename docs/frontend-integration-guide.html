@@ -224,7 +224,7 @@ npm install</pre>
           <thead><tr><th>변수</th><th>설명</th></tr></thead>
           <tbody>
             <tr><td class="mono">SUPABASE_URL<br/>SUPABASE_SERVICE_ROLE_KEY<br/>SUPABASE_ANON_KEY</td><td>백엔드에서 이미 만든 Supabase 프로젝트 값 — <strong>같은 프로젝트 키를 써야</strong> 데모 계정 4개가 동일하게 보임</td></tr>
-            <tr><td class="mono">ANTHROPIC_API_KEY</td><td>사후관리 가이드/Q&amp;A 생성용 Claude API 키</td></tr>
+            <tr><td class="mono">ANTHROPIC_API_KEY</td><td>사후관리 가이드/Q&amp;A 생성용 Claude API 키 — <strong>선택.</strong> 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. 없을 때 <span class="mono">GET /aftercare/daily-guide</span>는 검수된 가이드 원문으로 자동 폴백되고, <span class="mono">POST /aftercare/questions</span>만 <span class="mono">500 ANSWER_GENERATION_FAILED</span>를 응답한다</td></tr>
           </tbody>
         </table>
       </div>

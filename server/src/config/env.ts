@@ -16,7 +16,10 @@ const envSchema = z.object({
   // 미설정 시 Supabase 프로젝트의 기본 Site URL로 전송됨 — 앱 딥링크 스킴 확정 후 채워도 됨.
   PASSWORD_RESET_REDIRECT_URL: z.string().url().optional(),
 
-  ANTHROPIC_API_KEY: z.string().min(1),
+  // 없어도 서버 자체는 정상 기동한다 — daily-guide는 검수된 reference_guide로 폴백,
+  // questions는 ANSWER_GENERATION_FAILED로 응답할 뿐(aftercare.service.ts) 그 외 엔드포인트는 무관.
+  // 프론트 로컬 개발 시 이 키 없이도 회원가입/로그인/시술기록 등은 그대로 테스트 가능하게 하기 위함.
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
 
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
