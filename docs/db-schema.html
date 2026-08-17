@@ -220,14 +220,15 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.6, <code>admin-api-spec.md</code> v0.3 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.7</span> 표시는 치료-부위 카탈로그·이용권 만료(마이그레이션 013)로 바뀐 항목.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.8, <code>admin-api-spec.md</code> v0.3 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.7</span> 표시는 치료-부위 카탈로그·이용권 만료(마이그레이션 013)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.8</span> 표시는 실제 사업장/시술 카탈로그(마이그레이션 015)로 추가된 항목.</p>
     <div class="badges">
-      <span class="badge">v0.7</span>
+      <span class="badge">v0.8</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
       <span class="badge outline">환자번호+이름+생년월일 기반 회원가입(v0.6)</span>
       <span class="badge outline">클리닉별 관리자 로그인(v0.6)</span>
       <span class="badge outline">치료-부위 카탈로그(v0.7)</span>
+      <span class="badge outline">실제 사업장/시술 카탈로그 46종(v0.8)</span>
     </div>
   </header>
 
@@ -242,6 +243,7 @@
     <a href="#v06new">가상 EMR 스테이징 테이블(006)</a>
     <a href="#v06later">클리닉 로그인·격리 확장(007~012)</a>
     <a href="#v07">치료-부위 카탈로그(013)</a>
+    <a href="#v08">실제 사업장/시술 카탈로그(015)</a>
   </nav>
 
   <main>
@@ -275,6 +277,7 @@ erDiagram
   EMR_PATIENTS ||--o{ EMR_CARE_RECORDS : "1:N (v0.4)"
   EMR_PATIENTS ||--o{ EMR_MEMBERSHIPS : "1:N (v0.4)"
   EMR_MEMBERSHIPS ||--o{ EMR_CARE_RECORDS : "0:N (v0.6, membership_id)"
+  BUSINESSES ||--o{ PROCEDURES : "1:N (v0.8)"
 
   AUTH_USERS {
     uuid id PK
@@ -404,6 +407,21 @@ erDiagram
     text care_name "unique, v0.7"
     text care_type "v0.7"
     text_array body_parts "v0.7"
+  }
+  BUSINESSES {
+    text id PK
+    text name
+    text brand "unique, v0.8"
+    text talk_channel_label "v0.8"
+    text talk_channel_url "v0.8"
+    text phone "v0.8"
+  }
+  PROCEDURES {
+    uuid id PK
+    text business_id FK "v0.8"
+    text name
+    text_array category_tags "v0.8"
+    text description "v0.8"
   }
 </pre>
         </div>
@@ -741,6 +759,53 @@ erDiagram
 
       <div class="table-card">
         <div class="table-head">
+          <span class="name">public.businesses</span>
+          <span class="owner">실제 사업장 공개 정보</span>
+          <span class="done-badge">v0.8 신설(015)</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">text</td><td><span class="pk">PK</span></td><td><span class="mono">amred</span>/<span class="mono">derna</span>/<span class="mono">wim</span></td></tr>
+                <tr><td class="mono">name</td><td class="mono">text</td><td>not null</td><td>화면 노출용 한글명(예: "엠레드 클리닉")</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">text</td><td>not null, <span class="constraint">UNIQUE</span></td><td><span class="mono">admin_accounts.brand</span>/<span class="mono">care_records.brand</span>와 동일 값(예: "AMRED CLINIC") — FK 아님, 문자열 매칭</td></tr>
+                <tr><td class="mono">talk_channel_label / talk_channel_url</td><td class="mono">text</td><td>nullable</td><td>카카오톡 상담 채널명/링크</td></tr>
+                <tr><td class="mono">phone</td><td class="mono">text</td><td>nullable</td><td>대표 전화번호</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">docs/care_procedure_template.xlsx</span>(사업장 시트)를 <span class="mono">server/db/seed/seedCareCatalog.ts</span>로 반영. 관리 추천 상세 화면의 <span class="mono">clinicContacts</span>가 이 테이블에서 나온다.</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.procedures</span>
+          <span class="owner">실제 시술 카탈로그 · 관리 추천용</span>
+          <span class="done-badge">v0.8 신설(015)</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">business_id</td><td class="mono">text</td><td><span class="fk">FK→businesses(id)</span></td><td>—</td></tr>
+                <tr><td class="mono">name</td><td class="mono">text</td><td>not null, <span class="constraint">UNIQUE(business_id, name)</span></td><td>시술명(46종 — 엠레드 19/더나 20/윔 7)</td></tr>
+                <tr><td class="mono">category_tags</td><td class="mono">text[]</td><td>not null, default '{}'</td><td>concernTag 고정 10종(<span class="mono">server/src/lib/concernTags.ts</span>) 중 이 시술이 다루는 고민 영역</td></tr>
+                <tr><td class="mono">description</td><td class="mono">text</td><td>nullable</td><td>시술 설명 — 46종 중 일부만 채워짐(원본 엑셀 "비고"란)</td></tr>
+                <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><b><span class="mono">recommendations.service.ts</span>가 이 테이블 전체를 추천 후보 풀로 쓴다</b> — 고객 보유 이용권과 무관하게, <span class="mono">interest_goals</span>/최근 시술의 <span class="mono">category_tags</span>가 겹치는 시술을 추천(v0.7까지는 <span class="mono">memberships.availableCareNames</span> 안에서만 후보를 골랐음). <span class="mono">treatment_catalog</span>(013)와는 목적이 다른 별도 테이블 — 아직 통합하지 않음.</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
           <span class="name">public.admin_accounts</span>
           <span class="owner">클리닉 관리자 로그인</span>
           <span class="done-badge">v0.6 · 008/009</span>
@@ -928,7 +993,20 @@ erDiagram
       <p class="note">자세한 API 계약은 <span class="mono">docs/admin-api-spec.md</span> v0.3 참고.</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.6 기준 · db-schema v0.7 · 2026-08-16</footer>
+    <section id="v08">
+      <h2>실제 사업장/시술 카탈로그 추가 <span class="tag">015</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/015_add_care_catalog.sql</span> — 사용자가 실제 사업장 데이터(<span class="mono">docs/care_procedure_template.xlsx</span> — 엠레드/더나/윔 3곳, 실시술 46종 + concernTag 매칭, <span class="mono">docs/care_recommendation_data_guide.md</span>에 설계 문서)를 전달하면서, 다음 관리 추천(<span class="mono">recommendations.service.ts</span>) 로직이 실데이터를 전혀 참조하지 않던 문제가 드러나 신규 테이블 <span class="mono">public.businesses</span>/<span class="mono">public.procedures</span>를 추가하고(위 테이블 정의 참고) 추천 알고리즘을 전면 교체했다.</p>
+      <ul style="margin:0; padding-left:20px; font-size:14px; color:var(--text-muted); display:flex; flex-direction:column; gap:8px; max-width:74ch;">
+        <li>실데이터는 <span class="mono">server/db/seed/seedCareCatalog.ts</span>(<span class="mono">npm run seed:care-catalog</span>)로 반영 — 사업장 3곳(카카오톡/전화번호 포함) + 시술 46종(엠레드 19/더나 20/윔 7)</li>
+        <li><b>기존</b>: 추천 후보 = 고객이 보유한 이용권(<span class="mono">memberships.availableCareNames</span>) 안에서만 선택. <b>변경 후</b>: 추천 후보 = <span class="mono">procedures</span> 테이블 전체(이용권 보유 여부 무관), 고객의 <span class="mono">profiles.interest_goals</span>와 시술의 <span class="mono">category_tags</span>가 겹치는 것 우선 추천</li>
+        <li>concernTag 고정 10종은 <span class="mono">server/src/lib/concernTags.ts</span>에 상수로 관리(DB 테이블 아님) — 앱의 관심목표 칩과 동일한 값이어야 매칭됨</li>
+        <li><span class="mono">treatment_catalog</span>(013)와는 별개 테이블 — <span class="mono">treatment_catalog</span>는 <span class="mono">care_type</span>/부위 기반 관리자 웹 시술기록 등록 자동완성용, <span class="mono">procedures</span>는 <span class="mono">category_tags</span>(concernTag) 기반 고객 추천용. 실제로 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다</li>
+        <li>실계정으로 라이브 검증 완료 — 자세한 API 계약 변경은 <span class="mono">docs/api-spec.md</span> v0.8 참고</li>
+      </ul>
+      <p class="note">참고: 같은 날 별도로 진행하던 <span class="mono">treatment_catalog.description</span> 컬럼 + <span class="mono">clinics</span>/<span class="mono">clinic_doctors</span> 테이블 작업(<span class="mono">014_add_treatment_description_clinic_info_doctors.sql</span>)은 이 변경과 무관하며 <b>보류 상태</b>(마이그레이션 미적용).</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.8 기준 · db-schema v0.8 · 2026-08-17</footer>
   </main>
 </div>
 

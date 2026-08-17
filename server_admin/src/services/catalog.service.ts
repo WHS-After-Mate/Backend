@@ -13,12 +13,22 @@ export async function listTreatments(search?: string) {
   return data ?? [];
 }
 
-export async function createTreatment(input: { careName: string; careType: string; bodyParts: string[] }) {
+export async function createTreatment(input: {
+  careName: string;
+  careType: string;
+  bodyParts: string[];
+  description?: string;
+}) {
   await assertValidCareType(input.careType);
 
   const { data, error } = await supabaseAdmin
     .from("treatment_catalog")
-    .insert({ care_name: input.careName, care_type: input.careType, body_parts: input.bodyParts })
+    .insert({
+      care_name: input.careName,
+      care_type: input.careType,
+      body_parts: input.bodyParts,
+      description: input.description ?? null,
+    })
     .select()
     .single();
 
@@ -32,7 +42,7 @@ export async function createTreatment(input: { careName: string; careType: strin
 
 export async function updateTreatment(
   id: string,
-  input: Partial<{ careName: string; careType: string; bodyParts: string[] }>,
+  input: Partial<{ careName: string; careType: string; bodyParts: string[]; description: string }>,
 ) {
   if (input.careType !== undefined) await assertValidCareType(input.careType);
 
@@ -50,6 +60,7 @@ export async function updateTreatment(
       ...(input.careName !== undefined && { care_name: input.careName }),
       ...(input.careType !== undefined && { care_type: input.careType }),
       ...(input.bodyParts !== undefined && { body_parts: input.bodyParts }),
+      ...(input.description !== undefined && { description: input.description }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

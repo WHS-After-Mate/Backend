@@ -1,9 +1,11 @@
-# WHS After Mate — API 명세서 (v0.6, MVP)
+# WHS After Mate — API 명세서 (v0.8, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
 
 v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화면) 검토 결과 기존 명세에 없던 화면 요소 9건을 반영. 아래 "v0.5에서 추가된 항목" 절 참고 — **서버 코드(`server/src`) 구현, DB 마이그레이션(`server/db/migrations/003_v05_wireframe_features.sql`) 적용, 데모 데이터 재시드까지 전부 완료되어 실제 Supabase 프로젝트에 반영된 상태다.**
+
+v0.8 변경: 다음 관리 추천(`/recommendations/next-care`)을 실제 사업장(엠레드/더나/윔) 시술 카탈로그 46종 기반으로 전면 교체. 아래 "v0.8 — 관리 추천을 실제 사업장 카탈로그 기반으로 교체" 절 참고.
 
 범위:
 - 로그인은 **실제 계정** 기반 (이메일/비밀번호, access/refresh 토큰)
@@ -34,8 +36,8 @@ v0.5 변경: 최종 프론트 와이어프레임(`WHS After Mate.png`, 15개 화
 | POST | `/auth/password/reset-verify` | `auth.routes.ts` *(v0.6)* |
 | POST | `/auth/password/reset-confirm` | `auth.routes.ts` *(v0.5, v0.6에서 요청 스키마 변경)* |
 | GET | `/home/summary` | `home.routes.ts` |
-| GET | `/recommendations/next-care` | `recommendations.routes.ts` |
-| GET | `/recommendations/next-care/{recommendationId}` | `recommendations.routes.ts` |
+| GET | `/recommendations/next-care` | `recommendations.routes.ts` *(v0.8에서 알고리즘 전면 교체)* |
+| GET | `/recommendations/next-care/{recommendationId}` | `recommendations.routes.ts` *(v0.8)* |
 | GET | `/aftercare/daily-guide` | `aftercare.routes.ts` |
 | GET | `/aftercare/question-categories` | `aftercare.routes.ts` |
 | POST | `/aftercare/questions` | `aftercare.routes.ts` |
@@ -204,8 +206,9 @@ accessToken 재발급.
   },
   "recommendation": {
     "recommendationId": "R-9001",
-    "careName": "수분 재생 관리",
-    "reasons": ["최근 관리 후 4주 경과", "관심 목표: 수분 개선"]
+    "careName": "티타늄 리프팅",
+    "businessId": "amred",
+    "reasons": ["관심 목표(색소침착 개선)에 도움이 돼요.", "최근 관리(울쎄라피 프라임)와 연관된 관리예요."]
   }
 }
 ```
@@ -231,34 +234,43 @@ accessToken 재발급.
 | `recommendation` | object \| null | 다음 관리 추천. 근거 없으면 `null` |
 | `recommendation.recommendationId` | string | |
 | `recommendation.careName` | string | |
+| `recommendation.businessId` | string | `(v0.8)` 추천 시술을 보유한 사업장 id(`amred`/`derna`/`wim`) |
 | `recommendation.reasons` | string[] | 다음 관리 추천 이유 |
 
 `403 NO_ACTIVE_CUSTOMER_PROFILE`: 연결된 고객 프로필 없음
 
 ### GET /recommendations/next-care
-규칙 기반 추천 후보 1개 + 이유. 홈의 추천 카드.
+고객이 받아본 적 없는 시술 중, 관심 목표(concernTag)·최근 시술과 연관성이 높은 후보 1개 + 이유.
+후보 풀은 **실제 사업장 3곳의 시술 카탈로그 46종 전체**(`docs/care_procedure_template.xlsx` 기반, `procedures` 테이블)이며, 고객이 보유한 이용권 여부와 무관하다 `(v0.8)`.
 
 **Response 200**
 ```json
 {
   "recommendationId": "R-9001",
-  "careName": "수분 재생 관리",
+  "careName": "티타늄 리프팅",
+  "businessId": "amred",
   "reasons": [
-    "최근 관리(브라이트닝 필링) 후 4주 경과",
-    "보유 이용권 내 이용 가능",
-    "관심 목표: 수분 개선"
+    "관심 목표(색소침착 개선)에 도움이 돼요.",
+    "최근 관리(울쎄라피 프라임)와 연관된 관리예요."
   ],
-  "basis": ["latestCare", "membership", "goal"],
+  "basis": ["catalog", "goal", "recentCare"],
   "disclaimer": "의료적 진단이 아니며 최종 관리는 전문가 상담 후 결정하세요."
 }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `recommendationId` | string | `sha1("recommendation:"+userId)` 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함 |
-| `careName` | string | |
-| `reasons` | string[] | 추천 이유 2~3개 |
-| `basis` | string[] | 적용 근거: `latestCare` / `membership` / `goal` |
+| `careName` | string | `procedures.name` — 46종 실제 시술 카탈로그 중 하나 |
+| `businessId` | string | `(v0.8)` 추천 시술을 보유한 사업장 id(`amred`/`derna`/`wim`) |
+| `reasons` | string[] | 추천 이유 1~2개 |
+| `basis` | string[] | 적용 근거: `catalog`(항상 포함) / `goal`(관심 목표와 `category_tags` 겹침) / `recentCare`(최근 받은 시술의 `category_tags`와 겹침) |
 | `disclaimer` | string | 의료 진단 아님 고지 |
+
+**매칭 알고리즘** `(v0.8)`:
+1. 고객의 최근 관리 이력(`care_records`, 최근 10건)에서 관리명이 `procedures.name`과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외
+2. 남은 후보 중 고객의 `profiles.interest_goals`와 `procedures.category_tags`가 겹치는 개수(`goalOverlap`)로 1차 정렬
+3. 동률이면 최근 받은 시술들의 `category_tags`와 겹치는 정도(`recentRelevance`)로 2차 정렬
+4. 두 기준 모두 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 `204`
 
 `204 NO_RECOMMENDATION_AVAILABLE`: 추천 근거 부족(관리 이력 없음 등)
 - 참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 `GET /home/summary`의 `recommendation` 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.
@@ -270,30 +282,29 @@ accessToken 재발급.
 
 ```json
 {
-  "detailDescription": "브라이트닝 부스터 케어는 색소침착 개선에 특화된 관리로...",
+  "detailDescription": "티타늄 리프팅은 기존 리프팅 장비와 달리 빠른 속도, 낮은 통증, 강력한 효과를 갖춘 프리미엄 올인원 리프팅 솔루션입니다...",
   "relatedRecentCares": [
-    { "careRecordId": "C-2001", "careName": "올쎄라 리프팅", "daysElapsed": 21 },
-    { "careRecordId": "C-1988", "careName": "인모드", "daysElapsed": 44 }
+    { "careRecordId": "C-2001", "careName": "울쎄라피 프라임", "daysElapsed": 10 }
   ],
-  "popularWithSimilarCustomers": ["리프트 관리", "색소 관리", "회복탄력 관리"],
+  "popularWithSimilarCustomers": ["튠 콩피에르(Tune Confier)", "울쎄라피 프라임", "써마지 FLX"],
   "clinicContacts": [
-    { "brand": "앰레드", "label": "앰레드 클리닉" },
-    { "brand": "다나", "label": "다나 의원" },
-    { "brand": "윔", "label": "윔 센터" }
+    { "brand": "AMRED CLINIC", "label": "엠레드 클리닉", "talkChannelUrl": "https://pf.kakao.com/_jyzAT/chat", "phone": "02-543-3110" }
   ]
 }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `detailDescription` | string | 추천 상세 설명 문단 |
+| `detailDescription` | string | `(v0.8)` 추천된 `procedures.description`을 그대로 사용. 설명 텍스트가 없는 시술(46종 중 일부)이면 기존처럼 추천 이유 기반 문장을 대신 생성 |
 | `relatedRecentCares` | object[] | `(v0.5)` "최근 관리와 함께 확인해보세요" — `latestCare` 1건이 아니라 최근 관리 이력 여러 건. `care_records` 최신순 N건 조회로 계산(신규 테이블 불필요) |
 | `relatedRecentCares[].careRecordId` | string | |
 | `relatedRecentCares[].careName` | string | |
 | `relatedRecentCares[].daysElapsed` | number | |
-| `popularWithSimilarCustomers` | string[] | `(v0.5)` "비슷한 고객이 자주 찾는 관리" 태그. `care_type`별 사전 정의된 연관 태그 목록(규칙 기반 매핑, 실제 유사도 계산 아님) |
-| `clinicContacts` | object[] | `(v0.5)` "담당" chips. 사용자의 최근 관리 이력에 등장한 `brand` distinct 목록에서 파생(신규 테이블 불필요) |
-| `clinicContacts[].brand` | string | |
-| `clinicContacts[].label` | string | 화면에 표시할 클리닉명 |
+| `popularWithSimilarCustomers` | string[] | `(v0.8)` "비슷한 고민의 다른 관리" — 추천된 시술과 `category_tags`를 하나 이상 공유하는 다른 시술명(최대 3개, 사업장 무관). 기존엔 `care_type`별 사전 정의 태그 매핑이었으나 실제 카탈로그 기반으로 교체 |
+| `clinicContacts` | object[] | `(v0.8)` 추천된 시술의 사업장(`businessId`) 연락처 1건. 기존엔 사용자의 최근 관리 이력 `brand` distinct 목록이었으나, 추천 시술을 보유한 사업장 정보로 교체(`businesses` 테이블) |
+| `clinicContacts[].brand` | string | `admin_accounts.brand`/`care_records.brand`와 동일 값(예: `"AMRED CLINIC"`) |
+| `clinicContacts[].label` | string | 화면에 표시할 클리닉명(카카오톡 상담 채널명) |
+| `clinicContacts[].talkChannelUrl` | string \| null | `(v0.8)` 카카오톡 상담 채널 링크 |
+| `clinicContacts[].phone` | string \| null | `(v0.8)` 대표 전화번호 |
 
 ---
 
@@ -651,13 +662,15 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 ### PUT /profile/interests
 관심 목표 설정. 다음 관리 추천(`basis: goal`)의 입력값으로 사용된다.
 
+`(v0.8)` 서버는 여전히 자유 문자열 배열을 그대로 저장하지만(스키마 강제 없음), 추천 매칭은 `procedures.category_tags`와 **정확히 일치**하는 값만 인식한다 — 아래 10개 고정값(`server/src/lib/concernTags.ts`, `docs/care_recommendation_data_guide.md`와 동일)만 실제로 매칭에 쓰인다: `리프팅·탄력` / `모공·피지 관리` / `보습·장벽 강화` / `색소침착 개선` / `얼굴 윤곽·볼륨` / `제모` / `두피 관리` / `바디라인·체형 관리` / `붓기 케어` / `컨디션·대사 관리`. 프론트(앱)의 관심목표 칩도 같은 10개 값을 써야 한다.
+
 **Request**
 ```json
-{ "goals": ["수분 개선", "탄력 관리"] }
+{ "goals": ["색소침착 개선", "리프팅·탄력"] }
 ```
 **Response 200**
 ```json
-{ "interestGoals": ["수분 개선", "탄력 관리"] }
+{ "interestGoals": ["색소침착 개선", "리프팅·탄력"] }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -692,7 +705,9 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
 | AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)* |
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt |
-| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, **relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[]** *(v0.5)* |
+| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
+| Procedure | id, businessId, name, categoryTags[], description *(v0.8, `procedures` 테이블 — 46개 실제 시술 카탈로그)* |
+| Business | id, name, brand, talkChannelLabel, talkChannelUrl, phone *(v0.8, `businesses` 테이블 — 사업장 3곳)* |
 | Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)* |
 
 ## 공통 에러 코드
@@ -761,3 +776,16 @@ DB 스키마 변경 상세는 `db-schema.md`의 "v0.3에서 추가된 항목" �
 - **`auth.service.ts`의 `signup()`**: `emr_patients`에서 조회한 `patient.phone`을 `input.phone`과 비교하는 조건이 이름/생년월일 비교에 추가됨 — 하나라도 다르면 기존과 동일하게 `400 PATIENT_IDENTITY_MISMATCH`.
 - **`profiles.phone`에 채우는 값은 변함없이 EMR 원본**(`patient.phone`)이다 — 클라이언트가 보낸 `phone`은 신원확인에만 쓰이고 저장값의 출처는 아니다(정상적으로 신원확인을 통과했다면 두 값은 어차피 동일).
 - 회원가입 화면(와이어프레임)에 전화번호 입력란 추가가 필요 — 클라이언트(앱) 쪽 변경사항은 이 문서(서버 스펙) 범위 밖.
+
+## v0.8 — 관리 추천을 실제 사업장 카탈로그 기반으로 교체
+
+사용자가 실제 사업장 데이터(`docs/care_procedure_template.xlsx` — 엠레드/더나/윔 3곳, 실시술 46종 + concernTag 매칭, `docs/care_recommendation_data_guide.md`에 설계 문서)를 전달하면서, 기존 추천 로직의 근본적 한계가 드러나 전면 교체했다.
+
+- **기존 로직의 한계**: `computeNextCareRecommendation()`이 추천 후보를 고객이 **이미 보유한 이용권**(`memberships.availableCareNames`)에서만 골랐다 — 안 받아본 시술, 다른 사업장 시술은 애초에 후보가 될 수 없었고, `interestGoals`도 이 좁은 후보 안에서 순위만 정했다. 태그 매칭도 자체 발명한 키워드그룹(`리프트 관리`/`색소 관리` 등, 실데이터 아님)이었다.
+- **신규 테이블**: `businesses`(사업장 3곳 — id/name/brand/talkChannelLabel/talkChannelUrl/phone), `procedures`(시술 46종 — id/businessId/name/categoryTags[]/description). `server/db/migrations/015_add_care_catalog.sql`, 실데이터는 `server/db/seed/seedCareCatalog.ts`(`npm run seed:care-catalog`)로 반영.
+- **concernTags 고정 10종**: `server/src/lib/concernTags.ts` — 앱의 관심목표 칩과 동일한 값이어야 매칭됨(가이드 문서 명시).
+- **`computeNextCareRecommendation()` 알고리즘 교체**: 후보 풀을 `procedures` 전체(46종)로 확장하고, 고객의 `interest_goals` ↔ 시술 `category_tags` 겹침(`goal`)과 최근 시술들의 `category_tags`와의 연관성(`recentCare`)으로 점수를 매겨 1순위를 추천한다. `basis`가 `["latestCare","membership","goal"]`에서 `["catalog","goal","recentCare"]`로 변경됨 — **`membership` 근거는 제거**(이용권 보유 여부는 더 이상 추천 후보 선정에 관여하지 않음).
+- **응답 필드 변경**: `recommendation.businessId` 신규 추가. 상세 조회(`GET /recommendations/next-care/{id}`)의 `popularWithSimilarCustomers`(실제 카탈로그에서 태그 공유 시술로 산출)와 `clinicContacts`(추천 시술의 실제 사업장 연락처로 산출, `talkChannelUrl`/`phone` 필드 추가)도 실데이터 기반으로 교체.
+- **하위호환 없음**: 이용권 기반 추천을 기대하던 기존 프론트 로직이 있다면 재검토 필요 — 특히 신규 고객이라도 관심 목표/최근 시술과 연관된 시술이 있으면 이용권 없이도 추천이 나올 수 있다(기존엔 불가능했음).
+- 실계정으로 라이브 검증 완료: 관심목표 "색소침착 개선" + 최근 시술 "울쎄라피 프라임"(엠레드) → "티타늄 리프팅" 추천(`basis: goal, recentCare`), 상세 응답의 `detailDescription`/`popularWithSimilarCustomers`/`clinicContacts` 전부 실데이터로 확인.
+- 참고: 같은 날 별도로 진행하던 관리자 웹(EMR 등록용) 담당의/사업장 연락처 작업(`014_add_treatment_description_clinic_info_doctors.sql`, `treatment_catalog`/`clinics`/`clinic_doctors`)은 이 변경과 별개이며 **보류 상태**(마이그레이션 미적용) — `admin-api-spec.md` 대상이며 이 문서(고객용 `server/`) 범위 밖.

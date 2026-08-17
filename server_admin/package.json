@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "seed:admins": "tsx db/seed/seedAdmins.ts"
+    "seed:admins": "tsx db/seed/seedAdmins.ts",
+    "seed:clinic-catalog": "tsx db/seed/seedClinicCatalog.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

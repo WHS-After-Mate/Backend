@@ -1,6 +1,8 @@
-# WHS After Mate — DB 스키마 (v0.7)
+# WHS After Mate — DB 스키마 (v0.8)
 
-기준: `api-spec.md` v0.6, `admin-api-spec.md` v0.3. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.8, `admin-api-spec.md` v0.3. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+
+v0.8 변경: 관리 추천용 실데이터 카탈로그 신규 테이블 `public.businesses`/`public.procedures` 추가(`015_add_care_catalog.sql`) — 사업장 3곳 + 실제 시술 46종. 다음 관리 추천이 고객 보유 이용권 기반에서 이 카탈로그 전체 기반으로 교체됐다. 자세한 내용은 하단 "실제 사업장/시술 카탈로그 추가 (015)" 절 참고.
 
 v0.7 변경: 관리자 웹 프로토타입의 치료-부위 카탈로그 방식을 도입 — 신규 테이블 `public.treatment_catalog`(치료명→기본 careType/관리 부위 매핑, 클리닉 공통, `013_add_treatment_catalog.sql`) 추가. 스키마 변경은 아니지만 `emr_memberships`/`memberships`의 기존 `expires_at`(date, nullable) 컬럼을 `server_admin`이 이제 실제로 채워 쓰기 시작함(이용권 생성일=첫 시술일 기준 +1년, 만료 시 차감 차단) — 자세한 내용은 하단 "치료-부위 카탈로그 추가 (013)" 절 참고.
 
@@ -272,6 +274,41 @@ create table public.reference_guides (
 - `llm-prompt-design.md`의 "미확정 사항"이었던 "검수 가이드 저장 형식/위치"를 DB 테이블로 확정. daily-guide/questions 두 LLM 호출 지점 모두 이 테이블을 `care_type`+`days_elapsed` 구간으로 조회해 유일한 사실 근거로 주입
 - 정적 파일이 아닌 테이블로 택한 이유: 관리 유형×경과구간 조합이 적어(수십 건 이내) 운영 중 검수자가 직접 값을 수정하기 쉬움
 
+### public.businesses — 실제 사업장 정보 *(v0.8 신설 015)*
+
+```sql
+create table public.businesses (
+  id text primary key,
+  name text not null,
+  brand text not null unique,
+  talk_channel_label text,
+  talk_channel_url text,
+  phone text
+);
+```
+
+- 실제 사업장 3곳(엠레드/더나/윔) 공개 정보 — `docs/care_procedure_template.xlsx`를 `server/db/seed/seedCareCatalog.ts`로 반영
+- `brand`는 `admin_accounts.brand`/`care_records.brand`와 동일한 값(예: `"AMRED CLINIC"`) — FK 아님, 기존 브랜드 매칭 관례와 동일하게 문자열로만 대조
+- 카카오톡 상담 링크/전화번호는 관리 추천 상세 화면(`clinicContacts`)에서 노출
+
+### public.procedures — 실제 시술 카탈로그 (관리 추천용) *(v0.8 신설 015)*
+
+```sql
+create table public.procedures (
+  id uuid primary key default gen_random_uuid(),
+  business_id text not null references public.businesses(id),
+  name text not null,
+  category_tags text[] not null default '{}',
+  description text,
+  created_at timestamptz not null default now(),
+  unique (business_id, name)
+);
+```
+
+- 사업장별 실제 시술 46종(2026-08-17 xlsx 기준) — `category_tags`는 고정 concernTag 10종(`server/src/lib/concernTags.ts`) 중 이 시술이 다루는 고민 영역
+- **`recommendations.service.ts`가 이 테이블 전체를 추천 후보 풀로 쓴다** — 고객이 이용권을 보유했는지와 무관하게, `interest_goals`/최근 시술의 `category_tags`가 겹치는 시술을 추천한다(v0.7까지는 고객이 보유한 이용권의 `availableCareNames` 안에서만 후보를 골랐음 — 아래 "실제 사업장/시술 카탈로그 추가 (015)" 절 참고)
+- `treatment_catalog`(013, 관리자 웹의 시술기록 등록 자동완성용)와는 목적이 다른 별도 테이블이다 — 이쪽은 concernTag 기반 고객 추천용, `treatment_catalog`는 `care_type`/부위 기반 EMR 입력 보조용. 두 테이블이 실제로는 겹치는 시술을 담고 있을 수 있지만 아직 통합하지 않았다
+
 ### public.device_tokens — Android FCM 푸시 토큰 (서버 구현 시 신규)
 
 ```sql
@@ -528,3 +565,14 @@ create table public.admin_accounts (
 - **이용권 자동 이어쓰기** — `POST .../care-records`에 `totalSessions`(직접입력)로 요청하면, 같은 `product_name`+같은 `total_count`로 아직 유효한(소진·만료 안 된) 이용권이 있는지 먼저 찾아서 있으면 새로 만들지 않고 그 이용권에 이어서 차감한다(관리자 프로토타입의 "패키지 자동 이어쓰기" 동작 재현)
 
 자세한 API 계약은 `docs/admin-api-spec.md` v0.3 참고.
+
+## 실제 사업장/시술 카탈로그 추가 (015)
+
+`server/db/migrations/015_add_care_catalog.sql` — 사용자가 실제 사업장 데이터(`docs/care_procedure_template.xlsx` — 엠레드/더나/윔 3곳, 실시술 46종 + concernTag 매칭, `docs/care_recommendation_data_guide.md`에 설계 문서)를 전달하면서, 다음 관리 추천(`recommendations.service.ts`) 로직이 실데이터를 전혀 참조하지 않던 문제가 드러나 신규 테이블 `public.businesses`/`public.procedures`를 추가하고(위 테이블 정의 참고) 추천 알고리즘을 전면 교체했다.
+
+- 실데이터는 `server/db/seed/seedCareCatalog.ts`(`npm run seed:care-catalog`)로 반영 — 사업장 3곳(카카오톡/전화번호 포함) + 시술 46종(엠레드 19/더나 20/윔 7)
+- **기존**: 추천 후보 = 고객이 보유한 이용권(`memberships.availableCareNames`) 안에서만 선택. **변경 후**: 추천 후보 = `procedures` 테이블 전체(이용권 보유 여부 무관), 고객의 `profiles.interest_goals`와 시술의 `category_tags`가 겹치는 것 우선 추천
+- concernTag 고정 10종은 `server/src/lib/concernTags.ts`에 상수로 관리(DB 테이블 아님) — 앱의 관심목표 칩과 동일한 값이어야 매칭됨
+- `treatment_catalog`(013)와는 별개 테이블이다 — `treatment_catalog`는 `care_type`/부위 기반으로 관리자 웹의 시술기록 등록 자동완성에 쓰이고, `procedures`는 `category_tags`(concernTag) 기반으로 고객 추천에 쓰인다. 실제로는 두 카탈로그에 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다
+- 실계정으로 라이브 검증 완료 — 자세한 API 계약 변경은 `docs/api-spec.md` v0.8 참고
+- 참고: 같은 날 별도로 진행하던 `treatment_catalog.description` 컬럼 + `clinics`/`clinic_doctors` 테이블 작업(`014_add_treatment_description_clinic_info_doctors.sql`)은 이 변경과 무관하며 **보류 상태**(마이그레이션 미적용)

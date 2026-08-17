@@ -467,14 +467,15 @@
     <h1>관리자 API 명세서</h1>
     <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(3절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
     <div class="badges">
-      <span class="badge">v0.4</span>
+      <span class="badge">v0.5</span>
       <span class="badge outline">클리닉 로그인 3계정</span>
       <span class="badge outline">시술기록↔이용권 1:1</span>
       <span class="badge outline">브랜드 격리(404)</span>
       <span class="badge outline">전날/금일 방문 + 익일 예약</span>
-      <span class="badge outline">치료-부위 카탈로그</span>
+      <span class="badge outline">치료-부위 카탈로그(설명 필드)</span>
       <span class="badge outline">이용권 만료/자동 이어쓰기</span>
       <span class="badge outline">예약 취소</span>
+      <span class="badge outline">클리닉 정보(카톡/전화/의료진)</span>
     </div>
     <div class="infobar">
       <div class="cell"><div class="k">Base URL</div><div class="v mono">/api/v1</div></div>
@@ -491,6 +492,7 @@
     <a href="#catalog">2. 치료-부위 카탈로그</a>
     <a href="#care">3. 시술기록/이용권</a>
     <a href="#stats">4. 통계</a>
+    <a href="#clinicinfo">5. 클리닉 정보</a>
     <a href="#isolation">클리닉 데이터 격리</a>
     <a href="#models">데이터 모델</a>
     <a href="#errors">공통 에러 코드</a>
@@ -526,6 +528,7 @@
             <tr><td><span class="method delete">DELETE</span></td><td class="mono">/care-records/{careRecordId}</td><td>필요</td><td>시술기록 삭제(이용권 정리 포함)</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/visit-stats</td><td>필요</td><td>전날/금일 방문 + 익일 예약 고객 수</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/reservations?date=</td><td>필요</td><td>특정 날짜(미지정 시 오늘)의 예약 목록(취소 대상 조회용)</td></tr>
+            <tr><td><span class="method get">GET</span></td><td class="mono">/clinic-info</td><td>필요</td><td>로그인 클리닉의 카카오톡/전화번호 + 담당 의료진 목록 <span class="done-badge">v0.5</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -912,6 +915,7 @@
       "care_name": "울쎄라 리프팅",
       "care_type": "peeling",
       "body_parts": ["얼굴 전체", "이중턱", "턱선", "심부볼", "팔자"],
+      "description": "고강도 집속형 초음파(HIFU) 기술을 활용한 비수술적 리프팅 시술입니다.",
       "created_at": "2026-08-16T09:00:00Z",
       "updated_at": "2026-08-16T09:00:00Z"
     }
@@ -926,6 +930,7 @@
                   <tr><td class="mono">care_name</td><td class="mono">string</td><td>치료명 — 전체 카탈로그에서 유일(unique)</td></tr>
                   <tr><td class="mono">care_type</td><td class="mono">string</td><td><span class="mono">GET /care-types</span> 목록에 있는 값만 허용(등록/수정 시 서버가 재검증)</td></tr>
                   <tr><td class="mono">body_parts</td><td class="mono">string[]</td><td><span class="mono">GET /body-parts</span> 목록 중 이 치료에서 실제로 고를 만한 부위 후보(1개 이상)</td></tr>
+                  <tr><td class="mono">description</td><td class="mono">string | null</td><td><span class="done-badge">v0.5</span> 시술 설명 텍스트. 선택 입력</td></tr>
                   <tr><td class="mono">created_at / updated_at</td><td class="mono">string</td><td></td></tr>
                 </tbody>
               </table>
@@ -948,6 +953,7 @@
                   <tr><td class="mono">careName</td><td class="mono">string</td><td><span class="field-required">required</span></td><td>카탈로그 전체에서 유일해야 함</td></tr>
                   <tr><td class="mono">careType</td><td class="mono">string</td><td><span class="field-required">required</span></td><td><span class="mono">GET /care-types</span> 목록에 있는 값만 허용</td></tr>
                   <tr><td class="mono">bodyParts</td><td class="mono">string[]</td><td><span class="field-required">required (1개 이상)</span></td><td><span class="mono">GET /body-parts</span> 목록 중에서만 선택</td></tr>
+                  <tr><td class="mono">description</td><td class="mono">string</td><td><span class="field-optional">optional</span></td><td><span class="done-badge">v0.5</span> 시술 설명 텍스트</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1211,6 +1217,57 @@
       </div>
     </section>
 
+    <section id="clinicinfo">
+      <h2>5. 클리닉 정보 <span class="req-id">v0.5</span></h2>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
+          <span class="method get">GET</span><span class="path mono">/clinic-info</span>
+          <span class="note">카카오톡/전화번호 + 담당 의료진</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">로그인한 클리닉의 카카오톡 상담 링크·전화번호와 담당 의료진 목록을 한 번에 반환한다. 관리 등록 화면에서 담당의(<span class="mono">practitioner</span>) select를 채우고, 클리닉 연락처를 보여주는 용도.</p>
+          <div>
+            <div class="block-label">DB</div>
+            <ul style="margin:0; padding-left:20px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px;">
+              <li><span class="mono">businesses</span> <b>SELECT</b> (<span class="mono">brand</span>=로그인 클리닉) — <span class="mono">talk_channel_url, phone</span>. 이 테이블은 고객용 <span class="mono">server/</span>의 관리 추천 카탈로그(마이그레이션 015)를 위해 만들어진 것을 그대로 재사용한다 — 카카오톡/전화번호를 담는 별도 <span class="mono">clinics</span> 테이블은 따로 만들지 않았다(중복 방지)</li>
+              <li><span class="mono">clinic_doctors</span> <b>SELECT</b> (<span class="mono">brand</span>=로그인 클리닉) — <span class="mono">id, name</span>, 이름 오름차순</li>
+            </ul>
+          </div>
+          <div>
+            <div class="block-label">Response 200</div>
+            <details class="example">
+              <summary>예시 JSON</summary>
+              <pre>{
+  "brand": "AMRED CLINIC",
+  "kakaoUrl": "https://pf.kakao.com/_jyzAT/chat",
+  "phone": "02-543-3110",
+  "doctors": [
+    { "id": "uuid", "name": "김민선" },
+    { "id": "uuid", "name": "이정일" }
+  ]
+}</pre>
+            </details>
+            <div class="table-wrap" style="margin-top:8px;">
+              <table>
+                <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">brand</td><td class="mono">string</td><td>로그인한 클리닉(토큰에서)</td></tr>
+                  <tr><td class="mono">kakaoUrl</td><td class="mono">string | null</td><td>카카오톡 상담 채널 링크</td></tr>
+                  <tr><td class="mono">phone</td><td class="mono">string | null</td><td>대표 전화번호</td></tr>
+                  <tr><td class="mono">doctors</td><td class="mono">object[]</td><td>이 클리닉 소속 의료진 목록</td></tr>
+                  <tr><td class="mono">doctors[].id</td><td class="mono">string(uuid)</td><td></td></tr>
+                  <tr><td class="mono">doctors[].name</td><td class="mono">string</td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">에러: 없음(정보가 없으면 <span class="mono">kakaoUrl</span>/<span class="mono">phone</span>은 <span class="mono">null</span>, <span class="mono">doctors</span>는 <span class="mono">[]</span>로 정상 응답)</p>
+          <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">clinic_doctors</span>는 참고용 후보 목록일 뿐 강제가 아니다 — <span class="mono">POST .../care-records</span>의 <span class="mono">practitioner</span>는 여전히 자유 텍스트라, 이 목록에 없는 이름도 그대로 입력할 수 있다.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="isolation">
       <h2>클리닉 데이터 격리 정책</h2>
       <p class="desc">로그인한 관리자 계정의 <span class="mono">brand</span>가 모든 조회·수정의 기준이다.</p>
@@ -1221,6 +1278,7 @@
         <li><span class="mono">emr_memberships</span>/<span class="mono">memberships</span>(이용권) 자체에는 <span class="mono">brand</span> 컬럼이 없다 — 시술기록의 <span class="mono">patient_id</span>/<span class="mono">user_id</span>를 거쳐 간접 격리된다(환자/유저가 이미 브랜드로 검증됐으므로 안전)</li>
         <li>회원가입 완료 환자의 이용권(<span class="mono">memberships</span>)은 애초에 특정 클리닉 소유가 아니다(고객이 여러 클리닉을 다닐 수 있음) — <span class="mono">GET /patients/{patientId}</span>는 이 고객의 이용권 <b>전체</b>를 보여준다(다른 클리닉에서 만든 것 포함), 시술기록만 <span class="mono">brand</span>로 걸러서 이 클리닉 방문분만 보여준다</li>
         <li><span class="mono">GET /care-types</span>/<span class="mono">GET /body-parts</span>/<span class="mono">treatment-catalog</span>(전체 CRUD)는 예외 — 클리닉 공통 자료·고정 상수라 격리 대상이 아님</li>
+        <li><span class="mono">GET /clinic-info</span> <span class="done-badge">v0.5</span>는 위 예외와 달리 <b>격리 대상</b> — <span class="mono">businesses</span>/<span class="mono">clinic_doctors</span> 모두 <span class="mono">brand</span>로 조회해 로그인한 클리닉 정보만 반환(다른 클리닉의 카카오톡/전화번호/의료진은 응답에 섞이지 않음)</li>
       </ul>
     </section>
 
@@ -1233,8 +1291,10 @@
             <tr><td>Patient</td><td class="mono">emr_patients</td><td>id, patient_no, name, birth_date, phone, notes, brand, claimed_user_id, claimed_at</td></tr>
             <tr><td>CareRecord</td><td><span class="mono">emr_care_records</span>(미가입) 또는 <span class="mono">care_records</span>(가입 완료)</td><td>id, patient_id 또는 user_id, care_name, care_type, care_date, part_of_body, brand, practitioner, basic_aftercare_guide, doctor_comment, session_number, total_sessions, membership_id, <b>source</b>(API 응답에서만 붙는 파생 필드)</td></tr>
             <tr><td>Membership</td><td><span class="mono">emr_memberships</span>(미가입) 또는 <span class="mono">memberships</span>(가입 완료)</td><td>id, patient_id 또는 user_id, product_name, total_count, used_count, remaining_count(생성 컬럼), expires_at(생성일+1년, 재계산 안 됨), last_used_at, available_care_names, <b>source</b></td></tr>
-            <tr><td>TreatmentCatalog</td><td class="mono">treatment_catalog</td><td>id, care_name(unique), care_type, body_parts, created_at, updated_at — 클리닉 공통, brand 없음</td></tr>
+            <tr><td>TreatmentCatalog</td><td class="mono">treatment_catalog</td><td>id, care_name(unique), care_type, body_parts, <b>description</b> <span class="done-badge">v0.5</span>, created_at, updated_at — 클리닉 공통, brand 없음</td></tr>
             <tr><td>AdminAccount</td><td class="mono">admin_accounts</td><td>id, username, password_hash, brand — API로 노출되는 건 JWT payload의 adminId/username/brand뿐, 계정 목록 조회 API는 없음</td></tr>
+            <tr><td>ClinicDoctor</td><td class="mono">clinic_doctors <span class="done-badge">v0.5</span></td><td>id, brand, name, created_at — 클리닉별 담당 의료진 후보 목록</td></tr>
+            <tr><td>Business</td><td class="mono">businesses <span class="done-badge">v0.5, server/의 015에서 신설된 테이블 재사용</span></td><td>id, name, brand(unique), talk_channel_label, talk_channel_url, phone — <span class="mono">GET /clinic-info</span>가 조회하는 카카오톡/전화번호 출처</td></tr>
           </tbody>
         </table>
       </div>
@@ -1277,9 +1337,11 @@
         <li><b>치료-부위 카탈로그는 시술기록 저장을 강제하지 않음</b> — <span class="mono">POST .../care-records</span>는 여전히 <span class="mono">careName</span>/<span class="mono">careType</span>/<span class="mono">partOfBody</span>를 그대로 받고 카탈로그 값과 일치하는지 검증하지 않는다(프론트 자동완성용 제안 데이터일 뿐). 카탈로그에 없는 치료명으로도 시술기록은 그대로 등록 가능</li>
         <li><b>이용권 만료일은 재계산되지 않음</b> — 기존 이용권에 이어서 차감해도 <span class="mono">expires_at</span>은 처음 만들 때(첫 시술일+1년) 값 그대로 유지된다</li>
         <li><b>이용권 자동 이어쓰기 매칭은 <span class="mono">product_name</span>+<span class="mono">total_count</span> 정확히 일치할 때만 동작</b> — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음</li>
+        <li><b><span class="mono">clinic_doctors</span>(담당 의료진)는 CRUD API 없음</b> <span class="done-badge">v0.5</span> — <span class="mono">treatment-catalog</span>와 달리 관리자 웹에서 추가/수정/삭제할 수 없고, <span class="mono">server_admin/db/seed/seedClinicCatalog.ts</span> 시드 스크립트로만 채워진다(3개 클리닉 고정 전제, <span class="mono">admin_accounts</span>와 동일한 관리 방식). 새 의료진이 합류하면 시드 스크립트를 갱신해 재실행해야 함</li>
+        <li><b><span class="mono">practitioner</span>는 여전히 자유 텍스트라 <span class="mono">clinic_doctors</span> 목록과 무관하게 아무 값이나 저장 가능</b> — <span class="mono">GET /clinic-info</span>의 <span class="mono">doctors</span>는 프론트 select의 후보 제안일 뿐, 서버가 <span class="mono">POST .../care-records</span>의 <span class="mono">practitioner</span> 값을 이 목록과 대조해 검증하지 않는다</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · server_admin 관리자 API · v0.4 · 2026-08-17</footer>
+    <footer>WHS After Mate · server_admin 관리자 API · v0.5 · 2026-08-17</footer>
   </main>
 </div>

@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.4)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.5)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.5 변경: 사용자가 전달한 실제 사업장 데이터(엠레드/더나 의료진 명단, 시술 5종씩)를 반영 — ① `treatment_catalog`에 `description`(시술 설명) 컬럼 추가 ② 클리닉별 담당 의료진 이름 목록을 담는 신규 테이블 `clinic_doctors` + `GET /clinic-info` 신규(로그인한 클리닉의 카카오톡/전화번호 + 담당 의료진 목록을 한 번에 반환). 카카오톡/전화번호는 별도 테이블을 새로 만들지 않고, 같은 날 고객용 `server/`에 추가된 관리 추천 카탈로그의 `businesses` 테이블(마이그레이션 015)을 그대로 재사용한다(중복 방지). 자세한 내용은 하단 "2. 치료-부위 카탈로그", "5. 클리닉 정보" 절 참고.
 
 v0.4 변경: 예약 취소 기능 구현 — `GET /reservations?date=`(신규) 엔드포인트로 특정 날짜(미지정 시 오늘)에 `careDate`가 잡힌 시술기록(=예약)을 `careRecordId`·환자명·전화번호와 함께 목록 조회할 수 있게 됐다. `visit-stats`의 전날/금일/익일 카드를 클릭해 "이 날짜에 누가 예약돼 있는지" 확인한 뒤, 실제 취소는 그 목록에서 얻은 `careRecordId`로 기존 `DELETE /care-records/{careRecordId}`를 그대로 호출한다(별도 "취소" 엔드포인트 없음 — 취소는 삭제와 동일하게 처리되고 이용권 환불도 기존 로직 그대로 적용됨). 자세한 내용은 하단 "4. 통계" 절 참고.
 
@@ -42,6 +44,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | DELETE | `/care-records/{careRecordId}` | 필요 | 시술기록 삭제 (이용권 정리 포함) |
 | GET | `/visit-stats` | 필요 | 전날/금일 방문 + 익일 예약 고객 수 |
 | GET | `/reservations?date=` | 필요 | 특정 날짜(미지정 시 오늘)의 예약 목록 (예약 취소 대상 조회용) |
+| GET | `/clinic-info` | 필요 | 로그인 클리닉의 카카오톡/전화번호 + 담당 의료진 목록 `(v0.5)` |
 
 별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(아래 3절 참고). 치료-부위 카탈로그(`treatment_catalog`)는 이용권과 별개로, 치료명 선택 시 careType/관리 부위 후보를 자동 제안하기 위한 참조 데이터일 뿐이다(아래 2절 참고) — 시술기록 저장 자체는 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다(카탈로그로 강제 대체하지 않음).
 
@@ -347,6 +350,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
       "care_name": "울쎄라 리프팅",
       "care_type": "peeling",
       "body_parts": ["얼굴 전체", "이중턱", "턱선", "심부볼", "팔자"],
+      "description": "고강도 집속형 초음파(HIFU) 기술을 활용한 비수술적 리프팅 시술입니다.",
       "created_at": "2026-08-16T09:00:00Z",
       "updated_at": "2026-08-16T09:00:00Z"
     }
@@ -359,19 +363,21 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | `care_name` | string | 치료명 — 전체 카탈로그에서 유일(unique) |
 | `care_type` | string | `GET /care-types` 목록에 있는 값만 허용(등록/수정 시 서버가 재검증) |
 | `body_parts` | string[] | `GET /body-parts` 목록 중 이 치료에서 실제로 고를 만한 부위 후보(1개 이상) |
+| `description` | string \| null | `(v0.5)` 시술 설명 텍스트. 선택 입력, 관리자 웹/고객 앱에 노출 가능 |
 | `created_at` / `updated_at` | string | |
 
 ### POST /treatment-catalog
 
 **Request**
 ```json
-{ "careName": "울쎄라 리프팅", "careType": "peeling", "bodyParts": ["얼굴 전체", "이중턱", "턱선", "심부볼", "팔자"] }
+{ "careName": "울쎄라 리프팅", "careType": "peeling", "bodyParts": ["얼굴 전체", "이중턱", "턱선", "심부볼", "팔자"], "description": "고강도 집속형 초음파(HIFU) 기술을 활용한 비수술적 리프팅 시술입니다." }
 ```
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
 | `careName` | string | required | 카탈로그 전체에서 유일해야 함 |
 | `careType` | string | required | `GET /care-types` 목록에 있는 값만 허용 |
 | `bodyParts` | string[] | required (1개 이상) | `GET /body-parts` 목록 중에서만 선택 |
+| `description` | string | optional | `(v0.5)` 시술 설명 텍스트 |
 
 **DB**: `reference_guides`로 `careType` 유효성 재확인(`assertValidCareType`, `GET /care-types`와 동일 로직) → `treatment_catalog` **INSERT**. `care_name` unique 충돌(`23505`) 시 `409 TREATMENT_NAME_ALREADY_EXISTS`
 
@@ -578,6 +584,42 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 
 ---
 
+## 5. 클리닉 정보 `(v0.5)`
+
+### GET /clinic-info
+로그인한 클리닉의 카카오톡 상담 링크·전화번호와 담당 의료진 목록을 한 번에 반환한다. 관리 등록 화면에서 담당의(`practitioner`) select를 채우고, 클리닉 연락처를 보여주는 용도.
+
+**DB**
+- `businesses` **SELECT** (`brand`=로그인 클리닉) — `talk_channel_url`, `phone`. 이 테이블은 고객용 `server/`의 관리 추천 카탈로그(마이그레이션 015)를 위해 만들어진 것을 그대로 재사용한다 — 카카오톡/전화번호를 담는 별도 `clinics` 테이블은 따로 만들지 않았다(중복 방지)
+- `clinic_doctors` **SELECT** (`brand`=로그인 클리닉) — `id`, `name`, 이름 오름차순
+
+**Response 200**
+```json
+{
+  "brand": "AMRED CLINIC",
+  "kakaoUrl": "https://pf.kakao.com/_jyzAT/chat",
+  "phone": "02-543-3110",
+  "doctors": [
+    { "id": "uuid", "name": "김민선" },
+    { "id": "uuid", "name": "이정일" }
+  ]
+}
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `brand` | string | 로그인한 클리닉(토큰에서) |
+| `kakaoUrl` | string \| null | 카카오톡 상담 채널 링크 |
+| `phone` | string \| null | 대표 전화번호 |
+| `doctors` | object[] | 이 클리닉 소속 의료진 목록 |
+| `doctors[].id` | string(uuid) | |
+| `doctors[].name` | string | |
+
+**에러**: 없음(정보가 없으면 `kakaoUrl`/`phone`은 `null`, `doctors`는 `[]`로 정상 응답)
+
+`clinic_doctors`는 참고용 후보 목록일 뿐 강제가 아니다 — `POST .../care-records`의 `practitioner`는 여전히 자유 텍스트라, 이 목록에 없는 이름도 그대로 입력할 수 있다.
+
+---
+
 ## 클리닉 데이터 격리 정책
 
 로그인한 관리자 계정의 `brand`가 모든 조회·수정의 기준이다:
@@ -588,6 +630,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 - `emr_memberships`/`memberships`(이용권) 자체에는 `brand` 컬럼이 없다 — 시술기록의 `patient_id`/`user_id`를 거쳐 간접 격리된다(환자/유저가 이미 브랜드로 검증됐으므로 안전)
 - 회원가입 완료 환자의 이용권(`memberships`)은 애초에 특정 클리닉 소유가 아니다(고객이 여러 클리닉을 다닐 수 있음) — `GET /patients/{patientId}`는 이 고객의 이용권 **전체**를 보여준다(다른 클리닉에서 만든 것 포함), 시술기록만 `brand`로 걸러서 이 클리닉 방문분만 보여준다
 - `GET /care-types`/`GET /body-parts`/`treatment-catalog`(전체 CRUD)는 예외 — 클리닉 공통 자료·고정 상수라 격리 대상이 아님
+- `GET /clinic-info` `(v0.5)`는 위 예외와 달리 **격리 대상** — `businesses`/`clinic_doctors` 모두 `brand`로 조회해 로그인한 클리닉 정보만 반환(다른 클리닉의 카카오톡/전화번호/의료진은 응답에 섞이지 않음)
 
 ---
 
@@ -598,7 +641,9 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | Patient | `emr_patients` | id, patient_no, name, birth_date, phone, notes, brand, claimed_user_id, claimed_at |
 | CareRecord | `emr_care_records`(미가입) 또는 `care_records`(가입 완료) | id, patient_id 또는 user_id, care_name, care_type, care_date, part_of_body, brand, practitioner, basic_aftercare_guide, doctor_comment, session_number, total_sessions, membership_id, **source**(API 응답에서만 붙는 파생 필드) |
 | Membership | `emr_memberships`(미가입) 또는 `memberships`(가입 완료) | id, patient_id 또는 user_id, product_name, total_count, used_count, remaining_count(생성 컬럼), expires_at(생성일+1년, 재계산 안 됨), last_used_at, available_care_names, **source** |
-| TreatmentCatalog | `treatment_catalog` | id, care_name(unique), care_type, body_parts, created_at, updated_at — 클리닉 공통, brand 없음 |
+| TreatmentCatalog | `treatment_catalog` | id, care_name(unique), care_type, body_parts, **description** `(v0.5)`, created_at, updated_at — 클리닉 공통, brand 없음 |
+| ClinicDoctor | `clinic_doctors` `(v0.5)` | id, brand, name, created_at — 클리닉별 담당 의료진 후보 목록 |
+| Business | `businesses` `(v0.5, 고객용 server/의 015에서 신설된 테이블 재사용)` | id, name, brand(unique), talk_channel_label, talk_channel_url, phone — `GET /clinic-info`가 조회하는 카카오톡/전화번호 출처 |
 | AdminAccount | `admin_accounts` | id, username, password_hash, brand *(API로 노출되는 건 JWT payload의 adminId/username/brand뿐, 계정 목록 조회 API는 없음)* |
 
 CareRecord/Membership이 어느 테이블에서 왔는지는 환자의 회원가입(claim) 여부에 따라 결정된다 — `POST .../care-records` 참고.
@@ -632,3 +677,5 @@ CareRecord/Membership이 어느 테이블에서 왔는지는 환자의 회원가
 - **치료-부위 카탈로그는 시술기록 저장을 강제하지 않음** — `POST .../care-records`는 여전히 `careName`/`careType`/`partOfBody`를 그대로 받고 카탈로그 값과 일치하는지 검증하지 않는다(어디까지나 프론트 자동완성용 제안 데이터). 카탈로그에 없는 치료명으로도 시술기록은 그대로 등록 가능
 - **이용권 만료일은 재계산되지 않음** — 기존 이용권에 이어서 차감해도 `expires_at`은 처음 만들 때(첫 시술일+1년) 값 그대로 유지된다. "이어서 쓰면 만료일도 갱신"은 이번 범위에 포함되지 않음(프로토타입도 이 정책까지는 명시하지 않아 더 단순한 쪽으로 결정)
 - **이용권 자동 이어쓰기 매칭은 `product_name`+`total_count` 정확히 일치할 때만 동작** — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음
+- **`clinic_doctors`(담당 의료진)는 CRUD API 없음** `(v0.5)` — `treatment-catalog`와 달리 관리자 웹에서 추가/수정/삭제할 수 없고, `server_admin/db/seed/seedClinicCatalog.ts` 시드 스크립트로만 채워진다(3개 클리닉 고정 전제, `admin_accounts`와 동일한 관리 방식). 새 의료진이 합류하면 시드 스크립트를 갱신해 재실행해야 함
+- **`practitioner`는 여전히 자유 텍스트라 `clinic_doctors` 목록과 무관하게 아무 값이나 저장 가능** — `GET /clinic-info`의 `doctors`는 프론트 select의 후보 제안일 뿐, 서버가 `POST .../care-records`의 `practitioner` 값을 이 목록과 대조해 검증하지 않는다

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAdminAuth } from "../middleware/requireAdminAuth";
 import { adminAuthRouter } from "./adminAuth.routes";
 import { catalogRouter } from "./catalog.routes";
+import { clinicRouter } from "./clinic.routes";
 import { patientsRouter } from "./patients.routes";
 
 // 클리닉 관리자 로그인 계정이 추가됨(admin_accounts, migration 008) — 기존 "무인증 데모" 결정을 뒤집는
@@ -14,3 +15,4 @@ apiRouter.use(adminAuthRouter);
 apiRouter.use(requireAdminAuth);
 apiRouter.use(patientsRouter);
 apiRouter.use(catalogRouter);
+apiRouter.use(clinicRouter);

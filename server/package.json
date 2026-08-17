@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx db/seed/seed.ts"
+    "seed": "tsx db/seed/seed.ts",
+    "seed:care-catalog": "tsx db/seed/seedCareCatalog.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

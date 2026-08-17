@@ -259,6 +259,54 @@ const REFERENCE_GUIDES: {
     basic_care: ["저자극 보습", "자외선 차단제 재도포"],
     next_check_offset_days: 14,
   },
+  // 아래 5종은 엠레드/더나 실제 시술 카탈로그 등록(treatment_catalog, 2026-08-17)을 위한 최소 스텁이다.
+  // assertValidCareType이 reference_guides에 해당 care_type이 "존재하는지"만 확인하므로 카탈로그 등록을
+  // 막지 않기 위해 우선 일반적인 시술 후 주의사항으로 채워뒀다 — 실제 의료진 검수 전까지는 잠정 문구다.
+  {
+    care_type: "energy_lifting",
+    elapsed_range_start: 0,
+    elapsed_range_end: 30,
+    elapsed_range_label: "0-30",
+    must_avoid: ["당일 사우나·찜질방", "당일 격한 운동", "장시간 직사광선 노출"],
+    basic_care: ["냉찜질 (필요시)", "미온수 세안", "자외선 차단제 필수"],
+    next_check_offset_days: null,
+  },
+  {
+    care_type: "botox",
+    elapsed_range_start: 0,
+    elapsed_range_end: 30,
+    elapsed_range_label: "0-30",
+    must_avoid: ["당일 시술 부위 마사지·압박", "당일 눕거나 엎드리기", "당일 음주"],
+    basic_care: ["시술 부위 청결 유지", "무리한 표정 자제"],
+    next_check_offset_days: null,
+  },
+  {
+    care_type: "filler",
+    elapsed_range_start: 0,
+    elapsed_range_end: 30,
+    elapsed_range_label: "0-30",
+    must_avoid: ["당일 시술 부위 압박·마사지", "당일 사우나·찜질방", "당일 음주"],
+    basic_care: ["냉찜질 (필요시)", "부기 완화를 위한 충분한 수분 섭취"],
+    next_check_offset_days: null,
+  },
+  {
+    care_type: "skin_booster",
+    elapsed_range_start: 0,
+    elapsed_range_end: 30,
+    elapsed_range_label: "0-30",
+    must_avoid: ["당일 메이크업", "당일 사우나·찜질방"],
+    basic_care: ["미온수 세안", "저자극 보습제 사용", "자외선 차단제 필수"],
+    next_check_offset_days: null,
+  },
+  {
+    care_type: "hair_removal",
+    elapsed_range_start: 0,
+    elapsed_range_end: 30,
+    elapsed_range_label: "0-30",
+    must_avoid: ["당일 직사광선 노출", "당일 사우나·찜질방", "시술 부위 마찰"],
+    basic_care: ["저자극 보습", "자외선 차단제 필수"],
+    next_check_offset_days: null,
+  },
 ];
 
 const today = new Date();

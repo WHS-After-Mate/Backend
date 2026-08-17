@@ -52,8 +52,9 @@ npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1
 | DELETE | `/api/v1/care-records/:careRecordId` | 시술 기록 삭제 — 연결된 이용권도 함께 정리(유일 참조면 이용권 삭제, 아니면 `used_count` -1). 별도 "이용권 삭제" API는 없음 |
 | GET | `/api/v1/visit-stats` | 전날/금일(KST) 방문 + 익일 예약 고객 수 (중복 제거) |
 | GET | `/api/v1/reservations?date=` | 특정 날짜(미지정 시 오늘)의 예약 목록(`careRecordId`+환자명+전화번호). 취소는 별도 API 없이 이 목록에서 얻은 `careRecordId`로 기존 `DELETE /care-records/:careRecordId`를 그대로 호출 |
-| GET | `/api/v1/treatment-catalog?search=` | 치료-부위 카탈로그 목록/검색 — 클리닉 공통(브랜드 격리 없음) |
-| POST/PATCH/DELETE | `/api/v1/treatment-catalog[/:treatmentId]` | 치료-부위 카탈로그 등록/수정/삭제 — 치료명→기본 careType/관리 부위 매핑, 관리자 CRUD |
+| GET | `/api/v1/treatment-catalog?search=` | 치료-부위 카탈로그 목록/검색 — 클리닉 공통(브랜드 격리 없음). `description`(시술 설명) 필드 포함 |
+| POST/PATCH/DELETE | `/api/v1/treatment-catalog[/:treatmentId]` | 치료-부위 카탈로그 등록/수정/삭제 — 치료명→기본 careType/관리 부위/설명 매핑, 관리자 CRUD |
+| GET | `/api/v1/clinic-info` | 로그인 클리닉의 카카오톡/전화번호(고객용 `server/`의 `businesses` 테이블 재사용) + 담당 의료진 목록(`clinic_doctors`, 시드로만 생성) |
 
 ## 미확정/후속 과제
 

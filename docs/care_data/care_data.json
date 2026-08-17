@@ -1,0 +1,50 @@
+{
+  "_readme": "이 파일은 데이터 모양(스키마) 참고용 예시입니다. 여기 직접 데이터를 채우지 마세요 — 실제 46개 시술 데이터는 docs/care_procedure_template.xlsx에 있고, 필드 설명은 docs/care_recommendation_data_guide.md 참고. 백엔드가 이 셋을 참고해 DB/API를 설계합니다.",
+
+  "concernTags": [
+    "리프팅·탄력",
+    "모공·피지 관리",
+    "보습·장벽 강화",
+    "색소침착 개선",
+    "얼굴 윤곽·볼륨",
+    "제모",
+    "두피 관리",
+    "바디라인·체형 관리",
+    "붓기 케어",
+    "컨디션·대사 관리"
+  ],
+
+  "businesses": [
+    {
+      "id": "amred",
+      "name": "엠레드 클리닉",
+      "talkChannelLabel": "엠레드 클리닉",
+      "talkChannelUrl": ""
+    },
+    {
+      "id": "derna",
+      "name": "더나 의원",
+      "talkChannelLabel": "더나 의원",
+      "talkChannelUrl": ""
+    },
+    {
+      "id": "wim",
+      "name": "윔 센터",
+      "talkChannelLabel": "윔 센터",
+      "talkChannelUrl": ""
+    }
+  ],
+
+  "_procedures_실제_46개_데이터는_care_procedure_template.xlsx_참고": [
+    {
+      "id": "예: ulthera",
+      "businessId": "amred",
+      "name": "울쎄라피 프라임",
+      "categoryTags": ["리프팅·탄력"]
+    }
+  ],
+
+  "_customerProcedureHistory_사업장_데이터가_아니라_고객_개인_기록이라_이_파일에는_넣지_않음": [
+    { "procedureId": "ulthera", "daysAgo": 21 }
+  ]
+}
