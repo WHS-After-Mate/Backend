@@ -80,6 +80,7 @@ async function migrateEmrDataToApp(patientId: string, userId: string) {
         expires_at: m.expires_at,
         last_used_at: m.last_used_at,
         available_care_names: m.available_care_names,
+        brand: m.brand,
       })),
     );
     if (membershipsError) throw membershipsError;

@@ -346,6 +346,7 @@ async function createMembershipFromCareRecord(
   careName: string,
   totalSessions: number,
   careDate: string,
+  brand: string,
 ) {
   const { data, error } = await supabaseAdmin
     .from(table)
@@ -357,6 +358,9 @@ async function createMembershipFromCareRecord(
       expires_at: addOneYear(careDate),
       last_used_at: careDate,
       available_care_names: [careName],
+      // 순수 표시용 메타데이터 — 이 이용권을 처음 만든 클리닉. 이어서 차감할 때(findContinuableMembership)
+      // 매칭 조건엔 안 쓴다(이용권은 여전히 클리닉 간 격리되지 않음, 기존 정책 유지).
+      brand,
     })
     .select()
     .single();
@@ -464,6 +468,7 @@ export async function addCareRecord(
           input.careName,
           input.totalSessions!,
           input.careDate,
+          brand,
         );
       })();
 

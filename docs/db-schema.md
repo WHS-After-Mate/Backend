@@ -1,6 +1,8 @@
-# WHS After Mate — DB 스키마 (v0.8)
+# WHS After Mate — DB 스키마 (v0.9)
 
-기준: `api-spec.md` v0.8, `admin-api-spec.md` v0.3. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.10, `admin-api-spec.md` v0.6. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+
+v0.9 변경: 앱 연동 중 "이용권이 어느 클리닉 것인지 구분해야 한다"는 요청으로 `memberships`/`emr_memberships`에 `brand` 컬럼 추가(`016_add_membership_brand.sql`) — `care_records`/`emr_care_records`는 처음부터 갖고 있던 필드다. 순수 표시용 메타데이터로, 이용권 차감/자동 이어쓰기 매칭 로직은 여전히 브랜드와 무관하게 동작한다(정책 변경 아님). 기존 행은 `membership_id`로 연결된 시술기록의 `brand`로 백필됨. 자세한 내용은 하단 "public.memberships"/"public.emr_memberships" 절 참고.
 
 v0.8 변경: 관리 추천용 실데이터 카탈로그 신규 테이블 `public.businesses`/`public.procedures` 추가(`015_add_care_catalog.sql`) — 사업장 3곳 + 실제 시술 46종. 다음 관리 추천이 고객 보유 이용권 기반에서 이 카탈로그 전체 기반으로 교체됐다. 자세한 내용은 하단 "실제 사업장/시술 카탈로그 추가 (015)" 절 참고.
 
@@ -173,6 +175,7 @@ create table public.memberships (
   expires_at date,
   last_used_at date,
   available_care_names text[] not null default '{}',
+  brand text,
   created_at timestamptz not null default now()
 );
 
@@ -182,6 +185,7 @@ create index idx_memberships_user_expiry
 
 - `remaining_count`는 GENERATED 컬럼 — 직접 갱신 불필요, `used_count`만 늘리면 자동 계산됨
 - `expires_at` *(컬럼 자체는 001부터 존재, v0.7부터 `server_admin`이 실제로 채움)*: `server_admin`이 이용권을 새로 만들 때 그 시술 날짜(`careDate`) 기준 +1년으로 계산해 넣는다(이어서 차감할 때는 재계산하지 않음). 만료 후 차감 시도는 `server_admin` 서비스 레이어에서 거부(`MEMBERSHIP_EXPIRED`) — DB 제약이 아니라 애플리케이션 레벨 검증
+- `brand` *(v0.9, 마이그레이션 016)*: 이 이용권을 처음 만든 클리닉. `care_records.brand`와 마찬가지로 순수 표시용 메타데이터일 뿐, 이용권 차감/자동 이어쓰기 매칭(`findContinuableMembership`)에는 여전히 쓰이지 않는다 — 이용권은 클리닉 간 격리되지 않는다는 기존 정책 그대로 유지. 생성 시 `server_admin`의 `addCareRecord`가 로그인 클리닉의 `brand`를 그대로 채우고, 회원가입 이관(`migrateEmrDataToApp`) 시에는 `emr_memberships.brand`를 그대로 복사한다. 마이그레이션 016 적용 이전에 만들어진 기존 행은 `membership_id`로 연결된 `care_records`/`emr_care_records` 중 가장 먼저 생성된 기록의 `brand`로 백필됨(이 프로젝트는 "이용권 추가"라는 별도 행위가 없어 모든 이용권이 시술기록과 함께 생성되므로 백필 커버리지는 항상 100%)
 
 ### public.membership_usages — 이용권 회차별 사용 이력 *(v0.3, 마이그레이션 003)*
 
@@ -380,7 +384,7 @@ create index idx_emr_care_records_membership on public.emr_care_records (members
 - `part_of_body` *(v0.6, 마이그레이션 012)*: 단일 텍스트에서 배열로 변경. 값은 `server_admin`이 정해진 목록(`GET /body-parts`) 안에서만 검증
 - `membership_id` *(v0.6, 마이그레이션 011)*: 이 시술기록이 어떤 이용권을 소비했는지 연결. 시술기록을 삭제할 때 그 이용권 차감을 자동으로 되돌리기 위해 추가(`server_admin/patients.service.ts`)
 
-### public.emr_memberships — 계정 연결 전 이용권 *(v0.4 신설 006, v0.6 컬럼 추가 007)*
+### public.emr_memberships — 계정 연결 전 이용권 *(v0.4 신설 006, v0.6 컬럼 추가 007, v0.9 컬럼 추가 016)*
 
 ```sql
 create table public.emr_memberships (
@@ -393,6 +397,7 @@ create table public.emr_memberships (
   expires_at date,
   last_used_at date,
   available_care_names text[] not null default '{}',
+  brand text,
   created_at timestamptz not null default now()
 );
 
@@ -401,6 +406,7 @@ create index idx_emr_memberships_patient on public.emr_memberships (patient_id);
 
 - `public.memberships`와 동일한 형태로 claim 시 그대로 복사됨(단, `remaining_count`는 GENERATED라 claim 시 복사 대상이 아니라 자동 계산됨)
 - `expires_at`은 `public.memberships`와 동일하게 v0.7부터 `server_admin`이 생성 시점(첫 시술일+1년)에 채운다
+- `brand` *(v0.9, 마이그레이션 016)*: 위 `public.memberships.brand`와 동일한 의미 — claim 전 스테이징 버전. 생성 시 `server_admin`이 로그인 클리닉의 `brand`를 채우며, claim 시 그대로 `memberships.brand`로 복사된다
 
 ### public.treatment_catalog — 치료-부위 카탈로그 *(v0.7 신설 013)*
 
@@ -577,3 +583,13 @@ create table public.admin_accounts (
 - `treatment_catalog`(013)와는 별개 테이블이다 — `treatment_catalog`는 `care_type`/부위 기반으로 관리자 웹의 시술기록 등록 자동완성에 쓰이고, `procedures`는 `category_tags`(concernTag) 기반으로 고객 추천에 쓰인다. 실제로는 두 카탈로그에 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다
 - 실계정으로 라이브 검증 완료 — 자세한 API 계약 변경은 `docs/api-spec.md` v0.8 참고
 - 참고: 같은 날 별도로 진행하던 `treatment_catalog.description` 컬럼 + `clinics`/`clinic_doctors` 테이블 작업(`014_add_treatment_description_clinic_info_doctors.sql`)은 이 변경과 무관하며 **보류 상태**(마이그레이션 미적용)
+
+## 이용권에 브랜드 컬럼 추가 (016)
+
+`server/db/migrations/016_add_membership_brand.sql` — 앱 연동 중 "이 이용권이 어느 클리닉 것인지 구분해야 한다"는 요청(`GET /memberships` 응답에 `brand` 필요)이 들어와, `public.memberships`/`public.emr_memberships`에 `brand text` 컬럼을 추가했다(위 두 테이블 정의 참고).
+
+- `care_records`/`emr_care_records`는 처음부터(001/006) `brand`를 갖고 있었지만, 짝을 이루는 이용권 테이블엔 없었다 — 이 프로젝트는 "이용권 추가"라는 별도 행위가 없고 항상 시술기록과 함께 생성되므로(`server_admin`의 `addCareRecord`), 만들어질 때의 `brand`를 그대로 함께 저장하면 된다
+- **기존 행 백필**: `membership_id`로 연결된 `care_records`/`emr_care_records` 중 가장 먼저 만들어진 기록의 `brand`를 그대로 가져온다 — 모든 이용권이 시술기록에서 파생되므로 백필 커버리지는 항상 100%
+- **정책 변경 아님**: `brand`는 순수 표시용 메타데이터다. 이용권 차감/자동 이어쓰기 매칭(`findContinuableMembership`)은 지금과 동일하게 `product_name`+`total_count`만으로 판단하며 `brand`를 조건에 넣지 않는다 — "이용권은 클리닉별로 격리되지 않는다"는 기존 정책은 이번 변경으로 바뀌지 않았다(계속 알려진 제한사항으로 남음)
+- 관리자 웹(`server_admin`)의 `GET /patients/{patientId}`는 `memberships`/`emr_memberships`를 `SELECT *`로 그대로 반환하므로, 코드 변경 없이 이 컬럼이 응답에 자동으로 포함된다
+- 마이그레이션 자체는 이 세션에서 코드까지 완료했지만, DDL 실행 권한(Postgres 직접 연결)이 없어 **Supabase SQL Editor에 수동 적용 필요** — 적용 전까지는 `brand` 컬럼이 없어 관련 INSERT가 실패한다

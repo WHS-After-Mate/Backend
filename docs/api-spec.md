@@ -1,7 +1,9 @@
-# WHS After Mate — API 명세서 (v0.10, MVP)
+# WHS After Mate — API 명세서 (v0.11, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.11 변경: 앱 연동 중 프론트 요청으로 `GET /memberships`/`GET /memberships/{membershipId}` 응답에 `brand` 필드 추가 — 이용권을 처음 만든 클리닉을 표시용으로 알려준다(DB 스키마 변경, `server/db/migrations/016_add_membership_brand.sql`). 아래 "GET /memberships" 절 참고. **주의: 이 마이그레이션은 코드까지 완료됐지만 Supabase에 아직 수동 적용 전이다 — 적용 전엔 관련 INSERT가 실패한다(db-schema.md 참고).**
 
 v0.10 변경: "사업장:회원이 구조적으로 1:1"이던 문제 해결의 일부 — `POST /auth/signup`이 이제 가입 시점에 **다른 클리닉의 미가입 형제 행**(이름+생년월일+전화번호 일치, `claimed_user_id`가 아직 없는 행)까지 한 번에 같은 계정으로 claim한다. 반대 방향 케이스(이미 가입된 계정이 있는 상태에서 다른 클리닉에 새로 등록되는 경우)는 `server_admin` 쪽 변경이라 `admin-api-spec.md`에 문서화돼 있다. 아래 "POST /auth/signup" 절 참고.
 
@@ -602,6 +604,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
       "expiresAt": "2026-09-30",
       "lastUsedAt": "2026-07-20",
       "availableCareNames": ["바디 슬리밍 관리", "림프 순환 관리"],
+      "brand": "AMRED CLINIC",
       "usageHistory": [
         { "sessionNumber": 1, "usedAt": "2026-01-01" },
         { "sessionNumber": 2, "usedAt": "2026-03-01" }
@@ -620,6 +623,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 | `items[].expiresAt` | string \| null | |
 | `items[].lastUsedAt` | string \| null | |
 | `items[].availableCareNames` | string[] | |
+| `items[].brand` | string \| null | `(v0.11)` 이 이용권을 처음 만든 클리닉. 여러 클리닉을 다니는 고객이 이용권이 어느 클리닉 것인지 구분할 때 씀 — 순수 표시용이며, 이용권 차감/자동 이어쓰기 로직(`server_admin`)은 여전히 브랜드와 무관하게 동작한다(정책 변경 아님). 마이그레이션(`016_add_membership_brand.sql`) 이전에 만들어진 이용권도 백필돼 있어 기본적으로 `null`이 나올 일은 없음 |
 | `items[].usageHistory` | object[] | `(v0.5)` 이용권 화면의 "1회차 2026.01.01(일)" 등 회차별 사용일자 목록. `usedCount`처럼 집계값이 아니라 개별 사용 이력이라 별도 테이블(`membership_usages`)에서 조회(db-schema.md 참고) |
 | `items[].usageHistory[].sessionNumber` | number | |
 | `items[].usageHistory[].usedAt` | string | |

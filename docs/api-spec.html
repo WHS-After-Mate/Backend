@@ -467,7 +467,8 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 Anthropic Claude API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다), 다음 관리 추천 MVP. 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.10</span>
+      <span class="badge">v0.11</span>
+      <span class="badge outline">이용권 brand 필드</span>
       <span class="badge outline">다중 클리닉 자동 연결(형제 행 일괄 claim)</span>
       <span class="badge outline">회원가입 2페이지 분리 — 신원 사전 확인 API</span>
       <span class="badge outline">관리 추천 실제 사업장 카탈로그(46종) 기반 전면 교체</span>
@@ -1208,6 +1209,7 @@
                 <tr><td class="mono">expiresAt</td><td class="mono">date</td><td>유효기간</td></tr>
                 <tr><td class="mono">lastUsedAt</td><td class="mono">date</td><td>최근 사용일</td></tr>
                 <tr><td class="mono">availableCareNames</td><td class="mono">string[]</td><td>이용 가능 관리 목록</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">string | null</td><td><span class="done-badge">v0.11</span> 이 이용권을 처음 만든 클리닉. 여러 클리닉을 다니는 고객이 이용권이 어느 클리닉 것인지 구분할 때 씀 — 순수 표시용이며, 이용권 차감/자동 이어쓰기 로직(<span class="mono">server_admin</span>)은 여전히 브랜드와 무관하게 동작한다(정책 변경 아님)</td></tr>
                 <tr><td class="mono">usageHistory</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "1회차 2026.01.01" 등 회차별 사용일자. <span class="mono">usedCount</span>처럼 집계값이 아니라 개별 사용 이력이라 별도 테이블(<span class="mono">membership_usages</span>)에서 조회</td></tr>
                 <tr><td class="mono">usageHistory[].sessionNumber / usedAt</td><td class="mono">number / date</td><td>—</td></tr>
               </tbody>
@@ -1513,6 +1515,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.10 MVP · 2026-08-18 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.11 MVP · 2026-08-18 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>
