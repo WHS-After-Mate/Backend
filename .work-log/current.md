@@ -1,25 +1,37 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-17 14:30
+최종 업데이트: 2026-08-18 00:10
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android, **프론트엔드는 사용자 담당 아님 — 이 세션에서 다루지 않음**), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude API, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
 
 ## 완료된 작업
-- **예약 취소 기능 구현** — 이전 세션에 보류됐던 항목("나중에 앱과 연동해 금일/향후 예약을 취소하는 기능으로 별도 구현 예정"). 사용자에게 AskUserQuestion으로 두 가지 확인: 구현 위치(고객 앱 vs 관리자 웹) → **관리자 웹(`server_admin`)**, 취소 시 데이터 처리(소프트 취소 vs 완전 삭제) → **완전 삭제(기존 `DELETE /care-records/:careRecordId`와 동일 방식)**
-  - 조사 결과 "예약"(=미래 `careDate`를 가진 시술기록) 자체를 삭제하는 메커니즘(이용권 환불 포함)은 이미 존재했음 — 실제로 빠져있던 건 "어느 careRecordId를 지울지 찾는 수단"이었다(`GET /visit-stats`는 날짜별 **건수**만 반환, 개별 항목 없음)
-  - **`GET /reservations?date=`** 신규 구현(`server_admin/src/{routes,services,validators}/patients.*.ts`) — 특정 날짜(미지정 시 오늘 KST)에 `careDate`가 잡힌 로그인 클리닉의 시술기록을 `careRecordId`+환자명+전화번호+`source`(emr/app)와 함께 목록 반환. `emr_care_records`+`emr_patients` 조인(FK 임베드 가능) / `care_records`는 `profiles`와 직접 FK가 없어 `user_id`로 별도 조회 후 애플리케이션 레벨 병합, `getVisitStats`와 동일한 `kstDateString` 패턴 재사용
-  - 취소 자체는 별도 엔드포인트 없이 위 목록에서 얻은 `careRecordId`로 **기존 `DELETE /care-records/:careRecordId`를 그대로 호출**(이용권 환불 로직 그대로 적용) — 날짜 제한 없음, 오늘/내일뿐 아니라 어떤 날짜의 예약이든(과거 포함) 같은 방식으로 조회·취소 가능
-  - typecheck/build 통과, 실서버(4100)로 환자 등록 → 내일 날짜 시술기록(예약) 생성 → `GET /reservations?date=`로 조회(careRecordId 확인) → `DELETE`로 취소 → 목록에서 사라짐까지 종단 검증, 테스트 데이터 정리 완료
-  - `docs/admin-api-spec.md`/`.html`(v0.3→v0.4) 신규 엔드포인트 절 추가, `server_admin/README.md` 엔드포인트 표 갱신 + "예약 취소 기능 미구현" 항목 제거, `server_admin/src/examples/admin-api-example.html`에 "G. 예약 목록/취소" 섹션 추가(목록 테이블 + 행별 취소 버튼, 취소 후 자동 재조회) — 브라우저 확장 미연결로 실제 클릭 테스트는 못 했고 문법 검사(`node --check`)+API 응답 형태 대조로만 확인
-  - HTML 태그(`<table>`/`</table>`, `<section>`/`</section>`, `.endpoint-card`) 개수 대조로 admin-api-spec.html 균형 확인
+- **사업장:회원 1:1 구조 한계 해결(다중 클리닉 자동 연결)** — Slack에서 "AAC 산하 여러 클리닉을 다니는 고객이 두 번째 클리닉부터 앱에 기록을 남길 수 없다"는 문제 보고. 원인: `emr_patients.brand`로 환자 행이 클리닉별로 완전 격리돼, 같은 사람이 클리닉 A/B를 각각 방문하면 행이 두 개 생기는데 앱 계정(claim)은 그중 하나에만 걸림 — 재가입 시도는 `profiles.phone` unique 제약에 걸려 일반화된 500으로 실패. **DB 스키마 변경 없이** 두 방문 순서 모두 해결:
+  - `server_admin` `POST /patients`: 이름+생년월일+전화번호 일치하는 다른 클리닉의 이미 claim된 행이 있으면(`findLinkedAccountFromOtherClinic`) 새 환자 행을 만들며 등록 즉시 그 계정에 자동 연결(`created_at`==`claimed_at`으로 신규 컬럼 없이 자동연결 여부 표시)
+  - `server` `POST /auth/signup`: 가입 시점에 다른 클리닉의 미가입 형제 행(이름+생년월일+전화번호 일치, `claimed_user_id` null)까지 한 번에 같은 계정으로 claim(`migrateEmrDataToApp` 공용 함수로 추출해 형제 행에도 재사용)
+  - **마스킹**: 자동 연결된 경우 `claimed_user_id`/`claimed_at`을 이 클리닉 응답에서 `null`로 숨김(`maskAutoLinkedClaim`, `created_at===claimed_at`으로 판별) — 다른 클리닉 방문 이력 노출 방지. `POST/GET/PATCH /patients` 전부 적용, 내부 로직(시술기록 앱 테이블 기록)은 영향 없음
+  - SMS 안내는 로그만 남기는 스텁(`notifyExistingAccountLinked`) — 발송 인프라는 비용 문제로 기존에 제거된 상태라 재도입 안 함, "코드만 준비"로 범위 한정
+  - 두 시나리오(claim-후-타클리닉등록 / 양쪽등록-후-claim) 전부 실서버 라이브 검증(회원가입→시술기록→고객 앱 `GET /home/summary`/`GET /care-records` 반영 확인), 마스킹도 별도로 3단계(정상 자기클리닉 가입=비마스킹, 타클리닉 자동연결=마스킹, DB엔 실값 존재+시술기록 정상 기록) 검증. 테스트 데이터 전부 정리
+  - 문서: `docs/api-spec.md`/`.html`(v0.9→v0.10), `docs/admin-api-spec.md`/`.html`(v0.5→v0.6) — 각각 새 changelog 섹션 추가, 필드 마스킹 설명, 알려진 제한사항 갱신. 아티팩트 재발행
+  - commit+push (`72d769f`)
+- **이용권에 brand(발급 클리닉) 필드 추가** — 프론트(앱) 연동 중 "GET /memberships 응답에 이 이용권이 어느 클리닉 것인지 필요하다"는 요청(위 자동 연결 기능으로 한 계정이 여러 클리닉 이용권을 가질 수 있게 되며 실제로 필요해짐)
+  - 마이그레이션 `016_add_membership_brand.sql` — `memberships`/`emr_memberships`에 `brand text` 추가, 기존 행은 `membership_id`로 연결된 시술기록의 brand로 백필
+  - `server_admin/patients.service.ts`(`createMembershipFromCareRecord`에 brand 파라미터 추가), `server/auth.service.ts`(claim 이관 시 `emr_memberships.brand`를 그대로 복사), `server/memberships.service.ts`(`GET /memberships` 응답에 `brand` 추가)
+  - **순수 표시용** — 이용권 차감/자동 이어쓰기 매칭(`findContinuableMembership`)은 여전히 브랜드 무관(정책 변경 아님, 기존 "이용권은 클리닉 간 격리 안 됨" 유지)
+  - Postgres DDL 직접 권한이 없어 마이그레이션 SQL은 사용자가 Supabase SQL Editor에서 직접 적용. 적용 후 검증하니 `memberships` 7개 중 4개가 백필 조인에서 빠짐(예전 데모 데이터가 `membership_id` FK 링크 없이 만들어진 케이스) — 각 소유자의 다른 시술기록 브랜드로 수동 백필해 0건으로 정리
+  - 라이브 검증: 데모 계정 `GET /memberships` 응답에 `brand` 노출 확인 + AMRED 관리자로 신규 시술기록(새 이용권 생성) 등록 시 `membership.brand` 정상 기록 확인. 테스트 데이터/서버 정리
+  - 문서: `docs/api-spec.md`/`.html`(v0.10→v0.11), `docs/db-schema.md`/`.html`(v0.8→v0.9) 갱신, 아티팩트 재발행
+  - commit+push (`65e038b`)
 
 ## 현재 작업 중
-- (없음 — 이번 세션 작업 커밋+푸시 대기 중, 사용자 요청으로 곧 진행)
+- (없음 — 위 두 작업 전부 커밋+푸시 완료. 사용자가 "연동하면서 좀 더 있을텐데 모아서 보내드릴게요"라고 예고 — 프론트(진정님) 쪽 추가 요청이 배치로 들어올 예정, 다음 세션에 이어서 처리)
 
 ## 다음 할 일
-- **클라이언트(앱) 회원가입 화면에 전화번호 입력란 추가 필요** — 서버는 `phone`을 required로 받으므로, 프론트가 이 필드 없이 호출하면 400. 프론트엔드는 사용자 담당이 아니라 이 리포/세션에서 구현하지 않음(별도 담당자에게 전달 필요)
-- (README에 기록됨) 치료-부위 카탈로그가 시술기록 저장(`careName`/`careType`/`partOfBody`)을 강제하지 않음 — 프론트에서 카탈로그로 자동완성만 붙이고 서버는 검증 안 함. 필요해지면 서버 레벨 검증 추가 검토
-- (README에 기록됨) 이용권 자동 이어쓰기 매칭 정확도 — `product_name`+`total_count` 완전 일치만 인식. 관리자가 카탈로그에서 치료명을 선택 입력하게 하는 프론트 구현으로 표기 불일치를 줄일 수 있음(아직 미구현)
+- 프론트 연동 중 추가로 나올 요청 배치 대응 대기(예고됨, 아직 미수신)
+- 클라이언트(앱) 회원가입 화면에 전화번호 입력란 추가 필요 — 프론트엔드는 사용자 담당 아님, 전달만 필요
+- (README에 기록됨) 치료-부위 카탈로그가 시술기록 저장을 강제하지 않음 — 필요해지면 서버 레벨 검증 추가 검토
+- (README에 기록됨) 이용권 자동 이어쓰기 매칭 정확도 — `product_name`+`total_count` 완전 일치만 인식
+- (신규, 이번 세션 발견) 다중 클리닉 자동 연결은 이름+생년월일+전화번호 완전 일치로만 판별 — 클리닉마다 전화번호가 다르면(번호 변경 등) 연결 안 됨. 별도 대응 필요해지면 검토
+- (신규, 이번 세션 발견) 다중 클리닉 자동 연결 안내(SMS 등)는 로그만 남기는 스텁 — 실제 발송 수단 미정, 필요해지면 SMS/이메일 인프라 재검토 필요(비용 이슈로 한 번 제거된 이력 있음)
 - 가비아 클라우드 배포 — 크레딧 지급 조건 확인 후 진행 예정(아직 착수 전)
 - (이월) 프론트 담당자 GitHub Collaborator 초대 미발송
 - (이월) `.env` 비밀값을 프론트 담당자에게 git 아닌 채널로 전달
@@ -27,29 +39,25 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - (이월) FCM 실제 발송 스케줄러 트리거 로직 미구현
 - (이월) refreshToken 만료 정책 확정 미완료
 - (이월) `docs/AAC_클리닉_자산_조사.docx` git 커밋 여부 여전히 미결정(untracked)
-- Gmail SMTP는 트랜잭션 메일 전용 서비스가 아니라 발송량이 몰리면 스팸/전송 제한 리스크가 있음 — 정식 서비스 규모로 갈 때 도메인 기반 트랜잭션 메일 서비스(Resend 등)로 재검토 필요(도메인 확보되면)
-- admin-api-example.html "G. 예약 목록/취소" 섹션은 브라우저에서 실제 클릭 검증이 아직 안 됨(확장 미연결) — 다음 세션에 여유 있으면 실브라우저로 한 번 확인
+- (이월) admin-api-example.html "G. 예약 목록/취소" 섹션 실브라우저 클릭 검증 아직 안 됨
 
 ## 주요 파일
-- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계/예약 전체 로직. claim 여부 분기(emr_* vs 실제 테이블), 중복 환자 재사용+notes 갱신, `getVisitStats`(전날/금일/익일 예약 건수), **`listReservations`(신규, 이번 세션 — 날짜별 예약 개별 목록)**, 이용권 만료(`addOneYear`)/자동 이어쓰기(`findContinuableMembership`)
-- `server_admin/src/routes/patients.routes.ts` — `GET /reservations` 신규 라우트(이번 세션)
-- `server_admin/src/validators/patients.validators.ts` — `listReservationsQuerySchema`(신규, 이번 세션)
-- `server_admin/src/examples/admin-api-example.html` — admin-web 대체 수동 테스트 페이지. 이번 세션에 "G. 예약 목록/취소" 섹션 추가
-- `server/src/services/auth.service.ts` — `signup()`(phone 신원확인 조건 포함), `requestPasswordReset`/`confirmPasswordReset`(숫자 코드 방식, Gmail SMTP로 발송)
-- `docs/admin-api-spec.md`/`.html` — server_admin 전체 API 명세(v0.4, 이번 세션에 `GET /reservations` 반영), 아티팩트로도 발행됨(단, 이번 세션엔 재발행 안 함 — 필요 시 다음에)
-- `docs/api-spec.md`/`.html` — 고객용 server/ API 명세, 회원가입 phone 신원확인(v0.7) 반영(이번 세션엔 변경 없음)
-- `server_admin/README.md`, `server/README.md` — 각각 엔드포인트 요약 및 구현 노트, 이번 세션에 server_admin README 갱신
-- Supabase 프로젝트: "youyongsang's Project MS"(ref `qcaivwfjgubievzijkwi`) — SMTP 발신 계정은 `ykenko02@gmail.com`(발송 전용)
-- `docs/db-schema.md`/`.html`, `docs/server-code-guide.md`/`.html` — 007~013 마이그레이션 반영해 동기화된 상태(이번 세션엔 변경 없음)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `13d2d76` — 이번 세션 커밋은 사용자 요청으로 진행 예정)
+- `server_admin/src/services/patients.service.ts` — 환자/시술기록/이용권/방문통계/예약 전체 로직. **이번 세션 추가**: `findLinkedAccountFromOtherClinic`(타 클리닉 자동 연결 대상 조회), `maskAutoLinkedClaim`(응답 마스킹), `notifyExistingAccountLinked`(SMS 스텁), `createMembershipFromCareRecord`에 `brand` 파라미터
+- `server/src/services/auth.service.ts` — `signup()`. **이번 세션 추가**: `migrateEmrDataToApp` 공용 함수 추출(형제 행에도 재사용), 형제 행 일괄 claim 로직
+- `server/src/services/memberships.service.ts` — **이번 세션**: `GET /memberships` 응답에 `brand` 추가
+- `server/db/migrations/016_add_membership_brand.sql` — **신규, 이번 세션**. Supabase에 적용 완료 + 백필 완료(수동 보정 포함)
+- `docs/admin-api-spec.md`/`.html` — v0.6(이번 세션 갱신). 아티팩트: `743df35b-45c3-4c54-8214-75838c32181b`
+- `docs/api-spec.md`/`.html` — v0.11(이번 세션 갱신). 아티팩트: `5cf6ed55-908b-4567-aa90-6357b35c52b6`
+- `docs/db-schema.md`/`.html` — v0.9(이번 세션 갱신). 아티팩트: `f152ff3e-c2f7-4b36-b4ce-364667d3bf60`
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `65e038b`)
 
 ## 특이사항 / 결정 사항
-- **예약 취소를 관리자 웹에서, 완전 삭제 방식으로 구현하기로 한 배경**: 소프트 취소(status='cancelled')도 후보였으나, 기존 `DELETE /care-records/:careRecordId`가 이미 이용권 환불까지 처리하는 검증된 로직이라 그대로 재사용하는 쪽을 택함 — 소프트 취소로 갔다면 `status` 컬럼에 새 값 도입 + 이력 화면(캘린더/목록/통계)에서 취소된 건을 어떻게 표시할지까지 추가 설계가 필요했을 것
-- **"예약"은 여전히 별도 테이블이 아니라 미래 `careDate`를 가진 시술기록 그 자체** — `GET /reservations`도 이 원칙을 그대로 따라 `care_records`/`emr_care_records`를 날짜로 필터링만 할 뿐, 새 테이블/컬럼을 추가하지 않았다
-- **회원가입 신원확인에 전화번호를 추가하기로 한 배경**: 원래 v0.6 설계는 "전화번호는 EMR 원본을 그대로 신뢰하고 클라이언트에 재입력을 안 받는다"였음(동명이인/오탈자 리스크보다 UX 단순화를 우선). 사용자가 관리자 쪽(이름+생년월일+전화번호 중복판정)과의 비대칭을 지적하고, 신원확인 강도를 우선하기로 결정하며 뒤집힘 — **다음에 이 판단을 다시 마주치면 "UX 단순화 vs 신원확인 강도" 트레이드오프에서 후자를 택한 전례로 참고할 것**
-- **프론트엔드는 사용자 담당이 아님** — 이 리포엔 애초에 고객용 앱 프론트엔드 코드가 없음(admin-web도 별도 저장소). API/서버/문서까지가 이 세션의 스코프
-- **비밀번호 재설정 이메일 발송은 Resend가 아니라 발송 전용 Gmail 계정 SMTP를 사용** — 도메인 구매 없이 실사용자 전체에게 발송 가능하게 하기 위한 선택. 개인 메인 Gmail 계정이 아니라 이 용도로만 새로 만든 계정(`ykenko02@gmail.com`)을 써서 리스크 격리
-- **비밀번호 재설정 인증코드는 표준 "6자리"가 아님** — 이 프로젝트는 실측 8자리. 문서/검증 로직에 자릿수를 하드코딩하지 말 것(6~10자리로 느슨하게 검증)
-- **Windows tsx watch 재시작 이슈** — 여전히 유효, `npm run build` 후 `node dist/src/server.js` 권장
-- **claude-in-chrome 브라우저 확장이 이 환경에 연결 안 됨** — UI 변경 실브라우저 검증이 필요할 때 다음 세션에서 다시 시도해볼 것(문법 검사+API 레벨 검증으로 대체한 이력 있음)
+- **다중 클리닉 자동 연결을 스키마 변경 없이 구현한 방법**: `created_at`과 `claimed_at`을 INSERT 시점에 의도적으로 완전히 같은 값으로 채워 "등록과 동시에 claim됨(=자동연결)"과 "나중에 정상 가입함"을 구분 — 신규 컬럼 없이 기존 두 타임스탬프의 관계만으로 마스킹 여부 판별. 비슷한 "신규 컬럼 없이 파생 판별" 패턴이 다시 필요하면 참고할 것
+- **마스킹은 응답 표현에만 적용, DB/내부 로직엔 항상 실값 사용** — `GET /patients/{id}`의 `careRecords`/`memberships` 조회는 항상 진짜 `claimed_user_id`로 하고, 최종 `patient` 필드만 마스킹. 비슷하게 "이 클리닉엔 안 보여줘야 하지만 내부 로직은 정상 동작해야 하는" 요구가 또 나오면 이 분리 패턴(내부 조회는 unmask, 최종 응답만 mask) 재사용 가능
+- **이 프로젝트는 Postgres DDL 직접 실행 권한이 없음(DATABASE_URL 미보유, service role key는 REST API 전용)** — 마이그레이션 SQL 파일은 작성해도 사용자가 Supabase SQL Editor에 직접 붙여넣어 실행해줘야 함. 앞으로도 스키마 변경(ALTER TABLE 등)이 필요하면 이 흐름(마이그레이션 파일 작성 → 사용자에게 적용 요청 → "다 했어" 확인 후 라이브 검증)을 그대로 따를 것
+- **마이그레이션의 조인 기반 백필은 완벽하지 않을 수 있음** — 016에서 `membership_id` FK 링크가 없는 예전 데모 데이터가 백필에서 누락된 사례 발생. 앞으로 비슷한 백필 마이그레이션 작성 시, 적용 후 반드시 "백필 후 null 남은 행이 0개인지" 직접 쿼리로 확인하는 습관 유지할 것(이번엔 확인해서 잡아냄)
+- **SMS/알림 발송 인프라는 여전히 미구현 상태 유지** — 비용 문제로 이미 한 번 통째로 제거된 이력이 있어(`server/README.md` TODO), 자동 연결 안내 등 새로 필요해진 곳에서도 로그만 남기는 스텁으로 처리하고 실제 재도입은 하지 않음(사용자가 명시적으로 "코드만 준비, 발송은 보류"라고 결정)
+- **git-bash Bash 도구로 한글 payload를 다루면 인코딩이 깨짐** — `curl -d '...한글...'`이나 heredoc 직접 사용 금지. 항상 Write 도구로 파일을 작성한 뒤 `curl --data-binary @file.json`으로 ASCII-only 커맨드라인만 Bash에 전달할 것(이번 세션에도 재확인됨)
+- **Windows에서 git-bash `/tmp`는 `C:\Users\PC\AppData\Local\Temp`로 매핑됨** — Bash로 쓴 파일을 PowerShell/Windows-native Node로 읽을 때 `/tmp/x.json` 대신 이 실제 경로를 써야 함(`cygpath -w /tmp`로 확인 가능). Python(cp949 기본 인코딩)으로 UTF-8 JSON 읽을 때도 인코딩 에러 남 — PowerShell의 `ConvertFrom-Json`을 쓰는 게 안전
+- **claude-in-chrome 브라우저 확장이 이 환경에 연결 안 됨** — UI 변경 실브라우저 검증이 필요할 때 다음 세션에서 다시 시도해볼 것
 - 세션 재시작 시 이 파일이 자동으로 브리핑됨(글로벌 CLAUDE.md 설정)

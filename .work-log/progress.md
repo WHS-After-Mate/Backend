@@ -1,3 +1,24 @@
+## 2026-08-18
+- 이전 세션에서 압축(compaction)되어 이어진 세션 — Slack에서 전달받은 "사업장:회원이 구조적으로 1:1"인 문제(같은 사람이 여러 AAC 클리닉을 다녀도 앱 계정은 한 클리닉에만 연결 가능, 두 번째부터는 재가입 시도 시 `profiles.phone` unique 제약으로 500 에러) 진단·해결부터 이어감
+- **다중 클리닉 자동 연결 구현** — DB 스키마 변경 없이 두 방문 순서 모두 처리:
+  - `server_admin` `POST /patients`: 다른 클리닉에 이미 claim된 동일인이 있으면 새 환자 행을 그 계정에 등록 즉시 자동 연결(`findLinkedAccountFromOtherClinic`)
+  - `server` `POST /auth/signup`: 가입 시 다른 클리닉의 미가입 형제 행을 전부 같은 계정으로 일괄 claim(`migrateEmrDataToApp` 공용화)
+  - 마스킹(`maskAutoLinkedClaim`): 자동 연결된 경우만 `claimed_user_id`/`claimed_at`을 응답에서 숨김(`created_at===claimed_at`으로 신규 컬럼 없이 판별), 자기 클리닉 정상 가입은 그대로 노출
+  - SMS 안내는 로그만 남기는 스텁(`notifyExistingAccountLinked`) — "코드만 준비, 발송은 보류"로 사용자가 명확히 결정
+  - 두 방문 순서 시나리오 + 마스킹 3단계 전부 실서버 라이브 검증(계정 생성→시술기록→고객 앱 반영까지), 테스트 데이터 전부 정리
+  - `docs/api-spec.md`/`.html`(v0.10), `docs/admin-api-spec.md`/`.html`(v0.6) 갱신 + 아티팩트 재발행
+  - commit+push (`72d769f`)
+- 사용자가 "GET /memberships 응답에 brand 필드 추가 필요해요, 연동하면서 좀 더 있을텐데 모아서 보내드릴게요"라고 mid-turn 요청(프론트 진정님) → **이용권 brand 필드 추가**로 바로 대응:
+  - 마이그레이션 `016_add_membership_brand.sql` 작성 — `memberships`/`emr_memberships`에 `brand text`, 기존 행은 연결된 시술기록의 brand로 백필
+  - Postgres 직접 연결 권한이 없어(DATABASE_URL 미보유) 사용자에게 Supabase SQL Editor 수동 적용 요청 → 사용자가 "다 했어"로 확인
+  - 적용 후 검증: `memberships` 7개 중 4개가 `membership_id` FK 링크 없는 예전 데모 데이터라 조인 백필에서 누락된 것 발견 → 소유자의 다른 시술기록 브랜드로 수동 백필해 0건으로 정리
+  - `server_admin/patients.service.ts`(`createMembershipFromCareRecord`에 brand 전달), `server/auth.service.ts`(claim 이관 시 brand 복사), `server/memberships.service.ts`(`GET /memberships` 응답에 brand) 수정, 순수 표시용으로 차감/이어쓰기 매칭 로직은 그대로 둠
+  - 라이브 검증: 데모 계정 `GET /memberships` 응답 확인 + AMRED 관리자로 신규 이용권 생성 시 brand 정상 기록 확인. 테스트 데이터/서버 정리
+  - `docs/api-spec.md`/`.html`(v0.11), `docs/db-schema.md`/`.html`(v0.9) 갱신 + 아티팩트 재발행
+  - commit+push (`65e038b`)
+- 세션 중 Windows/git-bash 인코딩·경로 이슈 재확인: git-bash `/tmp`는 `C:\Users\PC\AppData\Local\Temp`로 매핑됨(`cygpath -w /tmp`로 확인), Python 기본 인코딩(cp949)으로 UTF-8 JSON 읽으면 깨짐 → PowerShell `ConvertFrom-Json` 사용이 안전
+- work-log 정리 — `/기록저장`으로 저장
+
 ## 2026-08-17 (2, 신규 세션)
 - 새 세션 시작, work-log 브리핑 후 사용자가 "예약 취소 구현해야 돼"라고 요청
 - AskUserQuestion으로 두 가지 확인: 구현 위치(고객 앱 vs 관리자 웹) → "관리자 웹" 선택, 취소 시 데이터 처리(소프트 취소 vs 완전 삭제) → "완전 삭제(기존 방식과 동일)" 선택
