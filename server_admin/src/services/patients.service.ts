@@ -602,52 +602,73 @@ function kstDateString(daysAgo: number): string {
   return kstNow.toLocaleDateString("en-CA");
 }
 
-// 전날/금일 방문 + 익일 예약 고객 수 — 그 날짜에 시술기록이 있는 "실제 사람 수"(중복 제거, 시술 건수
-// 아님). 회원가입 전 고객은 emr_care_records, 회원가입 후 고객은 care_records에 각각 기록되므로
-// (addCareRecord 참고) 둘 다 조회해서 합친다. "익일"은 아직 시행 전이라 "방문"이 아니라 "예약"으로
-// 부르지만, 데이터 원본은 같은 시술기록 테이블이다 — care_date를 미래로 등록하면(관리 등록 화면의
-// "관리 날짜"에 내일 이후를 선택) 그 자체로 예약이 된다(별도 "예약" 테이블·엔드포인트 불필요, 관리
-// 등록 API가 이미 미래 날짜를 막지 않는다).
-//
-// 주의: 환자가 "당일 방문 기록(emr) → 당일 회원가입" 순서를 밟으면, claim 시 그 방문 기록이
-// care_records로 1회성 복사되기 때문에(server/의 signup()) 같은 사람의 같은 방문이 emr_care_records와
-// care_records 양쪽에 동시에 남을 수 있다. 그래서 patient_id/user_id를 그냥 더하면 같은 사람을
-// 두 번 세는 문제가 생긴다(실측으로 확인됨) — emr_patients.claimed_user_id로 "이미 가입한 환자"를
-// user_id 기준으로 환산해서 두 집합을 하나의 identity Set으로 합친 뒤 크기를 센다.
+// KST 자정 기준 하루 범위를 UTC ISO 문자열로 변환 — emr_patients.created_at(timestamptz) 범위
+// 쿼리용. "YYYY-MM-DDT00:00:00+09:00"으로 명시적 오프셋을 주면 서버가 어느 시간대에서 돌아가든
+// 정확히 그 KST 날짜의 자정을 가리키는 시각이 나온다.
+function kstDayRangeUtc(dateStr: string): { startUtc: string; endUtc: string } {
+  const start = new Date(`${dateStr}T00:00:00+09:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { startUtc: start.toISOString(), endUtc: end.toISOString() };
+}
+
+// 2026-08-18 변경 — 전날/금일: "방문(시술기록 있음)" 대신 "신규 등록(환자번호 최초 발급)" 인원 수로
+// 교체(사용자 요청). emr_patients.created_at은 그 환자 행이 처음 만들어진 시각과 정확히 같다 —
+// POST /patients가 이름+생년월일+전화번호 일치 시 기존 환자를 재사용하고 새로 만들지 않으므로,
+// 재방문객·기존 환자는 여기 안 잡히고 "정말 처음 등록한 사람"만 그 날짜로 카운트된다.
+// 익일: 여전히 "예약"(미래 careDate로 등록된 시술기록) 고객 수 — 등록일이 아니라 시술 예정일 기준이라
+// 신규 등록 개념을 그대로 적용할 수 없어(미래에 "등록"이라는 게 없음) 기존 방식을 유지한다.
 export async function getVisitStats(brand: string) {
   const days = [
     { key: "yesterday", date: kstDateString(1) },
     { key: "today", date: kstDateString(0) },
     { key: "tomorrow", date: kstDateString(-1) },
   ] as const;
-  const dateList = days.map((d) => d.date);
 
+  const { startUtc } = kstDayRangeUtc(days[0].date); // 전날 00:00 KST
+  const { endUtc } = kstDayRangeUtc(days[1].date); // 금일 24:00 KST(=금일 끝)
+  const { data: newPatientRows, error: newPatientError } = await supabaseAdmin
+    .from("emr_patients")
+    .select("created_at")
+    .eq("brand", brand)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc);
+  if (newPatientError) throw Errors.internal(newPatientError.message);
+
+  const newRegistrationCounts = { yesterday: 0, today: 0 };
+  for (const row of newPatientRows ?? []) {
+    const kstDate = new Date(row.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    if (kstDate === days[0].date) newRegistrationCounts.yesterday++;
+    else if (kstDate === days[1].date) newRegistrationCounts.today++;
+  }
+
+  const tomorrowDate = days[2].date;
   const [{ data: emrRows, error: emrError }, { data: appRows, error: appError }] = await Promise.all([
     supabaseAdmin
       .from("emr_care_records")
       .select("patient_id, care_date, patient:emr_patients(claimed_user_id)")
       .eq("brand", brand)
-      .in("care_date", dateList)
+      .eq("care_date", tomorrowDate)
       .returns<{ patient_id: string; care_date: string; patient: { claimed_user_id: string | null } | null }[]>(),
-    supabaseAdmin.from("care_records").select("user_id, care_date").eq("brand", brand).in("care_date", dateList),
+    supabaseAdmin.from("care_records").select("user_id, care_date").eq("brand", brand).eq("care_date", tomorrowDate),
   ]);
   if (emrError) throw Errors.internal(emrError.message);
   if (appError) throw Errors.internal(appError.message);
 
-  const result: Record<string, { date: string; count: number }> = {};
-  for (const { key, date } of days) {
-    const identities = new Set<string>();
-    for (const row of emrRows ?? []) {
-      if (row.care_date !== date) continue;
-      // 이미 회원가입한 환자면 user_id로 환산해서 센다 — care_records 쪽 같은 사람과 하나로 합쳐지도록.
-      identities.add(row.patient?.claimed_user_id ?? row.patient_id);
-    }
-    for (const row of appRows ?? []) {
-      if (row.care_date === date) identities.add(row.user_id);
-    }
-    result[key] = { date, count: identities.size };
+  // 주의: 환자가 "당일 방문 기록(emr) → 당일 회원가입" 순서를 밟으면, claim 시 그 방문 기록이
+  // care_records로 1회성 복사되기 때문에(server/의 signup()) 같은 사람의 같은 방문이 emr_care_records와
+  // care_records 양쪽에 동시에 남을 수 있다 — emr_patients.claimed_user_id로 "이미 가입한 환자"를
+  // user_id 기준으로 환산해서 두 집합을 하나의 identity Set으로 합친 뒤 크기를 센다.
+  const tomorrowIdentities = new Set<string>();
+  for (const row of emrRows ?? []) {
+    tomorrowIdentities.add(row.patient?.claimed_user_id ?? row.patient_id);
   }
-  return result;
+  for (const row of appRows ?? []) tomorrowIdentities.add(row.user_id);
+
+  return {
+    yesterday: { date: days[0].date, count: newRegistrationCounts.yesterday },
+    today: { date: days[1].date, count: newRegistrationCounts.today },
+    tomorrow: { date: tomorrowDate, count: tomorrowIdentities.size },
+  };
 }
 
 // 특정 날짜(미지정 시 오늘)의 예약(=그 날짜 careDate를 가진 시술기록) 목록 — 대시보드의

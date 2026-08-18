@@ -1,3 +1,19 @@
+## 2026-08-18 (2, 신규 세션)
+- 새 세션 시작, 사용자가 "claude api를 openai api로 바꾸고 싶다(해커톤 무료 크레딧)"고 요청
+- **LLM 프로바이더 전환** — `@anthropic-ai/sdk` 제거, `openai` SDK 설치. `config/anthropic.ts` 삭제 → `config/openai.ts` 신규, `env.ts`의 `ANTHROPIC_API_KEY`/`MODEL` → `OPENAI_API_KEY`/`MODEL`, `llm/client.ts`의 `callStructuredLlm`을 Anthropic tool_use → OpenAI function calling(`tool_choice`)으로 재작성(다른 코드는 인터페이스 그대로라 무변경). `.env`/`.env.example`/`README.md`/관련 docs 갱신
+- 사용자가 "gpt-4o-mini는 느리지 않냐" 질문 → 실측 답변("사실 빠른 축") 후 "미니 말고 다른거 쓰자"고 요청 → 여러 모델 실제 tool-call 방식으로 벤치마크: `gpt-5`/`gpt-5-mini`(추론모델, `reasoning_effort`가 토큰 예산을 다 먹어 tool call 자체를 못 냄, 13~19초 완전 실패), `gpt-5.6-luna`/`sol`/`terra`(동작은 하지만 `reasoning_effort:"none"` 명시 필요+느림+코드네임이라 프로덕션 부적합 판단) → **`gpt-5.4`로 최종 확정**(실측 daily-guide 1.9초/questions 1.4초, 기본 파라미터로 안정적)
+  - GPT-5 계열이 `max_tokens`를 거부하고 `max_completion_tokens`만 받는다는 것을 실측으로 발견, `client.ts` 수정(구형 모델과도 호환 확인)
+- `npm run dev`로 실서버 기동 + 데모 프롬프트로 daily-guide/questions 종단 검증 후 서버 종료
+- 사용자가 "5.6 luna/terra는 어때" 재질문 → 위 벤치마크 근거로 비추천 답변
+- 사용자가 `.work-log/dd.txt`에 추가 컨펌사항을 올려뒀다고 알려줌(어제 예고된 "프론트 연동하며 모아서 보내드릴게요" 배치) → 코드와 대조해 6개 신규 항목(맨 아래 블록) 확인, 상단의 오래된 블록들은 과거 세션에서 이미 처리 완료/결정 번복된 것으로 판단해 재작업 안 함
+  - 1(membership.totalCount), 2(reference_guides 5구간 세분화), 6(relatedRecentCares.brand)은 바로 구현
+  - 3(membership_usages 테스트 데이터)은 사용자에게 "임시 계정이 뭐냐" 물어 "오세훈으로 앱 가입했는데 이용권 내역이 안 뜬다"는 답 받음 → 직접 진단해 **실제 버그 발견**: `auth.service.ts`의 `migrateEmrDataToApp`이 claim 이관 시 `care_records.membership_id` 연결을 안 하고 있었음(그래서 `membership_usages`도 항상 빈 배열). `server_admin`의 재방문 시술기록 추가 경로도 동일 버그. 양쪽 수정 + 삭제 시 정리 로직 추가 + 기존 깨진 데이터 3건(오세훈 포함) 백필, 재조회로 확인
+  - 4·5(추천을 LLM 기반으로)는 AskUserQuestion으로 "어제 만든 규칙 기반 추천 엔진을 LLM으로 바꾸길 원하냐" 확인 → "LLM으로 전환" 확답 받고 구현: 시술 후보 선정은 규칙 기반 유지, `reasons`/`detailDescription` 문구만 `recommendation.prompt.ts`(신규)+OpenAI로 생성(실패 시 템플릿 폴백). 실계정으로 라이브 검증, `GET /next-care`/`GET /home/summary` 응답이 즉시→4~6초로 늘어나는 트레이드오프를 사용자에게 명확히 전달
+  - 부수적으로 엑셀(`docs/care_procedure_template.xlsx`) vs DB `procedures` 완전성을 코드로 1:1 재검증(46건 100% 일치, 카테고리 태그 100% 일치, description 15건은 줄바꿈만 다듬어진 차이로 내용 손실 없음)
+- 문서 동기화: `docs/api-spec.md`/`.html`(v0.11→v0.12), `docs/admin-api-spec.md`/`.html`(v0.6→v0.7), `docs/llm-prompt-design.md`/`.html`(v0.1→v0.2, LLM 호출 지점 2곳→3곳). 아티팩트 3종 WebFetch로 최신본 확인 후 재발행
+- commit+push (`756fcb7`) — 관례대로 `docs/AAC_클리닉_자산_조사.docx`/`docs/WHS_After_Mate_Admin_revised.html`은 제외
+- work-log 정리 — `/기록저장`으로 저장
+
 ## 2026-08-18
 - 이전 세션에서 압축(compaction)되어 이어진 세션 — Slack에서 전달받은 "사업장:회원이 구조적으로 1:1"인 문제(같은 사람이 여러 AAC 클리닉을 다녀도 앱 계정은 한 클리닉에만 연결 가능, 두 번째부터는 재가입 시도 시 `profiles.phone` unique 제약으로 500 에러) 진단·해결부터 이어감
 - **다중 클리닉 자동 연결 구현** — DB 스키마 변경 없이 두 방문 순서 모두 처리:
