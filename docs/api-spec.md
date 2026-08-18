@@ -1,7 +1,13 @@
-# WHS After Mate — API 명세서 (v0.12, MVP)
+# WHS After Mate — API 명세서 (v0.14, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.14 변경 (2026-08-19): `docs/prompt.docx` 설계로 LLM 프롬프트 3곳 전면 재작성.
+- **`GET /aftercare/daily-guide` 응답 필드명·설계 변경(하위호환 없음)**: `mustAvoid`/`basicCare` → **`precautions`/`aftercare`**로 이름이 바뀌고, **`keyCare`**(오늘 가장 중요한 한 줄 요약) 신규 추가. 이전엔 검수된 가이드(`reference_guides`) 원문을 그대로 재서술했지만, 이제는 시술·환자 정보를 근거로 LLM이 직접 종합해서 생성한다(회복 주요 기간이 지난 시점이면 `aftercare`/`precautions`는 빈 배열이 되고 `keyCare`에 "일상 복귀 가능" 취지 안내). `reference_guides`는 LLM 실패 시 폴백 용도로만 남음.
+- **`POST /aftercare/questions` 응답에 `consultationLevel` 필드 추가**: `status`(answered/out_of_scope)와 별개 축으로, LLM이 판단한 상담 필요도(`NONE`/`RECOMMENDED`/`URGENT`)를 함께 내려준다. 아래 각 절 참고.
+
+v0.13 변경 (2026-08-18): LLM 제공자를 Anthropic → OpenAI로 전환(`OPENAI_MODEL=gpt-4.1-mini`, 자세한 선정 배경은 `llm-prompt-design.md` 참고) — 응답 스키마 자체는 변경 없음. 추천 `reasons`는 이제 **정확히 3개, 각 30자 이내**로 생성되도록 프롬프트 제약이 구체화됐고(이전엔 "1~3개" 가변), `detailDescription`도 카탈로그 원문을 그대로 노출하지 않고 **항상 LLM이 30~40자로 압축**해서 내려준다(이전엔 카탈로그 설명이 있으면 원문 그대로, 없을 때만 LLM). 아래 "GET /recommendations/next-care" 절 참고.
 
 v0.12 변경: 앱 연동 중 프론트(진정님) 요청 배치(dd.txt) 반영 — ① `GET /care-records/{careRecordId}` 응답의 `membership`에 `totalCount` 추가 ② `GET /recommendations/next-care/{recommendationId}` 응답의 `relatedRecentCares[]`에 `brand` 추가 ③ 다음 관리 추천의 `reasons`/`detailDescription`을 OpenAI 기반으로 생성하도록 교체(시술 후보 선정 로직은 규칙 기반 그대로, 문구 생성만 LLM화 — 실패/키 미설정 시 기존 템플릿 문구로 폴백) ④ 회원가입(claim) 이관 시 `care_records.membership_id`가 연결되지 않아 `GET /memberships`의 `usageHistory`가 항상 빈 배열이던 버그 수정 + 기존 데이터 백필. 아래 각 절 참고.
 
@@ -237,7 +243,7 @@ accessToken 재발급.
     "recommendationId": "R-9001",
     "careName": "티타늄 리프팅",
     "businessId": "amred",
-    "reasons": ["관심 목표(색소침착 개선)에 도움이 돼요.", "최근 관리(울쎄라피 프라임)와 연관된 관리예요."]
+    "reasons": ["관심 목표(색소침착 개선)에 도움이 돼요.", "최근 관리(울쎄라피 프라임)와 연관된 관리예요.", "피부 톤 개선에 특화된 시술이에요."]
   }
 }
 ```
@@ -264,7 +270,7 @@ accessToken 재발급.
 | `recommendation.recommendationId` | string | |
 | `recommendation.careName` | string | |
 | `recommendation.businessId` | string | `(v0.8)` 추천 시술을 보유한 사업장 id(`amred`/`derna`/`wim`) |
-| `recommendation.reasons` | string[] | 다음 관리 추천 이유 |
+| `recommendation.reasons` | string[] | 다음 관리 추천 이유. `(v0.13)` 정확히 3개, 각 30자 이내 |
 
 `403 NO_ACTIVE_CUSTOMER_PROFILE`: 연결된 고객 프로필 없음
 
@@ -280,7 +286,8 @@ accessToken 재발급.
   "businessId": "amred",
   "reasons": [
     "관심 목표(색소침착 개선)에 도움이 돼요.",
-    "최근 관리(울쎄라피 프라임)와 연관된 관리예요."
+    "최근 관리(울쎄라피 프라임)와 연관된 관리예요.",
+    "피부 톤 개선에 특화된 시술이에요."
   ],
   "basis": ["catalog", "goal", "recentCare"],
   "disclaimer": "의료적 진단이 아니며 최종 관리는 전문가 상담 후 결정하세요."
@@ -291,7 +298,7 @@ accessToken 재발급.
 | `recommendationId` | string | `sha1("recommendation:"+userId)` 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함 |
 | `careName` | string | `procedures.name` — 46종 실제 시술 카탈로그 중 하나 |
 | `businessId` | string | `(v0.8)` 추천 시술을 보유한 사업장 id(`amred`/`derna`/`wim`) |
-| `reasons` | string[] | 추천 이유 1~3개. `(v0.12)` 문구 자체는 OpenAI가 생성(시술마다 다른 문구) — 추천 시술 선정(위 매칭 알고리즘)은 그대로 규칙 기반. 호출 실패/`OPENAI_API_KEY` 미설정 시 정적 템플릿 문구로 자동 폴백 |
+| `reasons` | string[] | 추천 이유. `(v0.12)` 문구 자체는 OpenAI가 생성(시술마다 다른 문구) — 추천 시술 선정(위 매칭 알고리즘)은 그대로 규칙 기반. `(v0.13)` **정확히 3개, 각 30자 이내**로 제약 구체화(코드 레벨에서 개수 불일치 시 재시도, 초과 글자는 강제 절삭). 호출 실패/`OPENAI_API_KEY` 미설정 시 정적 템플릿 문구로 자동 폴백 |
 | `basis` | string[] | 적용 근거: `catalog`(항상 포함) / `goal`(관심 목표와 `category_tags` 겹침) / `recentCare`(최근 받은 시술의 `category_tags`와 겹침) |
 | `disclaimer` | string | 의료 진단 아님 고지 |
 
@@ -311,7 +318,7 @@ accessToken 재발급.
 
 ```json
 {
-  "detailDescription": "티타늄 리프팅은 기존 리프팅 장비와 달리 빠른 속도, 낮은 통증, 강력한 효과를 갖춘 프리미엄 올인원 리프팅 솔루션입니다...",
+  "detailDescription": "빠르고 통증 적은 프리미엄 올인원 리프팅",
   "relatedRecentCares": [
     { "careRecordId": "C-2001", "careName": "울쎄라피 프라임", "daysElapsed": 10, "brand": "AMRED CLINIC" }
   ],
@@ -323,7 +330,7 @@ accessToken 재발급.
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `detailDescription` | string | `(v0.8)` 추천된 `procedures.description`을 우선 사용. 설명 텍스트가 없는 시술(46종 중 일부)이면 `(v0.12)` OpenAI로 생성(실패 시 추천 이유 기반 정적 문장으로 폴백) |
+| `detailDescription` | string | `(v0.13)` 항상 OpenAI가 생성 — 추천된 `procedures.description`(카탈로그 원문)을 근거 자료로 전달해 앱 화면에 맞는 짧은 한 줄(약 30자, 최대 40자)로 압축시킨다. 이전엔(v0.8~v0.12) 카탈로그 설명이 있으면 원문 그대로 노출했으나 길이가 들쭉날쭉해 화면이 깨지는 문제로 변경. 호출 실패/`OPENAI_API_KEY` 미설정 시 카탈로그 원문을 40자로 잘라 폴백 |
 | `relatedRecentCares` | object[] | `(v0.5)` "최근 관리와 함께 확인해보세요" — `latestCare` 1건이 아니라 최근 관리 이력 여러 건. `care_records` 최신순 N건 조회로 계산(신규 테이블 불필요) |
 | `relatedRecentCares[].careRecordId` | string | |
 | `relatedRecentCares[].careName` | string | |
@@ -360,8 +367,9 @@ accessToken 재발급.
   "daysElapsed": 5,
   "elapsedRange": "3-7",
   "isToday": true,
-  "mustAvoid": ["각질 제거 제품 사용", "고강도 유산소 운동"],
-  "basicCare": ["미온수 세안", "저자극 보습"],
+  "aftercare": ["미온수 세안과 저자극 보습제로 피부 수분을 유지하세요.", "외출 시 자외선 차단제를 재도포하세요.", "각질 제거 제품은 3일 후부터 사용 가능합니다."],
+  "precautions": ["고강도 유산소 운동을 피하세요.", "레티놀 함유 제품 사용을 피하세요.", "과도한 마찰·온도 변화를 피하세요."],
+  "keyCare": "민감한 시기이니 자극을 최소화하고, 3일 후부터 각질 제거 제품을 재개하세요.",
   "nextCheckDate": "2026-08-01",
   "generatedAt": "2026-07-30T00:05:00Z",
   "generatedBy": "llm",
@@ -376,14 +384,16 @@ accessToken 재발급.
 | `daysElapsed` | number | |
 | `elapsedRange` | string | 경과 구간(예: `"3-7"`) |
 | `isToday` | boolean | `(v0.5)` `elapsedDay`가 실제 오늘 경과일과 같거나 생략된 경우 `true`. 이 경우에만 LLM 개인화 생성+캐시를 사용 |
-| `mustAvoid` | string[] | |
-| `basicCare` | string[] | |
-| `nextCheckDate` | string \| null | |
+| `aftercare` | string[] | `(v0.14)` 오늘 경과일에 맞는 사후관리 방법. 정확히 3개 또는(회복 주요 기간이 지났으면) 빈 배열. 이전 필드명 `basicCare` |
+| `precautions` | string[] | `(v0.14)` 오늘 경과일에 맞는 주의사항. 정확히 3개 또는(회복 주요 기간이 지났으면) 빈 배열. 이전 필드명 `mustAvoid` |
+| `keyCare` | string | `(v0.14)` 신규 — 오늘 가장 중요하게 기억해야 할 내용 한 줄 요약. 회복 주요 기간이 지난 시점이면 "일상 복귀 가능" 취지 안내가 담기고 이때 `aftercare`/`precautions`는 빈 배열 |
+| `nextCheckDate` | string \| null | 여전히 서버가 결정론적으로 계산(`reference_guides.next_check_offset_days` 기반) — LLM이 만드는 값 아님 |
 | `generatedAt` | datetime | |
 | `generatedBy` | string | `"llm"` \| `"reference_guide"`(LLM 실패 폴백) |
 | `cacheExpiresAt` | datetime | 자정(KST) 기준 캐시 만료 시각 |
 
-- `elapsedDay`로 다른 탭(과거/미래 경과일)을 조회하면 개인화 LLM 호출 없이 `reference_guides`(검수된 가이드 원문)를 그대로 반환한다 — `generatedBy: "reference_guide"`. 가상의 경과일에 대해 매번 LLM을 호출하는 비용·안전 부담을 피하기 위함
+- `(v0.14)` LLM은 더 이상 검수된 가이드(`reference_guides`) 원문을 그대로 재서술하지 않는다 — 시술 정보(관리명·부위·의사 코멘트)와 환자 정보(알러지·기저질환)를 근거로 직접 종합해서 생성하며, 모든 시술에 공통되는 일반론("압박하지 마세요" 등)은 제외하도록 프롬프트에서 명시한다. `reference_guides`는 LLM 호출 실패 시 폴백, 그리고 `elapsedDay`로 비-오늘 탭을 조회할 때(아래)만 쓰인다.
+- `elapsedDay`로 다른 탭(과거/미래 경과일)을 조회하면 개인화 LLM 호출 없이 `reference_guides`(검수된 가이드 원문)를 그대로 반환한다 — `generatedBy: "reference_guide"`. 가상의 경과일에 대해 매번 LLM을 호출하는 비용·안전 부담을 피하기 위함. 이 경로의 `keyCare`는 LLM 생성이 아니라 서버가 합성한 짧은 안내 문구다.
 `404 GUIDE_NOT_AVAILABLE`: 지원하지 않는 관리 유형/경과일 구간
 `503 GUIDE_GENERATION_FAILED`: LLM 생성 실패 시 재시도 안내(폴백: 검수된 기본 가이드 문구로 대체)
 
@@ -418,6 +428,7 @@ accessToken 재발급.
   "status": "answered",
   "answer": "브라이트닝 필링 후 경과일 5일차 기준, 자극에 민감한 상태이므로 사우나는 관리 후 7일 이후를 권장합니다.",
   "answeredBy": "llm",
+  "consultationLevel": "NONE",
   "basedOn": { "careRecordId": "C-2001", "daysElapsed": 5, "guideId": "G-31" }
 }
 ```
@@ -427,6 +438,7 @@ accessToken 재발급.
 | `status` | string | `answered` \| `out_of_scope` \| `expert_required`(통증·출혈 등 위험 신호는 LLM 호출 전 규칙 기반으로 우선 차단) |
 | `answer` | string | `status: "answered"`일 때만 존재 |
 | `answeredBy` | string | `"llm"` |
+| `consultationLevel` | string | `(v0.14)` 신규 — `status`와 별개 축. `NONE`(일반 정보로 충분) \| `RECOMMENDED`(실제 상태 확인 필요) \| `URGENT`(빠른 전문 확인 필요 가능성). 애매한 증상 질문도 무조건 `out_of_scope`로 막지 않고, 답변은 하되 이 필드로 상담 필요도를 구분한다. `status: "out_of_scope"`/`"expert_required"`일 땐 `NONE` |
 | `basedOn` | object | `status: "answered"`일 때만 존재 — 답변 근거 |
 | `basedOn.careRecordId` | string | |
 | `basedOn.daysElapsed` | number | |
@@ -467,6 +479,7 @@ accessToken 재발급.
       "answer": "브라이트닝 필링 후 경과일 5일차 기준...",
       "answeredBy": "llm",
       "expertContactRequired": false,
+      "consultationLevel": "NONE",
       "createdAt": "2026-07-30T10:00:00Z"
     }
   ]
@@ -482,6 +495,7 @@ accessToken 재발급.
 | `items[].answer` | string \| null | |
 | `items[].answeredBy` | string | `"llm"` |
 | `items[].expertContactRequired` | boolean | |
+| `items[].consultationLevel` | string | `(v0.14)` `NONE` \| `RECOMMENDED` \| `URGENT` |
 | `items[].createdAt` | datetime | 질문 등록 시각 |
 
 - 참고: 현재 유저플로우에는 이 화면으로 가는 명시적 진입점이 없다 (향후 챗봇 내 "지난 질문 보기" 등으로 연결 예정).
@@ -736,8 +750,8 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | User | id, name, email, phone, role(customer/expert/admin) |
 | CareRecord | id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName,totalCount}** *(굵은 필드 v0.5, totalCount는 v0.12)* |
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
-| AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)* |
-| Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt |
+| AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, precautions[], aftercare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)*, **keyCare** *(v0.14, 필드명도 mustAvoid/basicCare→precautions/aftercare로 변경)* |
+| Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, **consultationLevel** *(v0.14)*, createdAt |
 | Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,**brand** *(v0.12)*}, popularWithSimilarCustomers[], clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
 | Procedure | id, businessId, name, categoryTags[], description *(v0.8, `procedures` 테이블 — 46개 실제 시술 카탈로그)* |
 | Business | id, name, brand, talkChannelLabel, talkChannelUrl, phone *(v0.8, `businesses` 테이블 — 사업장 3곳)* |

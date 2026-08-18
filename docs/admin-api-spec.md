@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.7)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.8)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.8 변경 (2026-08-18): `GET /visit-stats`의 전날/금일 의미를 "방문(시술기록 있음)"에서 **"신규 등록(환자번호 최초 발급)"**으로 변경 — 같은 환자의 반복 방문마다 카운트되는 것보다 "그날 새로 등록된 환자 수"가 더 유의미한 지표라는 사용자 요청. 익일(예약) 의미는 변경 없음. 자세한 내용은 하단 "4. 통계" 절 참고.
 
 v0.7 변경 (버그 수정, 2026-08-18): 고객용 앱의 `GET /memberships` 응답에서 `usageHistory`(이용권 회차별 사용일자)가 항상 빈 배열로 나오던 버그를 수정 — `POST /patients/{id}/care-records`가 이용권을 차감/생성할 때 `membership_usages` 테이블에 사용 기록을 남기지 않고 있었다. 이제 회원가입(claim) 완료 후의 시술기록 추가 시 `membership_usages`에 정상 기록되고, `DELETE /care-records/{careRecordId}`로 취소하면 해당 기록도 함께 정리된다. 응답 스키마 변경 없음(내부 데이터 정합성 수정). 기존에 이미 영향받은 데이터는 백필 완료.
 
@@ -541,13 +543,14 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 ## 4. 통계
 
 ### GET /visit-stats
-전날/금일(KST 기준) 로그인한 클리닉에 방문(시술기록이 있는)한, 그리고 익일 예약된 **실제 사람 수**(중복 제거 — 시술 건수가 아님). `(v0.2)` 이전엔 "오늘/어제/이틀 전"이었으나, 관리자 웹 대시보드 개편(어드민 프로토타입 `WHS_After_Mate_Admin_revised.html` 반영)으로 "전날/금일 방문 + 익일 예약"으로 바뀌었다.
+전날/금일(KST 기준) 로그인한 클리닉에 **신규 등록**된 환자 수, 그리고 익일 예약된 **실제 사람 수**(중복 제거 — 시술 건수가 아님). `(v0.2)`에서 "오늘/어제/이틀 전" → "전날/금일 방문 + 익일 예약"으로 바뀌었고, `(v0.7, 2026-08-18)`에서 전날/금일의 의미가 다시 "방문(시술기록 있음)"에서 **"신규 등록(환자번호 최초 발급)"**으로 바뀌었다 — 사용자 요청으로, 같은 환자가 반복 방문할 때마다 카운트되는 것보다 "새로 클리닉에 등록된 사람 수"가 더 유의미한 지표라는 판단.
 
 **DB**
-- `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`가 전날/금일/익일 중 하나) + `emr_patients` 조인 — `patient_id`, `care_date`, `patient.claimed_user_id`
-- `care_records` **SELECT** (`brand`=로그인 클리닉, 같은 날짜 조건) — `user_id`, `care_date`
-- 날짜별로 두 결과를 하나의 "신원 집합"으로 합친다: `emr_care_records` 쪽은 이미 회원가입한 환자면 `claimed_user_id`로, 아직이면 `patient_id`로 식별값을 만들고, `care_records` 쪽은 `user_id`를 그대로 쓴다. 같은 날 "가입 전 방문 기록(emr)"과 "가입 후 방문 기록(app)"이 같은 사람 걸로 둘 다 있어도(당일 가입 케이스) `claimed_user_id`로 환산되어 하나로 합쳐지므로 중복 집계되지 않는다.
-- **"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 그대로 재사용한다** — `POST .../care-records`의 `careDate`가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 각 날짜별 예약 목록·취소는 아래 `GET /reservations` 참고(v0.4).
+- 전날/금일: `emr_patients` **SELECT** (`brand`=로그인 클리닉, `created_at`이 전날 00:00~금일 24:00 KST 구간) — `created_at`만 조회 후 KST 날짜로 분류.
+  - `POST /patients`(환자 등록)는 이름+생년월일+전화번호가 정확히 일치하면 기존 `emr_patients` 행을 재사용하고 새로 만들지 않는다 — 즉 `emr_patients.created_at`은 그 환자가 **처음** 등록된 시각과 정확히 같다. 재방문객·기존 환자의 후속 시술은 여기 잡히지 않고, 진짜 처음 등록된 사람만 그 날짜에 카운트된다.
+- 익일(예약): `emr_care_records` **SELECT** (`brand`=로그인 클리닉, `care_date`=익일) + `emr_patients` 조인 — `patient_id`, `care_date`, `patient.claimed_user_id` / `care_records` **SELECT**(같은 조건) — `user_id`, `care_date`. 두 결과를 하나의 "신원 집합"으로 합친다: `emr_care_records` 쪽은 이미 회원가입한 환자면 `claimed_user_id`로, 아직이면 `patient_id`로 식별값을 만들고, `care_records` 쪽은 `user_id`를 그대로 쓴다.
+  - 익일은 "등록일" 개념을 적용할 수 없어(미래에 "등록"이라는 게 없음) 전날/금일과 달리 기존 방식(시술기록=예약) 그대로 유지한다.
+  - **"익일 예약"은 별도 예약 테이블이 아니라 같은 시술기록 테이블을 그대로 재사용한다** — `POST .../care-records`의 `careDate`가 애초에 미래 날짜를 막지 않으므로, 관리 등록 화면에서 "관리 날짜"를 내일 이후로 선택해 저장하면 그 자체로 예약이 된다. 각 날짜별 예약 목록·취소는 아래 `GET /reservations` 참고(v0.4).
 
 **Response 200**
 ```json
@@ -559,9 +562,9 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `yesterday` / `today` / `tomorrow` | object | 각각 `{ date, count }`. `tomorrow`는 아직 시행 전이라 "방문"이 아니라 "예약" 의미 |
+| `yesterday` / `today` / `tomorrow` | object | 각각 `{ date, count }`. `yesterday`/`today`는 **신규 등록** 인원 수, `tomorrow`는 여전히 **예약** 인원 수(의미가 서로 다름 — v0.7) |
 | `.date` | string | `YYYY-MM-DD` (KST 기준) |
-| `.count` | number | 그 날짜에 방문(또는 예약)한 고객 수(중복 제거) |
+| `.count` | number | `yesterday`/`today`는 그 날짜에 처음 등록된 환자 수, `tomorrow`는 그 날짜에 예약된 고객 수(모두 중복 제거) |
 
 **에러**: 없음(빈 결과여도 `count: 0`으로 정상 응답, 인증 실패 시의 공통 401만 해당)
 

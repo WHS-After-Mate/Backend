@@ -467,7 +467,9 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 OpenAI API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다. 2026-08-18부터 Anthropic Claude에서 전환), 다음 관리 추천 MVP(추천 사유/설명도 v0.12부터 OpenAI 기반). 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.12</span>
+      <span class="badge">v0.14</span>
+      <span class="badge outline">daily-guide/questions 프롬프트 전면 재설계</span>
+      <span class="badge outline">OpenAI gpt-4.1-mini 전환</span>
       <span class="badge outline">추천 사유·설명 OpenAI 생성</span>
       <span class="badge outline">이용권 brand 필드</span>
       <span class="badge outline">다중 클리닉 자동 연결(형제 행 일괄 claim)</span>
@@ -832,7 +834,7 @@
     "recommendationId": "R-9001",
     "careName": "티타늄 리프팅",
     "businessId": "amred",
-    "reasons": ["관심 목표(색소침착 개선)에 도움이 돼요.", "최근 관리(울쎄라피 프라임)와 연관된 관리예요."]
+    "reasons": ["관심 목표(색소침착 개선)에 도움이 돼요.", "최근 관리(울쎄라피 프라임)와 연관된 관리예요.", "피부 톤 개선에 특화된 시술이에요."]
   }
 }</pre>
           </details>
@@ -853,7 +855,7 @@
                 <tr><td class="mono">recommendationId</td><td class="mono">string</td><td>sha1("recommendation:"+userId) 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함</td></tr>
                 <tr><td class="mono">careName</td><td class="mono">string</td><td>procedures.name — 46종 실제 시술 카탈로그 중 하나</td></tr>
                 <tr><td class="mono">businessId</td><td class="mono">string</td><td><span class="done-badge">v0.8</span> 추천 시술 보유 사업장 id(amred/derna/wim)</td></tr>
-                <tr><td class="mono">reasons</td><td class="mono">string[]</td><td>추천 이유 1~3개. <span class="done-badge">v0.12</span> 문구는 OpenAI가 생성(시술마다 다른 문구) — 추천 시술 선정은 그대로 규칙 기반. 실패/키 미설정 시 정적 템플릿으로 폴백</td></tr>
+                <tr><td class="mono">reasons</td><td class="mono">string[]</td><td>추천 이유. <span class="done-badge">v0.12</span> 문구는 OpenAI가 생성(시술마다 다른 문구) — 추천 시술 선정은 그대로 규칙 기반. <span class="done-badge">v0.13</span> 정확히 3개, 각 30자 이내로 제약 구체화(개수 불일치 시 재시도, 초과 글자는 강제 절삭). 실패/키 미설정 시 정적 템플릿으로 폴백</td></tr>
                 <tr><td class="mono">basis</td><td class="mono">string[]</td><td><span class="done-badge">v0.8</span> 적용 근거: catalog(항상) / goal(관심목표∩category_tags) / recentCare(최근 시술 category_tags와 연관)</td></tr>
                 <tr><td class="mono">disclaimer</td><td class="mono">string</td><td>의료 진단 아님 고지</td></tr>
               </tbody>
@@ -875,7 +877,7 @@
             <table>
               <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
               <tbody>
-                <tr><td class="mono">detailDescription</td><td class="mono">string</td><td><span class="done-badge">v0.8</span> 추천된 procedures.description 원문. 설명 텍스트가 없는 시술이면 추천 이유 기반 문장으로 대체 생성</td></tr>
+                <tr><td class="mono">detailDescription</td><td class="mono">string</td><td><span class="done-badge">v0.13</span> 항상 OpenAI가 생성 — 추천된 procedures.description(카탈로그 원문)을 근거 자료로 전달해 앱 화면에 맞는 짧은 한 줄(약 30자, 최대 40자)로 압축. 이전(v0.8~v0.12)엔 카탈로그 설명이 있으면 원문 그대로 노출했으나 길이가 들쭉날쭉해 화면이 깨지는 문제로 변경. 실패/키 미설정 시 카탈로그 원문을 40자로 잘라 폴백</td></tr>
                 <tr><td class="mono">relatedRecentCares</td><td class="mono">object[]</td><td><span class="done-badge">v0.5 · 구현 완료</span> "최근 관리와 함께 확인해보세요" — 최근 관리 이력 여러 건 + 경과일. <span class="mono">care_records</span> 최신 N건 조회로 계산</td></tr>
                 <tr><td class="mono">relatedRecentCares[].careRecordId</td><td class="mono">string</td><td>—</td></tr>
                 <tr><td class="mono">relatedRecentCares[].careName</td><td class="mono">string</td><td>—</td></tr>
@@ -896,7 +898,7 @@
 
     <section id="aftercare">
       <h2>3. 사후관리 안내 및 Q&amp;A <span class="req-id">R-USXPEM → F-GBZTGO, F-ULCIXA</span> <span class="status-chip llm">LLM 기반</span></h2>
-      <p class="desc">일차별 주의사항과 Q&amp;A 답변은 모두 <strong>LLM이 생성</strong>한다(여기서 "LLM"은 실제로 서버가 Anthropic Claude API를 호출해 받는 응답을 뜻하며, 미리 정해둔 문구를 보여주는 것이 아니다 — 구현은 <span class="mono">server/src/services/llm/client.ts</span>의 <span class="mono">callStructuredLlm()</span> 참고). 최근 관리명·관리일·경과일·검수된 관리 가이드를 컨텍스트로 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다.</p>
+      <p class="desc">일차별 주의사항과 Q&amp;A 답변은 모두 <strong>LLM이 생성</strong>한다(여기서 "LLM"은 실제로 서버가 OpenAI API(<span class="mono">gpt-4.1-mini</span> <span class="done-badge">v0.13</span>)를 호출해 받는 응답을 뜻하며, 미리 정해둔 문구를 보여주는 것이 아니다 — 구현은 <span class="mono">server/src/services/llm/client.ts</span>의 <span class="mono">callStructuredLlm()</span> 참고). 최근 관리명·관리일·경과일·환자 정보를 컨텍스트로 사용하며, 의료적 진단·처방은 생성하지 않도록 시스템 프롬프트에서 제한한다. <span class="done-badge">v0.14</span> daily-guide는 더 이상 검수된 가이드(<span class="mono">reference_guides</span>) 원문을 그대로 재서술하지 않고, 시술·환자 정보를 근거로 LLM이 직접 종합한다(<span class="mono">docs/prompt.docx</span> 설계 반영) — <span class="mono">reference_guides</span>는 LLM 실패 폴백 용도로만 남음.</p>
       <p class="note">진입 경로: 홈의 "사후관리 카드" 클릭 시 <span class="mono">careRecordId</span>가 지정된 채로 AI 사후관리 가이드에 진입한다. 챗봇은 ① 가이드 페이지의 "더 궁금한 점?" ② 홈의 "AI에게 물어보기" 버튼, 두 경로로 진입할 수 있다. My Care 관리 상세 화면의 "AI 사후관리 가이드" 버튼도 동일한 가이드 화면으로 연결된다(4절 참고).</p>
 
       <div class="endpoint-card">
@@ -926,9 +928,10 @@
                 <tr><td class="mono">careName</td><td class="mono">string</td><td>—</td></tr>
                 <tr><td class="mono">daysElapsed / elapsedRange</td><td class="mono">number / string</td><td>경과일 및 구간(예: "3-7")</td></tr>
                 <tr><td class="mono">isToday</td><td class="mono">boolean</td><td><span class="done-badge">v0.5 · 구현 완료</span> <span class="mono">elapsedDay</span>가 오늘과 같거나 생략 시 true. false면 개인화 LLM 대신 <span class="mono">reference_guides</span> 원문 반환(<span class="mono">generatedBy: "reference_guide"</span>)</td></tr>
-                <tr><td class="mono">mustAvoid</td><td class="mono">string[]</td><td>피해야 할 행동</td></tr>
-                <tr><td class="mono">basicCare</td><td class="mono">string[]</td><td>기본 사후관리 방법</td></tr>
-                <tr><td class="mono">nextCheckDate</td><td class="mono">string | null</td><td>—</td></tr>
+                <tr><td class="mono">aftercare</td><td class="mono">string[]</td><td><span class="done-badge">v0.14</span> 오늘 경과일에 맞는 사후관리 방법. 정확히 3개 또는(회복 주요 기간 지남) 빈 배열. 이전 필드명 <span class="mono">basicCare</span></td></tr>
+                <tr><td class="mono">precautions</td><td class="mono">string[]</td><td><span class="done-badge">v0.14</span> 오늘 경과일에 맞는 주의사항. 정확히 3개 또는(회복 주요 기간 지남) 빈 배열. 이전 필드명 <span class="mono">mustAvoid</span></td></tr>
+                <tr><td class="mono">keyCare</td><td class="mono">string</td><td><span class="done-badge">v0.14</span> 신규 — 오늘 가장 중요한 내용 한 줄 요약. 회복 주요 기간이 지났으면 "일상 복귀 가능" 취지 안내(이때 aftercare/precautions는 빈 배열)</td></tr>
+                <tr><td class="mono">nextCheckDate</td><td class="mono">string | null</td><td>서버가 결정론적으로 계산(reference_guides 기반) — LLM이 만드는 값 아님</td></tr>
                 <tr><td class="mono">generatedAt</td><td class="mono">datetime</td><td>LLM 생성/갱신 시각</td></tr>
                 <tr><td class="mono">generatedBy</td><td class="mono">string</td><td>"llm" | "reference_guide"(LLM 실패 폴백)</td></tr>
                 <tr><td class="mono">cacheExpiresAt</td><td class="mono">datetime</td><td>캐시 만료(자정, KST)</td></tr>
@@ -988,6 +991,7 @@
                   <tr><td class="mono">status</td><td class="mono">string</td><td>answered | out_of_scope | expert_required(통증·출혈 등 위험 신호는 LLM 호출 전 규칙 기반 사전 차단)</td></tr>
                   <tr><td class="mono">answer</td><td class="mono">string</td><td>status: "answered"일 때만 존재</td></tr>
                   <tr><td class="mono">answeredBy</td><td class="mono">string</td><td>"llm"</td></tr>
+                  <tr><td class="mono">consultationLevel</td><td class="mono">string</td><td><span class="done-badge">v0.14</span> status와 별개 축. NONE(일반 정보로 충분) | RECOMMENDED(실제 상태 확인 필요) | URGENT(빠른 전문 확인 필요 가능성). status가 out_of_scope/expert_required면 NONE</td></tr>
                   <tr><td class="mono">basedOn</td><td class="mono">object</td><td>status: "answered"일 때만 존재 — 답변 근거</td></tr>
                   <tr><td class="mono">basedOn.careRecordId / daysElapsed / guideId</td><td class="mono">—</td><td>—</td></tr>
                 </tbody>
@@ -1001,6 +1005,7 @@
   "status": "answered",
   "answer": "브라이트닝 필링 후 경과일 5일차 기준, 자극에 민감한 상태이므로 사우나는 관리 후 7일 이후를 권장합니다.",
   "answeredBy": "llm",
+  "consultationLevel": "NONE",
   "basedOn": { "careRecordId": "C-2001", "daysElapsed": 5, "guideId": "G-31" }
 }</pre>
           </details>
@@ -1052,6 +1057,7 @@
                 <tr><td class="mono">items[].answer</td><td class="mono">string | null</td><td>—</td></tr>
                 <tr><td class="mono">items[].answeredBy</td><td class="mono">string</td><td>"llm"</td></tr>
                 <tr><td class="mono">items[].expertContactRequired</td><td class="mono">boolean</td><td>—</td></tr>
+                <tr><td class="mono">items[].consultationLevel</td><td class="mono">string</td><td><span class="done-badge">v0.14</span> NONE | RECOMMENDED | URGENT</td></tr>
                 <tr><td class="mono">items[].createdAt</td><td class="mono">datetime</td><td>질문 등록 시각</td></tr>
               </tbody>
             </table>
@@ -1387,8 +1393,8 @@
             <tr><td class="mono">User</td><td class="mono">id, name, email, phone, role(customer/expert/admin)</td></tr>
             <tr><td class="mono">CareRecord</td><td class="mono">id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, <b>status, daysElapsed, session{number,total}, membership{id,productName,totalCount}</b> <span class="done-badge">v0.5</span> (totalCount <span class="done-badge">v0.12</span>)</td></tr>
             <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, <b>usageHistory[]</b> <span class="done-badge">v0.5</span></td></tr>
-            <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span></td></tr>
-            <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt</td></tr>
+            <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, precautions[], aftercare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span>, <b>keyCare</b> <span class="done-badge">v0.14</span> (필드명 mustAvoid/basicCare→precautions/aftercare로 변경)</td></tr>
+            <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, <b>consultationLevel</b> <span class="done-badge">v0.14</span>, createdAt</td></tr>
             <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,<b>brand</b> <span class="done-badge">v0.12</span>}, popularWithSimilarCustomers[], clinicContacts[] <span class="done-badge">v0.5</span>, <b>businessId</b> <span class="done-badge">v0.8</span></td></tr>
             <tr><td class="mono">Procedure</td><td class="mono">id, businessId, name, categoryTags[], description <span class="done-badge">v0.8 — procedures 테이블, 실제 시술 46종</span></td></tr>
             <tr><td class="mono">Business</td><td class="mono">id, name, brand, talkChannelLabel, talkChannelUrl, phone <span class="done-badge">v0.8 — businesses 테이블, 사업장 3곳</span></td></tr>
@@ -1532,6 +1538,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.12 MVP · 2026-08-18 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.14 MVP · 2026-08-19 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

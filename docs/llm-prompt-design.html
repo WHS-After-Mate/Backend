@@ -205,10 +205,10 @@
     <h1>LLM 프롬프트 설계</h1>
     <p class="subtitle">LLM은 <code>GET /aftercare/daily-guide</code>, <code>POST /aftercare/questions</code>, <code>GET /recommendations/next-care</code>(v0.2 신규) 세 곳에서 호출된다. 카테고리 검증과 위험 신호 감지는 LLM 호출 전 규칙 기반으로 처리해, LLM은 "이미 안전하다고 확인된 요청"만 받는다. 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반 — LLM은 문구 생성만 담당한다.</p>
     <div class="badges">
-      <span class="badge">v0.2</span>
-      <span class="badge outline">3개 호출 지점</span>
-      <span class="badge outline">OpenAI 전환</span>
-      <span class="badge outline">구조화 출력 강제</span>
+      <span class="badge">v0.4</span>
+      <span class="badge outline">daily-guide 전면 재설계</span>
+      <span class="badge outline">questions consultationLevel</span>
+      <span class="badge outline">gpt-4.1-mini 채택</span>
     </div>
   </header>
 
@@ -220,6 +220,7 @@
     <a href="#qa">2. 챗봇 Q&amp;A</a>
     <a href="#recommendation">3. 다음 관리 추천</a>
     <a href="#versioning">버전 관리</a>
+    <a href="#confirmed">확정된 사항</a>
     <a href="#open">미확정 사항</a>
   </nav>
 
@@ -227,7 +228,7 @@
     <section id="principles">
       <h2>공통 원칙</h2>
       <ul class="principle-list">
-        <li><span class="num">1</span>근거는 오직 두 가지 — 검수된 관리 가이드(RAG 소스)와 환자 컨텍스트(관리 이력·경과일·알러지·의사 코멘트). 이 밖의 지식으로 답하지 않는다.</li>
+        <li><span class="num">1</span><span class="tag">v0.4 변경</span> 근거는 시술·환자 정보 — daily-guide/questions는 시술 정보와 환자 컨텍스트(관리 이력·경과일·알러지·의사 코멘트)를 근거로 LLM이 직접 종합한다. 이전엔 "검수된 관리 가이드 원문만이 유일한 근거"였으나, 원문 자체가 시술별 특성을 반영 못 하는 문제가 확인돼 폐기 — <span class="mono">reference_guides</span>는 이제 폴백 용도로만 쓰인다.</li>
         <li><span class="num">2</span>의료적 진단·처방 금지 — 질환명 진단, 회복 완료 판정, 약물 처방, 응급 상태 단독 판단을 생성하지 않는다.</li>
         <li><span class="num">3</span>위험 신호·범위 밖 카테고리는 LLM에 도달하기 전에 규칙 엔진이 먼저 걸러낸다.</li>
         <li><span class="num">4</span>구조화된 출력 강제 — 두 엔드포인트 모두 고정 JSON 스키마로만 응답받는다(모델의 JSON 모드/함수 호출 사용).</li>
@@ -250,7 +251,7 @@
 <pre class="mermaid">
 %%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 55}, "themeVariables": {"fontSize": "16px"}}}%%
 flowchart TD
-  A["① 규칙 기반 사전 필터<br/>카테고리 검증 · 위험 신호 감지"] -->|통과| B["② 컨텍스트 조립<br/>care_records + medical_profiles + 검수된 가이드"]
+  A["① 규칙 기반 사전 필터<br/>카테고리 검증 · 위험 신호 감지"] -->|통과| B["② 컨텍스트 조립<br/>care_records + medical_profiles"]
   A -.->|차단| X1["즉시 반환<br/>422 / expert_required<br/>(LLM 미호출)"]
   B --> C["③ LLM 호출<br/>system prompt + context + 출력 스키마"]
   C --> D["④ 출력 검증<br/>금지어 필터 · 스키마 검증"]
@@ -268,11 +269,11 @@ flowchart TD
 
     <section id="guide">
       <h2>1. <span class="mono">GET /aftercare/daily-guide</span> <span class="tag">하루 1회 캐시</span></h2>
-      <p class="desc">캐시 미스일 때만 호출된다(<span class="mono">care_record_id</span> + 오늘 날짜 조합이 <span class="mono">aftercare_guides</span>에 없을 때). <span class="mono">elapsed_range</span>(예: "3-7")는 LLM이 정하는 게 아니라 규칙(구간 lookup)으로 먼저 결정 — LLM은 그 구간의 검수된 가이드를 환자 상황에 맞게 자연어로 풀어 쓰는 역할만 한다.</p>
+      <p class="desc">캐시 미스일 때만 호출된다(<span class="mono">care_record_id</span> + 오늘 날짜 조합이 <span class="mono">aftercare_guides</span>에 없을 때). <span class="mono">elapsed_range</span>(예: "3-7")는 LLM이 정하는 게 아니라 규칙(구간 lookup)으로 먼저 결정하지만, <span class="tag">v0.4</span> 이 구간 정보를 프롬프트에 직접 주입하지는 않는다(daysElapsed만 전달, 캐시/폴백 판단에만 서버 내부적으로 사용).</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
-          <span class="path">컨텍스트 주입 필드</span>
+          <span class="path">컨텍스트 주입 필드 <span class="tag">v0.4 — reviewedGuide 제거</span></span>
         </div>
         <div class="endpoint-body">
           <div class="table-wrap">
@@ -284,36 +285,53 @@ flowchart TD
                 <tr><td class="mono">doctor_comment</td><td class="mono">care_records</td><td>해당 시술 건 의사 코멘트</td></tr>
                 <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">medical_profiles</td><td>특정 성분·행동 회피 근거</td></tr>
                 <tr><td class="mono">doctor_general_comment</td><td class="mono">medical_profiles</td><td>환자 전반 의사 코멘트</td></tr>
-                <tr><td class="mono">검수된 가이드 원문</td><td>내부 레퍼런스 문서</td><td>답변의 유일한 사실 근거</td></tr>
               </tbody>
             </table>
           </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="tag">v0.3까지</span> 여기에 "검수된 가이드 원문"이 함께 들어갔으나 <span class="tag">v0.4</span>부터 제거됐다 — 아래 System Prompt 참고.</p>
 
           <div>
-            <div class="block-label">System Prompt (초안)</div>
+            <div class="block-label">System Prompt <span class="tag">v0.4, docs/prompt.docx 반영</span></div>
             <pre class="code-block">당신은 AAC 웰니스 클리닉의 사후관리 안내 도우미입니다.
-아래 "검수된 가이드"와 "환자 정보"만을 근거로, 해당 환자의 경과일에 맞는
-사후관리 주의사항을 안내하세요.
+아래 "시술 정보"와 "환자 정보"를 바탕으로, 해당 환자의 현재 경과일에 맞는 사후관리 정보를
+안내하세요.
 
 규칙:
-- 검수된 가이드에 없는 내용을 지어내지 마세요.
-- 질환을 진단하거나, 회복 완료를 판정하거나, 약물을 처방하지 마세요.
-- 환자의 알러지/기저질환에 해당하는 성분·행동이 검수된 가이드에 포함되어
-  있다면, 반드시 회피 항목으로 강조하세요.
-- 반드시 아래 JSON 스키마로만 응답하세요. 다른 텍스트를 추가하지 마세요.</pre>
+- 시술 종류와 현재 경과일을 가장 우선적으로 고려하세요.
+- 질환을 진단하거나, 회복 완료를 의학적으로 판정하거나, 약물을 처방하지 마세요.
+- 확실하지 않은 내용은 단정하거나 구체적인 수치·기간을 임의로 만들어내지 마세요.
+- 환자의 알러지/기저질환 정보가 질문 및 사후관리와 관련이 있다면 반드시 반영하세요.
+- 사후관리가 필요한 기간이라면 현재 시점에서 중요한 내용만 선별하세요.
+- 단순한 상식이나 모든 시술에 공통으로 적용되는 일반론은 우선순위에서 제외하세요.
+  예: "시술 부위를 압박하지 마세요", "청결을 유지하세요", "무리하지 마세요"
+- 사용자가 별도로 안내받지 않으면 놓치기 쉬운 실제 생활 관련 내용을 우선하세요.
+- 시술 특성상 주요 사후관리 기간이 지난 시점이라고 판단되는 경우, 억지로 항목을 생성하지
+  마세요. 이 경우 keyCare에는 현재 일상생활 복귀가 가능한 시점이라는 내용을 간단히 안내하고,
+  aftercare와 precautions는 빈 배열 []로 반환하세요. 단, 회복이 완전히 끝났다고 단정하지
+  마세요.
+
+사후관리가 필요한 경우:
+- aftercare는 현재 경과일에 가장 중요한 사후관리 방법 정확히 3개를 작성하세요.
+- precautions는 현재 경과일에 가장 중요한 주의사항 정확히 3개를 작성하세요.
+- 각 항목은 서로 겹치지 않게 작성하세요.
+- keyCare는 오늘 가장 중요하게 기억해야 할 내용을 한 문장으로 요약하세요.
+- 각 문장은 짧고 구체적으로 작성하세요.
+
+반드시 도구 호출(tool call)로만 응답하세요. 다른 텍스트를 추가하지 마세요.</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><b>왜 바뀌었나</b>: <span class="tag">v0.3까지</span> LLM은 <span class="mono">reference_guides</span> 원문을 그대로 재서술하는 역할이었다. 실제 시술 카탈로그(<span class="mono">docs/care_procedure_template.xlsx</span>)와 대조해보니 하나의 <span class="mono">care_type</span>이 서로 다른 시술을 묶는 문제가 발견됐다 — 예: <span class="mono">botox</span> care_type이 근육 주입형(<span class="mono">초음파™ 보톡스</span>)과 피부 얕은 층 주입형(<span class="mono">스킨 보톡스</span>)을 동일 문구로 묶어, 근육형 전용 주의사항("표정 짓기", "좌우 비대칭", "3~4개월 지속")이 스킨 보톡스 고객에게도 그대로 노출됐다. <span class="tag">v0.4</span>는 원문 자체를 고치는 대신 LLM이 시술명·환자 정보를 보고 직접 판단하도록 근거 원칙을 바꿔 해결한다.</p>
           </div>
 
           <div>
-            <div class="block-label">출력 스키마</div>
+            <div class="block-label">출력 스키마 <span class="tag">v0.4 — 필드명 전면 변경</span></div>
             <pre class="code-block">{
-  "mustAvoid": ["string"],
-  "basicCare": ["string"],
-  "nextCheckDate": "YYYY-MM-DD | null"
+  "aftercare": ["string"],
+  "precautions": ["string"],
+  "keyCare": "string"
 }</pre>
-            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">aftercare_guides.must_avoid</span> / <span class="mono">basic_care</span> / <span class="mono">next_check_date</span>에 저장, <span class="mono">generated_by='llm'</span></p>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="mono">aftercare</span>/<span class="mono">precautions</span>는 <b>정확히 3개</b> 또는(회복 주요 기간이 지났으면) <b>빈 배열</b> 둘 중 하나만 유효 — 어중간하면 코드 레벨에서 재시도한다(<span class="mono">aftercare.service.ts</span>의 <span class="mono">isValidGuideArrays</span>). <span class="mono">aftercare_guides.aftercare</span>/<span class="mono">precautions</span>/<span class="mono">key_care</span>에 저장(이전 컬럼명 <span class="mono">must_avoid</span>/<span class="mono">basic_care</span>, 마이그레이션 018에서 rename). <span class="mono">nextCheckDate</span>는 <b>LLM 출력이 아니다</b> — 여전히 서버가 <span class="mono">reference_guides.next_check_offset_days</span> 기반으로 결정론적으로 계산.</p>
           </div>
 
-          <div class="status-row"><span class="status-chip err">503 GUIDE_GENERATION_FAILED → 검수된 가이드 원문 그대로 폴백</span></div>
+          <div class="status-row"><span class="status-chip err">503 GUIDE_GENERATION_FAILED → 검수된 가이드(reference_guides) 원문으로 폴백. 이때 keyCare는 서버가 합성한 짧은 안내 문구(LLM 생성 아님)</span></div>
         </div>
       </div>
     </section>
@@ -337,28 +355,46 @@ flowchart TD
             </table>
           </div>
 
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컨텍스트: daily-guide와 동일 필드 + <span class="tag">v0.4에도 유지</span> 검수된 가이드 원문(<span class="mono">reviewedGuide</span> — questions는 daily-guide와 달리 이 필드를 계속 쓴다) + 사용자 질문.</p>
+
           <div>
-            <div class="block-label">System Prompt (초안)</div>
+            <div class="block-label">System Prompt <span class="tag">v0.4, docs/prompt.docx 반영 — consultationLevel 신규</span></div>
             <pre class="code-block">당신은 AAC 웰니스 클리닉의 사후관리 Q&A 도우미입니다.
 아래 카테고리 범위 안에서만 답변하세요: 세안·샤워, 화장·렌즈, 운동·사우나,
 음주·흡연, 화장품·성분, 증상.
 
 규칙:
-- 답변은 "검수된 가이드"와 "환자 정보"에서만 근거를 찾으세요.
-- 근거가 부족하거나 이 서비스 범위를 벗어난 질문이면 status를
-  "out_of_scope"로 반환하고 answer는 비워두세요.
-- 질환 진단, 회복 완료 판정, 약물 처방에 해당하는 답을 만들지 마세요.
-- 환자의 알러지/기저질환과 관련된 질문이면 반드시 그 정보를 반영해 답하세요.
-- 반드시 아래 JSON 스키마로만 응답하세요.</pre>
+- 제공된 시술 정보, 환자 정보, 현재 경과일을 우선적으로 고려해 답변하세요.
+- 질문한 시술과 다른 시술의 사후관리 정보를 섞어서 답하지 마세요.
+- 일반적인 사후관리 수준에서 답변하되, 확실하지 않은 내용이나 구체적인 기간·수치를 임의로
+  만들어내지 마세요.
+- 서비스 범위를 벗어난 질문은 status를 out_of_scope로 반환하고 answer는 비워두세요.
+- 질환 진단, 회복 완료 여부, 시술 결과의 정상·비정상 판정, 약물 처방 또는 변경을 하지 마세요.
+- 사용자의 현재 상태를 직접 보거나 검사해야 판단할 수 있는 내용은 단정적으로 답하지 마세요.
+- 증상 질문에는 가능한 범위의 일반적인 사후관리 정보까지만 안내하고, 실제 상태 판단이 필요한
+  경우 consultationLevel을 RECOMMENDED 또는 URGENT로 설정하세요.
+- 상담이 필요한 질문이라고 해서 무조건 out_of_scope로 처리하지 마세요. 사후관리 범위의
+  질문이라면 가능한 범위까지 답변한 뒤 consultationLevel로 상담 필요도를 구분하세요.
+- 일상적인 사후관리 질문은 consultationLevel을 NONE으로 설정하고 불필요하게 상담을 권유하지
+  마세요.
+- 환자의 알러지 또는 기저질환 정보가 제공되어 있고 질문과 관련이 있다면 반드시 반영하세요.
+- 반드시 도구 호출(tool call)로만 응답하세요.
+
+consultationLevel 기준:
+- NONE: 일반적인 사후관리 정보만으로 충분히 답변할 수 있는 경우
+- RECOMMENDED: 실제 상태 확인이 있어야 정확한 판단이 가능한 경우
+- URGENT: 빠른 전문적 확인이 필요할 가능성이 있는 증상이 언급된 경우</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><b>왜 바뀌었나</b>: 위험 신호 키워드에 안 걸린 애매한 증상 질문("며칠째 붓기가 안 빠지는데 괜찮을까요?")은 기존엔 <span class="mono">answered</span>/<span class="mono">out_of_scope</span> 둘 중 하나만 고를 수 있었다. <span class="mono">consultationLevel</span>을 별개 축으로 분리해서 "가능한 범위까지 답하고, 상담 필요도는 따로 표시"가 가능해졌다.</p>
           </div>
 
           <div>
-            <div class="block-label">출력 스키마</div>
+            <div class="block-label">출력 스키마 <span class="tag">v0.4 — consultationLevel 추가</span></div>
             <pre class="code-block">{
   "status": "answered | out_of_scope",
-  "answer": "string | null"
+  "answer": "string | null",
+  "consultationLevel": "NONE | RECOMMENDED | URGENT"
 }</pre>
-            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="mono">expert_required</span>는 이미 규칙 단계에서 결정되어 LLM에 도달하지 않는다 — LLM은 <span class="mono">answered</span>/<span class="mono">out_of_scope</span> 둘 중 하나만 선택. 서버가 <span class="mono">answeredBy: "llm"</span>, <span class="mono">basedOn</span>을 붙여 최종 반환</p>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="mono">expert_required</span>는 이미 규칙 단계에서 결정되어 LLM에 도달하지 않는다 — LLM은 <span class="mono">answered</span>/<span class="mono">out_of_scope</span> 둘 중 하나만 선택. <span class="mono">consultationLevel</span>은 <span class="mono">status</span>와 독립적 — <span class="mono">out_of_scope</span>일 땐 서버가 항상 <span class="mono">NONE</span>으로 강제 저장(<span class="mono">questions.consultation_level</span> 컬럼 신규, 마이그레이션 017). 서버가 <span class="mono">answeredBy: "llm"</span>, <span class="mono">basedOn</span>을 붙여 최종 반환</p>
           </div>
 
           <div class="status-row"><span class="status-chip err">503 ANSWER_GENERATION_FAILED → 재시도 안내 문구 반환 (질문마다 달라 고정 폴백 어려움)</span></div>
@@ -368,7 +404,7 @@ flowchart TD
 
     <section id="recommendation">
       <h2>3. <span class="mono">GET /recommendations/next-care</span>(및 상세) <span class="tag">v0.2 신규 · 2026-08-18</span></h2>
-      <p class="desc">daily-guide/questions와 달리 "무엇을 답할지" 자체는 규칙 기반이 그대로 정한다(관심 목표·최근 시술과 <span class="mono">procedures.category_tags</span> 매칭 점수). LLM은 이미 정해진 시술 1개에 대해 "왜 추천하는지" 자연어 문구만 생성한다 — 잘못된 시술을 추천할 위험은 LLM과 무관하다. <span class="mono">reasons</span>는 호출마다(<span class="mono">/next-care</span>, 상세, <span class="mono">/home/summary</span>) 매번 생성되고, <span class="mono">detailDescription</span>은 상세 조회에서 카탈로그에 실제 설명이 없을 때만 추가 호출된다.</p>
+      <p class="desc">daily-guide/questions와 달리 "무엇을 답할지" 자체는 규칙 기반이 그대로 정한다(관심 목표·최근 시술과 <span class="mono">procedures.category_tags</span> 매칭 점수). LLM은 이미 정해진 시술 1개에 대해 "왜 추천하는지" 자연어 문구만 생성한다 — 잘못된 시술을 추천할 위험은 LLM과 무관하다. <span class="mono">reasons</span>는 호출마다(<span class="mono">/next-care</span>, 상세, <span class="mono">/home/summary</span>) 매번 생성된다. <span class="mono">detailDescription</span>은 <span class="tag">v0.3 변경</span> 이제 상세 조회마다 항상 LLM 호출로 생성 — 카탈로그 <span class="mono">procedures.description</span>은 "그대로 쓰는 원문"이 아니라 길이를 압축시킬 근거 자료로만 전달된다(원문 길이가 들쭉날쭉해 화면이 깨지는 문제 수정).</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
@@ -387,16 +423,26 @@ flowchart TD
           </div>
 
           <div>
-            <div class="block-label">System Prompt (<span class="mono">recommendation.prompt.ts</span>)</div>
+            <div class="block-label">System Prompt (<span class="mono">recommendation.prompt.ts</span>) <span class="tag">v0.4, docs/prompt.docx 반영</span></div>
             <pre class="code-block">당신은 AAC 웰니스 클리닉의 다음 관리 추천 도우미입니다.
-아래 "추천된 시술 정보"와 "고객 정보"만을 근거로, 이 시술이 왜 추천되는지 자연스러운 한국어
-문장으로 설명하세요.
+아래 "추천된 시술 정보"와 "고객 정보"만을 근거로, 사용자가 이 관리를 받으면 구체적으로 어떤
+부분에 도움을 기대할 수 있는지 짧은 한국어 문장으로 설명하세요.
 
 규칙:
-- 주어진 정보에 없는 효능·효과를 지어내지 마세요.
-- 의료적 진단이나 시술 효과를 보장하는 표현은 쓰지 마세요.
-- 관심 목표 또는 최근 관리와 겹치는 부분이 있으면 그 연결고리를 구체적으로 언급하세요.
-- 반드시 도구 호출(tool call)로만 응답하세요.</pre>
+- 주어진 정보에 없는 효능·효과를 절대 지어내지 마세요.
+- 의료적 진단이나 시술 효과를 보장하는 표현은 사용하지 마세요.
+- reasons는 정확히 3개, 각각 30자 이내로 작성하세요.
+- 추천 시술의 description에 명시된 효과·관리 목적을 가장 우선적으로 활용하세요.
+- 이유는 가능하면 개선 대상 + 기대 효과 형태로 작성하세요.
+- "관심 목표와 연결돼요", "잘 맞는 관리예요", "자연스러운 다음 단계예요"처럼 구체적인 효과가
+  없는 표현은 사용하지 마세요.
+- 세 문장은 의미가 서로 겹치지 않도록 작성하세요.
+- detailDescription은 추천 시술의 핵심 관리 목적을 30자 안팎 한 문장으로 요약하세요.
+- 반드시 도구 호출(tool call)로만 응답하세요. 다른 텍스트를 추가하지 마세요.
+
+좋은 출력 예시: "턱선과 얼굴 라인 정리에 도움을 줘요" / "피부 탄력 관리에 도움을 줄 수 있어요"
+피해야 할 출력 예시: "리프팅·탄력 목표와 직접 연결돼요" / "고객님께 잘 맞는 관리예요"</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><b>왜 바뀌었나</b>: <span class="tag">v0.3까지</span>의 few-shot 모범 예시가 바로 "리프팅·탄력 목표와 직접 연결돼요" 류였다 — "추천 이유가 짧고 뻔하다"는 피드백의 원인이 이 예시 자체였던 것으로 확인돼, <span class="tag">v0.4</span>에서 이 문장들을 정반대로 "피해야 할 예시"로 재배치하고 시술 <span class="mono">description</span> 기반의 구체적 효과를 우선하도록 다시 작성했다.</p>
           </div>
 
           <div>
@@ -405,6 +451,7 @@ flowchart TD
   "reasons": ["string"],
   "detailDescription": "string"
 }</pre>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);">JSON 스키마에도 <span class="mono">reasons: {minItems:3, maxItems:3, items:{maxLength:30}}</span>, <span class="mono">detailDescription: {maxLength:40}</span> 힌트를 함께 전달하지만 모델이 항상 엄격히 지키진 않아, 코드 레벨 안전장치가 따로 있다(<span class="mono">recommendations.service.ts</span>) — 개수가 3이 아니면 재시도, 각 문자열은 <span class="mono">truncate()</span>로 강제 절삭.</p>
           </div>
 
           <div class="status-row"><span class="status-chip err">503 없음 — 1회 재시도 후에도 실패하거나 OPENAI_API_KEY 미설정 시 정적 템플릿 문구로 조용히 폴백(추천 자체는 계속 뜸)</span></div>
@@ -417,18 +464,30 @@ flowchart TD
       <p class="desc">현재 <span class="mono">generated_by</span> / <span class="mono">answered_by</span>는 <span class="mono">'llm'</span> 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 <span class="mono">prompt_version</span>, <span class="mono">model_name</span> 컬럼을 <span class="mono">aftercare_guides</span>/<span class="mono">questions</span>에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).</p>
     </section>
 
-    <section id="open">
-      <h2>미확정 사항 <span class="tag">기획/전문가 검토 필요</span></h2>
+    <section id="confirmed">
+      <h2>구현 시 확정된 사항 <span class="tag">server/ 참고</span></h2>
       <ul class="open-q">
-        <li>실제 사용할 LLM 모델 선택</li>
-        <li>검수된 관리 가이드(RAG 소스) 문서를 어떤 형식·어디에 저장할지 (DB 테이블 vs 정적 파일) — 아직 스키마에 없음</li>
-        <li>위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)</li>
-        <li>출력 검증(금지어 필터) 실패 시 재시도 vs 즉시 폴백 정책</li>
-        <li><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종(<span class="mono">energy_lifting</span>/<span class="mono">botox</span>/<span class="mono">filler</span>/<span class="mono">skin_booster</span>/<span class="mono">hair_removal</span>)이 미검수 스텁</b> <span class="tag" style="background:var(--error-soft,#F5E9E8); color:var(--error,#A83C3C);">설계 원칙 위반</span> — 위 "검수된 가이드만 근거로 삼는다" 원칙과 달리, <span class="mono">reviewed_by</span>/<span class="mono">reviewed_at</span> 컬럼을 코드가 검사하지 않아 미검수 문구도 <span class="mono">peeling</span>/<span class="mono">laser_toning</span>과 동일하게 LLM에 근거로 주입됨(2026-08-17 발견, <span class="mono">server/README.md</span> TODO 참고)</li>
+        <li>LLM 모델: OpenAI API(<span class="mono">OPENAI_MODEL</span> 환경변수, 기본값 <b><span class="mono">gpt-4.1-mini</span></b> <span class="tag">v0.3, 2026-08-18 변경</span>) — 최초 <span class="mono">gpt-4o-mini</span>로 시작 → 크레딧을 더 쓰려고 <span class="mono">gpt-5.4</span>로 변경 → 배포 환경에서 홈/추천 화면이 30초 넘게 타임아웃되는 장애 발생 → 실측 결과 <span class="mono">gpt-5.4</span>가 계정 기준 <b>일일 50 요청</b> 하드 레이트리밋에 걸려 있었고(크레딧 잔액과 무관), OpenAI SDK 기본 재시도(<span class="mono">maxRetries:2</span>, 지수 백오프)가 앱 자체 재시도 루프와 중첩되어 응답이 24초까지 늘어진 것으로 확인 → <span class="mono">gpt-4.1-mini</span>로 교체(같은 계정에서 레이트리밋 없음, 24132ms → 1381ms 개선 확인) + <span class="mono">server/src/config/openai.ts</span>에서 <span class="mono">maxRetries: 0</span>으로 SDK 재시도 자체를 꺼서 구조적으로 방지.</li>
+        <li>검수된 가이드(RAG 소스) 저장 위치: DB 테이블 <span class="mono">public.reference_guides</span>로 확정 (<span class="mono">db-schema.md</span> 참고)</li>
+        <li>출력 검증 실패 시 정책: <b>1회 재시도 → 그래도 실패하면</b> daily-guide는 <span class="mono">reference_guides</span> 원문으로 폴백(200), questions는 <span class="mono">503 ANSWER_GENERATION_FAILED</span></li>
+        <li>구조화 출력 강제 방식: OpenAI function calling(<span class="mono">tool_choice: {type:"function"}</span>) — daily-guide/questions/recommendation 3곳 전부 공통 <span class="mono">callStructuredLlm</span> 함수 재사용</li>
+        <li>GPT-5 계열은 <span class="mono">max_tokens</span> 대신 <span class="mono">max_completion_tokens</span>를 요구하고, 추론 전용 모델(<span class="mono">gpt-5</span>/<span class="mono">gpt-5-mini</span>)은 강제 tool-calling과 궁합이 안 맞아(낮은 토큰 예산에서 숨은 추론에 토큰을 다 씀) 후보에서 제외</li>
+        <li><span class="tag">v0.4</span> 세 프롬프트 전부 <span class="mono">docs/prompt.docx</span>(사용자 팀 작성 재설계안)를 코드에 반영 완료. daily-guide는 전면 재설계(공통 원칙 1번 변경 포함), questions는 <span class="mono">consultationLevel</span> 추가, recommendation은 시스템 프롬프트 교체(스키마·컨텍스트 구조는 기존과 동일)</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.12 · db-schema v0.9 기준 · 2026-08-18 OpenAI로 전환 + 추천(3번째 호출 지점) 추가</footer>
+    <section id="open">
+      <h2>미확정 사항 <span class="tag">기획/전문가 검토 필요</span></h2>
+      <ul class="open-q">
+        <li>위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)</li>
+        <li>실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요</li>
+        <li><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종(<span class="mono">energy_lifting</span>/<span class="mono">botox</span>/<span class="mono">filler</span>/<span class="mono">skin_booster</span>/<span class="mono">hair_removal</span>)이 미검수 스텁</b> (2026-08-17 발견) — <span class="mono">reviewed_by</span>/<span class="mono">reviewed_at</span> 컬럼을 코드가 검사하지 않는다. <span class="tag">v0.4</span> daily-guide는 이제 이 원문을 LLM 근거로 안 쓰므로(폴백 용도로만 남음) 영향이 줄었지만, <b>questions.prompt는 여전히 <span class="mono">reviewedGuide</span>로 이 원문을 주입</b>하므로 동일 리스크가 남아있음(<span class="mono">server/README.md</span> TODO 참고)</li>
+        <li><b><span class="mono">treatment_catalog</span>의 <span class="mono">botox</span> care_type이 서로 다른 시술을 묶는 문제</b> <span class="tag" style="background:var(--error-soft,#F5E9E8); color:var(--error,#A83C3C);">2026-08-19 크로스체크로 발견</span> — <span class="mono">초음파™ 보톡스</span>(근육 주입형)와 <span class="mono">스킨 보톡스</span>(피부 얕은 층 주입, 근육 비관여)가 같은 <span class="mono">care_type: "botox"</span>로 매핑돼 같은 <span class="mono">reference_guides</span> 문구(표정 관리·좌우 비대칭·3~4개월 지속 등 전부 근육형 전용)를 공유한다. daily-guide는 v0.4로 완화됐으나 questions.prompt와 폴백 경로는 여전히 이 원문을 그대로 씀 — <span class="mono">botox</span> care_type을 근육형/피부형으로 분리하는 게 필요(아직 미착수)</li>
+        <li>이름 불일치: <span class="mono">treatment_catalog</span>의 <span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>이 엑셀 원본(<span class="mono">튠 콩피에르(Tune Confier)</span>/<span class="mono">레이저 제모</span>)과 다름 — 치명적이진 않지만 관리자 웹 자동완성에 영향 가능</li>
+      </ul>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.14 · db-schema v0.9 기준 · 2026-08-19 daily-guide/questions 프롬프트 전면 재설계(docs/prompt.docx, v0.4)</footer>
   </main>
 </div>
 

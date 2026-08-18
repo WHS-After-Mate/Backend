@@ -44,8 +44,9 @@ interface CachedGuideRow {
   care_record_id: string;
   days_elapsed: number;
   elapsed_range: string | null;
-  must_avoid: string[];
-  basic_care: string[];
+  aftercare: string[];
+  precautions: string[];
+  key_care: string;
   next_check_date: string | null;
   generated_at: string;
   generated_by: string;
@@ -56,12 +57,20 @@ async function getCachedGuide(careRecordId: string): Promise<CachedGuideRow | nu
   const { data } = await supabaseAdmin
     .from("aftercare_guides")
     .select(
-      "id, care_record_id, days_elapsed, elapsed_range, must_avoid, basic_care, next_check_date, generated_at, generated_by, cache_expires_at",
+      "id, care_record_id, days_elapsed, elapsed_range, aftercare, precautions, key_care, next_check_date, generated_at, generated_by, cache_expires_at",
     )
     .eq("care_record_id", careRecordId)
     .eq("generated_date", todayKst())
     .maybeSingle();
   return data as CachedGuideRow | null;
+}
+
+// aftercare/precautions는 "정확히 3개" 아니면 "회복 주요 기간이 지나 둘 다 빈 배열" 둘 중 하나만
+// 유효하다(dailyGuide.prompt.ts 참고) — 1~2개처럼 어중간하면 모델이 스키마 힌트를 못 지킨
+// 것으로 보고 재시도한다.
+function isValidGuideArrays(aftercare: string[], precautions: string[]): boolean {
+  const validLength = (arr: string[]) => arr.length === 0 || arr.length === 3;
+  return validLength(aftercare) && validLength(precautions);
 }
 
 async function generateViaLlm(context: {
@@ -71,7 +80,6 @@ async function generateViaLlm(context: {
   partOfBody: string[];
   brand: string | null;
   doctorComment: string | null;
-  referenceGuide: ReferenceGuideRow;
   medicalProfile: Awaited<ReturnType<typeof getMedicalProfileForLlmContext>>;
 }): Promise<DailyGuideLlmOutput | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -84,19 +92,30 @@ async function generateViaLlm(context: {
         inputSchema: DAILY_GUIDE_INPUT_SCHEMA,
       });
 
-      const combinedText = [...output.mustAvoid, ...output.basicCare].join(" ");
+      if (!isValidGuideArrays(output.aftercare, output.precautions)) continue;
+
+      const combinedText = [...output.aftercare, ...output.precautions, output.keyCare].join(" ");
       if (violatesOutputPolicy(combinedText)) continue;
 
       return {
-        mustAvoid: sanitizeLlmTextArray(output.mustAvoid),
-        basicCare: sanitizeLlmTextArray(output.basicCare),
-        nextCheckDate: output.nextCheckDate,
+        aftercare: sanitizeLlmTextArray(output.aftercare),
+        precautions: sanitizeLlmTextArray(output.precautions),
+        keyCare: sanitizeLlmText(output.keyCare),
       };
     } catch {
       continue;
     }
   }
   return null;
+}
+
+// LLM 호출을 못 하는 경로(비-오늘 탭 미리보기, LLM 생성 실패 폴백)에서 keyCare를 대신할 결정론적
+// 한 줄 요약 — reference_guides에는 keyCare 개념이 없어 여기서 합성한다.
+function fallbackKeyCare(referenceGuide: ReferenceGuideRow): string {
+  if (referenceGuide.must_avoid.length === 0 && referenceGuide.basic_care.length === 0) {
+    return "주요 사후관리 기간이 지나 일상생활 복귀가 가능한 시점입니다.";
+  }
+  return `${referenceGuide.elapsed_range_label}일차 사후관리 안내를 확인해주세요.`;
 }
 
 // elapsedDay가 지정되고 오늘 실제 경과일과 다르면(1/3/5/7/10일차 탭 선택) 개인화 LLM 호출 없이
@@ -120,8 +139,9 @@ async function getReferenceGuidePreview(careRecord: CareRecordRow, elapsedDay: n
     daysElapsed: elapsedDay,
     elapsedRange: referenceGuide.elapsed_range_label,
     isToday: false,
-    mustAvoid: referenceGuide.must_avoid,
-    basicCare: referenceGuide.basic_care,
+    aftercare: referenceGuide.basic_care,
+    precautions: referenceGuide.must_avoid,
+    keyCare: fallbackKeyCare(referenceGuide),
     nextCheckDate,
     generatedAt: new Date().toISOString(),
     generatedBy: "reference_guide",
@@ -152,8 +172,9 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
       daysElapsed: cached.days_elapsed,
       elapsedRange: cached.elapsed_range,
       isToday: true,
-      mustAvoid: cached.must_avoid,
-      basicCare: cached.basic_care,
+      aftercare: cached.aftercare,
+      precautions: cached.precautions,
+      keyCare: cached.key_care,
       nextCheckDate: cached.next_check_date,
       generatedAt: cached.generated_at,
       generatedBy: cached.generated_by,
@@ -174,25 +195,23 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
     partOfBody: careRecord.part_of_body,
     brand: careRecord.brand,
     doctorComment: careRecord.doctor_comment,
-    referenceGuide,
     medicalProfile,
   });
 
-  // LLM 생성 실패 시 검수된 가이드 원문으로 폴백 — LLM 없이도 최소 안전한 답을 보장한다 (llm-prompt-design.md)
-  // 폴백 시에도 이 시술 건의 doctor_comment는 개인화 정보로 남겨둔다 (없으면 검수 가이드 원문만 사용)
-  const mustAvoid = llmOutput?.mustAvoid ?? referenceGuide.must_avoid;
-  const basicCare = llmOutput
-    ? llmOutput.basicCare
+  // LLM 생성 실패 시 검수된 가이드(reference_guides) 원문으로 폴백 — LLM 없이도 최소 안전한 답을
+  // 보장한다. 폴백 시에도 이 시술 건의 doctor_comment는 개인화 정보로 남겨둔다.
+  const aftercare = llmOutput?.aftercare ?? referenceGuide.basic_care;
+  const precautions = llmOutput
+    ? llmOutput.precautions
     : careRecord.doctor_comment
-      ? [...referenceGuide.basic_care, `담당의 코멘트: ${careRecord.doctor_comment}`]
-      : referenceGuide.basic_care;
-  const nextCheckDate =
-    llmOutput?.nextCheckDate ??
-    (referenceGuide.next_check_offset_days
-      ? new Date(Date.now() + referenceGuide.next_check_offset_days * 86400000)
-          .toISOString()
-          .slice(0, 10)
-      : null);
+      ? [...referenceGuide.must_avoid, `담당의 코멘트: ${careRecord.doctor_comment}`]
+      : referenceGuide.must_avoid;
+  const keyCare = llmOutput?.keyCare ?? fallbackKeyCare(referenceGuide);
+  const nextCheckDate = referenceGuide.next_check_offset_days
+    ? new Date(Date.now() + referenceGuide.next_check_offset_days * 86400000)
+        .toISOString()
+        .slice(0, 10)
+    : null;
   const generatedBy = llmOutput ? "llm" : "reference_guide";
 
   const cacheExpiresAt = nextMidnightKstIso();
@@ -205,8 +224,9 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
       care_record_id: careRecord.id,
       days_elapsed: daysElapsed,
       elapsed_range: referenceGuide.elapsed_range_label,
-      must_avoid: mustAvoid,
-      basic_care: basicCare,
+      aftercare,
+      precautions,
+      key_care: keyCare,
       next_check_date: nextCheckDate,
       generated_at: generatedAt,
       generated_by: generatedBy,
@@ -226,8 +246,9 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
         daysElapsed: raceCache.days_elapsed,
         elapsedRange: raceCache.elapsed_range,
         isToday: true,
-        mustAvoid: raceCache.must_avoid,
-        basicCare: raceCache.basic_care,
+        aftercare: raceCache.aftercare,
+        precautions: raceCache.precautions,
+        keyCare: raceCache.key_care,
         nextCheckDate: raceCache.next_check_date,
         generatedAt: raceCache.generated_at,
         generatedBy: raceCache.generated_by,
@@ -244,8 +265,9 @@ export async function getOrGenerateDailyGuide(userId: string, careRecordId?: str
     daysElapsed,
     elapsedRange: referenceGuide.elapsed_range_label,
     isToday: true,
-    mustAvoid,
-    basicCare,
+    aftercare,
+    precautions,
+    keyCare,
     nextCheckDate,
     generatedAt,
     generatedBy,
@@ -327,6 +349,7 @@ export async function submitQuestion(userId: string, input: SubmitQuestionInput)
   if (!llmOutput) throw Errors.answerGenerationFailed();
 
   const status = llmOutput.status;
+  const consultationLevel = status === "answered" ? llmOutput.consultationLevel : "NONE";
   const { data: saved, error: saveError } = await supabaseAdmin
     .from("questions")
     .insert({
@@ -338,6 +361,7 @@ export async function submitQuestion(userId: string, input: SubmitQuestionInput)
       answer: llmOutput.answer,
       answered_by: "llm",
       expert_contact_required: false,
+      consultation_level: consultationLevel,
     })
     .select("id")
     .single();
@@ -358,6 +382,7 @@ export async function submitQuestion(userId: string, input: SubmitQuestionInput)
     status: "answered" as const,
     answer: llmOutput.answer as string,
     answeredBy: "llm" as const,
+    consultationLevel,
     basedOn: {
       careRecordId: careRecord?.id ?? null,
       daysElapsed,
@@ -369,7 +394,9 @@ export async function submitQuestion(userId: string, input: SubmitQuestionInput)
 export async function listQuestions(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("questions")
-    .select("id, care_record_id, category, question, status, answer, answered_by, expert_contact_required, created_at")
+    .select(
+      "id, care_record_id, category, question, status, answer, answered_by, expert_contact_required, consultation_level, created_at",
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -385,6 +412,7 @@ export async function listQuestions(userId: string) {
       answer: row.answer,
       answeredBy: row.answered_by,
       expertContactRequired: row.expert_contact_required,
+      consultationLevel: row.consultation_level,
       createdAt: row.created_at,
     })),
   };

@@ -8,13 +8,13 @@ async function getTodaysCachedGuide(careRecordId: string) {
 
   const { data } = await supabaseAdmin
     .from("aftercare_guides")
-    .select("id, elapsed_range, must_avoid, next_check_date, generated_at")
+    .select("id, elapsed_range, precautions, next_check_date, generated_at")
     .eq("care_record_id", careRecordId)
     .eq("generated_date", todayKst)
     .maybeSingle();
 
   return data as
-    | { id: string; elapsed_range: string; must_avoid: string[]; next_check_date: string | null; generated_at: string }
+    | { id: string; elapsed_range: string; precautions: string[]; next_check_date: string | null; generated_at: string }
     | null;
 }
 
@@ -36,7 +36,7 @@ export async function getHomeSummary(userId: string) {
     ? {
         guideId: cachedGuide.id,
         elapsedRange: cachedGuide.elapsed_range,
-        cautions: cachedGuide.must_avoid,
+        cautions: cachedGuide.precautions,
         nextCheckDate: cachedGuide.next_check_date,
         generatedAt: cachedGuide.generated_at,
       }
