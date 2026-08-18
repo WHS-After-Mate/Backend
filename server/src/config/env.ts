@@ -20,7 +20,7 @@ const envSchema = z.object({
   // questions는 ANSWER_GENERATION_FAILED로 응답할 뿐(aftercare.service.ts) 그 외 엔드포인트는 무관.
   // 프론트 로컬 개발 시 이 키 없이도 회원가입/로그인/시술기록 등은 그대로 테스트 가능하게 하기 위함.
   OPENAI_API_KEY: z.string().min(1).optional(),
-  OPENAI_MODEL: z.string().default("gpt-5.4"),
+  OPENAI_MODEL: z.string().default("gpt-4.1-mini"),
 
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
   FCM_ENABLED: z

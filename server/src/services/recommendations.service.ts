@@ -59,6 +59,15 @@ function scoreProcedures(
 
 // 2026-08-18 — dd.txt 요청: 추천 사유/설명이 시술 종류와 무관하게 획일적인 문구 조합이었던 것을
 // LLM 기반으로 교체(시술마다 다른 문구가 생성됨). 실패/키 미설정 시 기존 템플릿 문구로 폴백한다.
+const REASON_MAX_LEN = 30;
+const DETAIL_MAX_LEN = 40;
+
+// 모델이 스키마 힌트(정확히 3개, 30자 이내)를 못 지켰을 때를 대비한 코드 레벨 안전장치 —
+// 개수는 재시도로 맞추게 유도(아래 반복문의 continue), 길이는 넘치면 그냥 잘라서 앱 화면 깨짐을 막는다.
+function truncate(text: string, maxLen: number): string {
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text;
+}
+
 async function generateRecommendationCopy(ctx: RecommendationContext): Promise<RecommendationLlmOutput | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -69,10 +78,10 @@ async function generateRecommendationCopy(ctx: RecommendationContext): Promise<R
         toolDescription: "추천 사유와 상세 설명을 구조화된 형식으로 제출합니다.",
         inputSchema: RECOMMENDATION_INPUT_SCHEMA,
       });
-      if (!output.reasons || output.reasons.length === 0 || !output.detailDescription) continue;
+      if (!output.reasons || output.reasons.length !== 3 || !output.detailDescription) continue;
       return {
-        reasons: sanitizeLlmTextArray(output.reasons),
-        detailDescription: sanitizeLlmText(output.detailDescription),
+        reasons: sanitizeLlmTextArray(output.reasons).map((r) => truncate(r, REASON_MAX_LEN)),
+        detailDescription: truncate(sanitizeLlmText(output.detailDescription), DETAIL_MAX_LEN),
       };
     } catch {
       continue;
@@ -112,16 +121,20 @@ export async function computeNextCareRecommendation(userId: string) {
   if (top.goalOverlap.length > 0) basis.push("goal");
   if (top.recentRelevance > 0) basis.push("recentCare");
 
+  // LLM 완전 실패(OpenAI 키 없음/호출 계속 실패) 시에만 쓰는 폴백 — 이때도 reasons 3개 고정 규칙은
+  // 지켜야 앱 카드 레이아웃이 안 깨지므로, 후보가 부족하면 일반 문구로 채우고 전부 30자로 자른다.
   const fallbackReasons: string[] = [];
   if (top.goalOverlap.length > 0) {
-    fallbackReasons.push(`관심 목표(${top.goalOverlap.join(", ")})에 도움이 돼요.`);
+    fallbackReasons.push(truncate(`관심 목표(${top.goalOverlap[0]})와 연결돼요.`, REASON_MAX_LEN));
   }
   if (top.recentRelevance > 0) {
-    fallbackReasons.push(`최근 관리(${latestCare.care_name})와 연관된 관리예요.`);
+    fallbackReasons.push(truncate(`최근 관리(${latestCare.care_name})와 연관돼요.`, REASON_MAX_LEN));
   }
-  if (fallbackReasons.length === 0) {
-    fallbackReasons.push(`최근 관리(${latestCare.care_name}) 이후 다음 관리를 준비할 시기입니다.`);
+  fallbackReasons.push(truncate(`${top.procedure.name}, 다음 관리로 추천드려요.`, REASON_MAX_LEN));
+  while (fallbackReasons.length < 3) {
+    fallbackReasons.push("전문가 상담 후 진행을 추천드려요.");
   }
+  fallbackReasons.length = 3;
 
   const llmCopy = await generateRecommendationCopy({
     careName: top.procedure.name,
@@ -181,22 +194,21 @@ export async function getNextCareRecommendationDetail(userId: string, recommenda
       ]
     : [];
 
-  let detailDescription = recommendedProcedure?.description ?? null;
-  if (!detailDescription) {
-    const [goals, latestCare] = await Promise.all([getInterestGoals(userId), getLatestCareRecord(userId)]);
-    const llmCopy = await generateRecommendationCopy({
-      careName: recommendation.careName,
-      procedureDescription: null,
-      categoryTags: recommendedProcedure?.category_tags ?? [],
-      goalOverlap: recommendation.basis.includes("goal") ? goals : [],
-      interestGoals: goals,
-      latestCareName: latestCare?.care_name ?? recommendation.careName,
-      recentCareNames: recentCares.map((r) => r.care_name),
-    });
-    detailDescription =
-      llmCopy?.detailDescription ??
-      `${recommendation.careName}은(는) ${recommendation.reasons.join(", ")}을 근거로 추천되었습니다. 실제 시술 가능 여부와 일정은 매장에 문의해주세요.`;
-  }
+  // 카탈로그 원문 설명(procedures.description)은 보통 여러 문장이라 그대로 쓰면 앱 화면에서 너무 길다
+  // (dd.txt 피드백) — 원문은 LLM에 사실 근거로만 넘기고, 한 줄 요약은 항상 새로 생성한다.
+  const [goals, latestCare] = await Promise.all([getInterestGoals(userId), getLatestCareRecord(userId)]);
+  const llmCopy = await generateRecommendationCopy({
+    careName: recommendation.careName,
+    procedureDescription: recommendedProcedure?.description ?? null,
+    categoryTags: recommendedProcedure?.category_tags ?? [],
+    goalOverlap: recommendation.basis.includes("goal") ? goals : [],
+    interestGoals: goals,
+    latestCareName: latestCare?.care_name ?? recommendation.careName,
+    recentCareNames: recentCares.map((r) => r.care_name),
+  });
+  const detailDescription =
+    llmCopy?.detailDescription ??
+    truncate(recommendedProcedure?.description ?? `${recommendation.careName}, 다음 관리로 추천드려요.`, DETAIL_MAX_LEN);
 
   return {
     ...recommendation,
