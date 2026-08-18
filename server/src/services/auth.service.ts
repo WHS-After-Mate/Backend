@@ -41,49 +41,78 @@ export async function preCheckSignup(input: {
 // signup()이 본인 patientId뿐 아니라, 다른 클리닉에 남아있던 동일 인물의 미가입 형제 행
 // (아래 signup()의 "형제 행 일괄 claim" 참고)에도 그대로 재사용한다.
 async function migrateEmrDataToApp(patientId: string, userId: string) {
+  // 이용권을 먼저 이관해 emr_memberships.id → 새 memberships.id 매핑을 만들어야, 아래
+  // care_records.membership_id를 연결하고 membership_usages(회차별 사용일자)를 채울 수 있다.
+  // 2026-08-18 이전엔 이 매핑이 없어 이관된 시술기록이 이용권과 연결되지 않았고
+  // (membership_id 항상 null), GET /memberships의 usageHistory도 항상 빈 배열이었다(dd.txt 버그 신고).
+  const { data: emrMemberships } = await supabaseAdmin
+    .from("emr_memberships")
+    .select("*")
+    .eq("patient_id", patientId);
+
+  const membershipIdMap = new Map<string, string>(); // emr_memberships.id -> memberships.id
+  if (emrMemberships && emrMemberships.length > 0) {
+    const { data: inserted, error: membershipsError } = await supabaseAdmin
+      .from("memberships")
+      .insert(
+        emrMemberships.map((m) => ({
+          user_id: userId,
+          product_name: m.product_name,
+          total_count: m.total_count,
+          used_count: m.used_count,
+          expires_at: m.expires_at,
+          last_used_at: m.last_used_at,
+          available_care_names: m.available_care_names,
+          brand: m.brand,
+        })),
+      )
+      .select("id");
+    if (membershipsError) throw membershipsError;
+    emrMemberships.forEach((m, i) => membershipIdMap.set(m.id, inserted![i].id));
+  }
+
   const { data: emrCareRecords } = await supabaseAdmin
     .from("emr_care_records")
     .select("*")
     .eq("patient_id", patientId);
   if (emrCareRecords && emrCareRecords.length > 0) {
-    const { error: careRecordsError } = await supabaseAdmin.from("care_records").insert(
-      emrCareRecords.map((r) => ({
-        user_id: userId,
-        care_name: r.care_name,
-        care_type: r.care_type,
-        care_date: r.care_date,
-        part_of_body: r.part_of_body,
-        brand: r.brand,
-        practitioner: r.practitioner,
-        basic_aftercare_guide: r.basic_aftercare_guide,
-        doctor_comment: r.doctor_comment,
-        session_number: r.session_number,
-        total_sessions: r.total_sessions,
-        source_system: "aac_emr",
-        synced_at: new Date().toISOString(),
-      })),
-    );
+    const { data: insertedCareRecords, error: careRecordsError } = await supabaseAdmin
+      .from("care_records")
+      .insert(
+        emrCareRecords.map((r) => ({
+          user_id: userId,
+          care_name: r.care_name,
+          care_type: r.care_type,
+          care_date: r.care_date,
+          part_of_body: r.part_of_body,
+          brand: r.brand,
+          practitioner: r.practitioner,
+          basic_aftercare_guide: r.basic_aftercare_guide,
+          doctor_comment: r.doctor_comment,
+          session_number: r.session_number,
+          total_sessions: r.total_sessions,
+          membership_id: r.membership_id ? (membershipIdMap.get(r.membership_id) ?? null) : null,
+          source_system: "aac_emr",
+          synced_at: new Date().toISOString(),
+        })),
+      )
+      .select("id, membership_id, session_number, care_date");
     if (careRecordsError) throw careRecordsError;
-  }
 
-  const { data: emrMemberships } = await supabaseAdmin
-    .from("emr_memberships")
-    .select("*")
-    .eq("patient_id", patientId);
-  if (emrMemberships && emrMemberships.length > 0) {
-    const { error: membershipsError } = await supabaseAdmin.from("memberships").insert(
-      emrMemberships.map((m) => ({
-        user_id: userId,
-        product_name: m.product_name,
-        total_count: m.total_count,
-        used_count: m.used_count,
-        expires_at: m.expires_at,
-        last_used_at: m.last_used_at,
-        available_care_names: m.available_care_names,
-        brand: m.brand,
-      })),
-    );
-    if (membershipsError) throw membershipsError;
+    const usageRows = (insertedCareRecords ?? [])
+      .filter((r) => r.membership_id != null && r.session_number != null)
+      .map((r) => ({
+        membership_id: r.membership_id as string,
+        care_record_id: r.id,
+        session_number: r.session_number as number,
+        used_at: r.care_date,
+      }));
+    if (usageRows.length > 0) {
+      const { error: usageError } = await supabaseAdmin
+        .from("membership_usages")
+        .upsert(usageRows, { onConflict: "membership_id,session_number" });
+      if (usageError) throw usageError;
+    }
   }
 }
 

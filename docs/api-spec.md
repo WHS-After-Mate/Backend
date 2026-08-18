@@ -1,9 +1,11 @@
-# WHS After Mate — API 명세서 (v0.11, MVP)
+# WHS After Mate — API 명세서 (v0.12, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
 
-v0.11 변경: 앱 연동 중 프론트 요청으로 `GET /memberships`/`GET /memberships/{membershipId}` 응답에 `brand` 필드 추가 — 이용권을 처음 만든 클리닉을 표시용으로 알려준다(DB 스키마 변경, `server/db/migrations/016_add_membership_brand.sql`). 아래 "GET /memberships" 절 참고. **주의: 이 마이그레이션은 코드까지 완료됐지만 Supabase에 아직 수동 적용 전이다 — 적용 전엔 관련 INSERT가 실패한다(db-schema.md 참고).**
+v0.12 변경: 앱 연동 중 프론트(진정님) 요청 배치(dd.txt) 반영 — ① `GET /care-records/{careRecordId}` 응답의 `membership`에 `totalCount` 추가 ② `GET /recommendations/next-care/{recommendationId}` 응답의 `relatedRecentCares[]`에 `brand` 추가 ③ 다음 관리 추천의 `reasons`/`detailDescription`을 OpenAI 기반으로 생성하도록 교체(시술 후보 선정 로직은 규칙 기반 그대로, 문구 생성만 LLM화 — 실패/키 미설정 시 기존 템플릿 문구로 폴백) ④ 회원가입(claim) 이관 시 `care_records.membership_id`가 연결되지 않아 `GET /memberships`의 `usageHistory`가 항상 빈 배열이던 버그 수정 + 기존 데이터 백필. 아래 각 절 참고.
+
+v0.11 변경: 앱 연동 중 프론트 요청으로 `GET /memberships`/`GET /memberships/{membershipId}` 응답에 `brand` 필드 추가 — 이용권을 처음 만든 클리닉을 표시용으로 알려준다(DB 스키마 변경, `server/db/migrations/016_add_membership_brand.sql`, 적용 완료). 아래 "GET /memberships" 절 참고.
 
 v0.10 변경: "사업장:회원이 구조적으로 1:1"이던 문제 해결의 일부 — `POST /auth/signup`이 이제 가입 시점에 **다른 클리닉의 미가입 형제 행**(이름+생년월일+전화번호 일치, `claimed_user_id`가 아직 없는 행)까지 한 번에 같은 계정으로 claim한다. 반대 방향 케이스(이미 가입된 계정이 있는 상태에서 다른 클리닉에 새로 등록되는 경우)는 `server_admin` 쪽 변경이라 `admin-api-spec.md`에 문서화돼 있다. 아래 "POST /auth/signup" 절 참고.
 
@@ -16,7 +18,7 @@ v0.9 변경: 회원가입 화면을 2페이지로 분리하는 프론트 요청�
 범위:
 - 로그인은 **실제 계정** 기반 (이메일/비밀번호, access/refresh 토큰)
 - 관리 이력·이용권은 MVP 특성상 시드(가상) 데이터 조회 중심, 실제 예약·결제·매장 시스템 연동 제외
-- 사후관리 안내(일차별 주의사항)와 Q&A 답변은 **LLM 기반**으로 생성(실제 Anthropic Claude API를 호출해 응답을 만들며, 하드코딩된 템플릿이 아니다), 최근 관리·경과일·검수 가이드를 컨텍스트로 사용
+- 사후관리 안내(일차별 주의사항)와 Q&A 답변은 **LLM 기반**으로 생성(실제 OpenAI API를 호출해 응답을 만들며, 하드코딩된 템플릿이 아니다. 2026-08-18부터 Anthropic Claude에서 OpenAI로 전환됨), 최근 관리·경과일·검수 가이드를 컨텍스트로 사용. 다음 관리 추천의 사유/상세 설명도 v0.12부터 같은 방식으로 OpenAI 기반 생성(§2 참고)
 
 - Base URL: `/api/v1`
 - 인증: `Authorization: Bearer {accessToken}` (모든 엔드포인트 공통, 이후 절 생략)
@@ -289,7 +291,7 @@ accessToken 재발급.
 | `recommendationId` | string | `sha1("recommendation:"+userId)` 기반 결정론적 해시 — 상세조회 라우팅에만 사용, DB 저장 안 함 |
 | `careName` | string | `procedures.name` — 46종 실제 시술 카탈로그 중 하나 |
 | `businessId` | string | `(v0.8)` 추천 시술을 보유한 사업장 id(`amred`/`derna`/`wim`) |
-| `reasons` | string[] | 추천 이유 1~2개 |
+| `reasons` | string[] | 추천 이유 1~3개. `(v0.12)` 문구 자체는 OpenAI가 생성(시술마다 다른 문구) — 추천 시술 선정(위 매칭 알고리즘)은 그대로 규칙 기반. 호출 실패/`OPENAI_API_KEY` 미설정 시 정적 템플릿 문구로 자동 폴백 |
 | `basis` | string[] | 적용 근거: `catalog`(항상 포함) / `goal`(관심 목표와 `category_tags` 겹침) / `recentCare`(최근 받은 시술의 `category_tags`와 겹침) |
 | `disclaimer` | string | 의료 진단 아님 고지 |
 
@@ -311,7 +313,7 @@ accessToken 재발급.
 {
   "detailDescription": "티타늄 리프팅은 기존 리프팅 장비와 달리 빠른 속도, 낮은 통증, 강력한 효과를 갖춘 프리미엄 올인원 리프팅 솔루션입니다...",
   "relatedRecentCares": [
-    { "careRecordId": "C-2001", "careName": "울쎄라피 프라임", "daysElapsed": 10 }
+    { "careRecordId": "C-2001", "careName": "울쎄라피 프라임", "daysElapsed": 10, "brand": "AMRED CLINIC" }
   ],
   "popularWithSimilarCustomers": ["튠 콩피에르(Tune Confier)", "울쎄라피 프라임", "써마지 FLX"],
   "clinicContacts": [
@@ -321,11 +323,12 @@ accessToken 재발급.
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `detailDescription` | string | `(v0.8)` 추천된 `procedures.description`을 그대로 사용. 설명 텍스트가 없는 시술(46종 중 일부)이면 기존처럼 추천 이유 기반 문장을 대신 생성 |
+| `detailDescription` | string | `(v0.8)` 추천된 `procedures.description`을 우선 사용. 설명 텍스트가 없는 시술(46종 중 일부)이면 `(v0.12)` OpenAI로 생성(실패 시 추천 이유 기반 정적 문장으로 폴백) |
 | `relatedRecentCares` | object[] | `(v0.5)` "최근 관리와 함께 확인해보세요" — `latestCare` 1건이 아니라 최근 관리 이력 여러 건. `care_records` 최신순 N건 조회로 계산(신규 테이블 불필요) |
 | `relatedRecentCares[].careRecordId` | string | |
 | `relatedRecentCares[].careName` | string | |
 | `relatedRecentCares[].daysElapsed` | number | |
+| `relatedRecentCares[].brand` | string | `(v0.12)` 이 관리를 받은 클리닉 — 다중 클리닉 자동 연결로 한 계정이 여러 클리닉 이력을 가질 수 있어 추가 |
 | `popularWithSimilarCustomers` | string[] | `(v0.8)` "비슷한 고민의 다른 관리" — 추천된 시술과 `category_tags`를 하나 이상 공유하는 다른 시술명(최대 3개, 사업장 무관). 기존엔 `care_type`별 사전 정의 태그 매핑이었으나 실제 카탈로그 기반으로 교체 |
 | `clinicContacts` | object[] | `(v0.8)` 추천된 시술의 사업장(`businessId`) 연락처 1건. 기존엔 사용자의 최근 관리 이력 `brand` distinct 목록이었으나, 추천 시술을 보유한 사업장 정보로 교체(`businesses` 테이블) |
 | `clinicContacts[].brand` | string | `admin_accounts.brand`/`care_records.brand`와 동일 값(예: `"AMRED CLINIC"`) |
@@ -564,7 +567,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
   "status": "completed",
   "daysElapsed": 19,
   "session": { "number": 2, "total": 3 },
-  "membership": { "membershipId": "M-501", "productName": "울쎄라 3회 이용권" },
+  "membership": { "membershipId": "M-501", "productName": "울쎄라 3회 이용권", "totalCount": 3 },
   "basicAftercareGuide": ["당일 세안은 미온수로", "일주일간 자외선 차단제 필수"]
 }
 ```
@@ -584,6 +587,7 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 | `membership` | object \| null | `(v0.5)` 이 시술이 차감한 이용권 참조(`care_records.membership_id` FK, db-schema.md 참고). 없으면 `null` |
 | `membership.membershipId` | string | |
 | `membership.productName` | string | |
+| `membership.totalCount` | number | `(v0.12)` 이 이용권의 총 횟수(`memberships.total_count`) |
 | `basicAftercareGuide` | string[] | |
 
 `404 CARE_RECORD_NOT_FOUND`
@@ -730,11 +734,11 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | 모델 | 핵심 필드 |
 |---|---|
 | User | id, name, email, phone, role(customer/expert/admin) |
-| CareRecord | id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName}** *(굵은 필드 v0.5)* |
+| CareRecord | id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName,totalCount}** *(굵은 필드 v0.5, totalCount는 v0.12)* |
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
 | AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, mustAvoid[], basicCare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)* |
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, createdAt |
-| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[], popularWithSimilarCustomers[], clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
+| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,**brand** *(v0.12)*}, popularWithSimilarCustomers[], clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
 | Procedure | id, businessId, name, categoryTags[], description *(v0.8, `procedures` 테이블 — 46개 실제 시술 카탈로그)* |
 | Business | id, name, brand, talkChannelLabel, talkChannelUrl, phone *(v0.8, `businesses` 테이블 — 사업장 3곳)* |
 | Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)* |

@@ -7,7 +7,9 @@ import {
 } from "../services/recommendations.service";
 
 // 2. 홈 — 다음 관리 추천 (api-spec.md §2, R-QGENNK)
-// 규칙 기반(최근 관리 경과일 + 보유 이용권 + 관심 목표) 즉석 계산이며 LLM 미사용
+// 추천 대상 시술 선정(카탈로그 매칭)은 규칙 기반(관심 목표 + 최근 관리 연관성)이지만,
+// 추천 사유(reasons)/상세 설명(detailDescription) 문구는 2026-08-18부터 OpenAI로 생성한다
+// (dd.txt 요청 — 시술마다 다른 문구가 나와야 함). OPENAI_API_KEY 미설정/호출 실패 시 정적 템플릿 문구로 폴백.
 
 export const recommendationsRouter = Router();
 

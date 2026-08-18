@@ -467,7 +467,8 @@
     <h1>관리자 API 명세서</h1>
     <p class="subtitle"><span class="mono">admin-web</span>(관리자 웹, 별도 저장소)이 호출하는 <span class="mono">server_admin</span>(포트 4100)의 API. 실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(<span class="mono">POST /auth/signup</span> — <span class="mono">server/</span>)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(<span class="mono">emr_*</span>)이 아니라 실제 앱 테이블(<span class="mono">care_records</span>/<span class="mono">memberships</span>)에 곧바로 쌓인다(3절 참고). 고객용 <span class="mono">server/</span> API는 <a href="#" onclick="return false;">api-spec.html</a> 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 프로세스다.</p>
     <div class="badges">
-      <span class="badge">v0.6</span>
+      <span class="badge">v0.7</span>
+      <span class="badge outline">이용권 사용이력(membership_usages) 버그 수정</span>
       <span class="badge outline">클리닉 로그인 3계정</span>
       <span class="badge outline">시술기록↔이용권 1:1</span>
       <span class="badge outline">브랜드 격리(404)</span>
@@ -1102,6 +1103,7 @@
             </details>
           </div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);"><span class="mono">careRecord</span>/<span class="mono">membership</span> 필드는 각각 위 <span class="mono">GET /patients/{patientId}</span> 응답의 <span class="mono">careRecords[]</span>/<span class="mono">memberships[]</span> 항목과 필드 구성이 완전히 동일하다(위 표 참고 — 회원가입 완료 환자면 <span class="mono">patient_id</span> 대신 <span class="mono">user_id</span>, <span class="mono">source: "app"</span>). <span class="mono">session_number</span>/<span class="mono">total_sessions</span>는 이 시술이 이용권 처리 후의 스냅샷값(차감된 <span class="mono">used_count</span>/<span class="mono">total_count</span>)이다. 최상위 <span class="mono">source</span>(<span class="mono">"emr"</span>|<span class="mono">"app"</span>)는 이번 호출이 어느 테이블에 기록됐는지 알려주는 필드. <span class="mono">membershipCreated</span>(boolean)는 이번 호출로 이용권을 <b>새로</b> 만들었는지 여부 — <span class="mono">membershipId</span>를 직접 골랐거나 <span class="mono">totalSessions</span>가 기존 이용권에 이어서 차감됐으면 <span class="mono">false</span>, 진짜 새 이용권을 만들었을 때만 <span class="mono">true</span>. <span class="mono">membership.expires_at</span>은 새로 만든 경우 <span class="mono">careDate</span> 기준 +1년, 기존 이용권에서 차감한 경우 처음 만들 때 값 그대로(재계산 안 됨).</p>
+          <p style="margin:8px 0 0; font-size:13px; color:var(--text-muted);"><span class="done-badge">v0.7 버그 수정</span> 회원가입(claim) 완료 환자에게 이 API로 시술기록을 추가하면(<span class="mono">source: "app"</span>) 이제 <span class="mono">membership_usages</span>(고객용 앱 <span class="mono">GET /memberships</span>의 <span class="mono">usageHistory</span> 출처)에도 함께 기록된다. 이전엔 여기가 누락돼 회원가입 이관 시점의 시술기록도, 재방문 시술기록도 <span class="mono">usageHistory</span>가 항상 빈 배열로 나왔다. <span class="mono">DELETE /care-records/{careRecordId}</span>로 취소하면 대응하는 <span class="mono">membership_usages</span> 행도 함께 삭제된다.</p>
           <div class="status-row">
             <span class="status-chip err">404 PATIENT_NOT_FOUND</span>
             <span class="status-chip err">400 INVALID_CARE_TYPE</span>
@@ -1364,6 +1366,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · server_admin 관리자 API · v0.6 · 2026-08-18</footer>
+    <footer>WHS After Mate · server_admin 관리자 API · v0.7 · 2026-08-18</footer>
   </main>
 </div>

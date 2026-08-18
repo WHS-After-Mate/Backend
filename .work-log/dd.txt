@@ -39,4 +39,16 @@ public.phone_verifications
 9. 고객 등록 (환자 등록) 이름, 생년월일, 전화번호, 특이사항(알러지, 기저질환, 의사 소견 통합) 컬럼이 요구됨
 10. 각 관리자의 아이디 비번 데이터 베이스 만들기. 
 
+--------------------------------------------------------------------------------------------------
 
+1. 관리 상세 API(GET /care-records/:id) 응답의 membership 객체에 totalCount 추가
+2.  botox, filler, energy_lifting, skin_booster, hair_removal 타입에 대해
+  reference_guides를 경과일별로 세분화해주세요 (예: 0-1, 2-3, 4-7, 8-14, 15-30).
+  현재는 0-30 하나만 있어서 D+day 탭을 바꿔도 같은 내용이 나옵니다.
+3. 구현 잘됐는지 확인과정에서 membership_usages 테스트 데이터도 필요할 것 같습니다.
+ 이것도 임시 계정에 넣기
+4. 관리 추천 페이지도 llm 기반으로 생성되는거 아시나요?? 프롬프트 추가
+5. 추가로, 관리들 botox, filler, energy_lifting, skin_booster, hair_removal 타입으로 묶으셨던데, 
+관리가 비슷한 듯 다 달라서 묶은 타입별로 답변 생성되게 하면 안되고,
+관리 각각마다 생성된 답변, 추천이유 이런게 달라야합니당
+6. GET /recommendations/next-care 응답의 relatedRecentCares 항목에 brand 필드도 추가해주세요

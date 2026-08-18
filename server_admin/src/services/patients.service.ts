@@ -496,6 +496,24 @@ export async function addCareRecord(
 
   const { data, error } = await supabaseAdmin.from(careRecordTable).insert(insertPayload).select().single();
   if (error) throw Errors.internal(error.message);
+
+  // 회원가입(claim) 후에만 존재하는 이용권 회차별 사용 이력(GET /memberships의 usageHistory) —
+  // membership_usages.membership_id가 memberships(앱 테이블) FK라 claim 전(emr_memberships)엔 대상 없음.
+  if (claimed) {
+    const { error: usageError } = await supabaseAdmin
+      .from("membership_usages")
+      .upsert(
+        {
+          membership_id: membership.id,
+          care_record_id: data.id,
+          session_number: membership.used_count,
+          used_at: input.careDate,
+        },
+        { onConflict: "membership_id,session_number" },
+      );
+    if (usageError) throw Errors.internal(usageError.message);
+  }
+
   return {
     careRecord: data,
     membership,
@@ -528,6 +546,10 @@ async function tryDeleteCareRecordFrom(
   if (deleteError) throw Errors.internal(deleteError.message);
 
   if (!record.membership_id) return true;
+
+  // membership_usages.care_record_id는 on delete set null이라 care_record 삭제만으로는 이 행이
+  // 안 지워짐 — 그대로 두면 같은 session_number를 나중에 재사용할 때 unique 제약에 걸린다.
+  await supabaseAdmin.from("membership_usages").delete().eq("care_record_id", careRecordId);
 
   const { count, error: countError } = await supabaseAdmin
     .from(careRecordTable)

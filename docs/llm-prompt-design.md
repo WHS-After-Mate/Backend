@@ -1,6 +1,6 @@
-# WHS After Mate — LLM 프롬프트 설계 (v0.1)
+# WHS After Mate — LLM 프롬프트 설계 (v0.2)
 
-기준: `api-spec.md` v0.6, `db-schema.md` v0.6(2026-08-16 재확인 — LLM 호출 지점 자체의 파이프라인·프롬프트 설계는 최초 작성 이후 변경 없음). LLM은 정확히 **2곳**에서만 호출된다: `GET /aftercare/daily-guide`(일차별 가이드, 하루 1회 캐시), `POST /aftercare/questions`(챗봇 Q&A, 매 요청). 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리한다.
+기준: `api-spec.md` v0.12, `db-schema.md` v0.9. LLM은 **3곳**에서 호출된다: `GET /aftercare/daily-guide`(일차별 가이드, 하루 1회 캐시), `POST /aftercare/questions`(챗봇 Q&A, 매 요청), `GET /recommendations/next-care`(및 상세) — 다음 관리 추천 사유/설명 생성, v0.2 신규. 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리하며, 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반(§3 참고)이다.
 
 ---
 
@@ -130,15 +130,60 @@ daily-guide와 동일 (`care_name`, `days_elapsed`, `doctor_comment`, `allergies
 
 ---
 
+## 3. `GET /recommendations/next-care`(및 `/recommendations/next-care/{id}`) — 추천 사유/설명 생성 `(v0.2, 2026-08-18 신규)`
+
+### 다른 두 엔드포인트와의 차이
+daily-guide/questions는 "무엇을 답할지" 자체를 LLM이 정하지만, 추천은 **어떤 시술을 추천할지(후보 선정)는 여전히 규칙 기반**이다(관심 목표·최근 시술과 `procedures.category_tags` 매칭 점수, `recommendations.service.ts`의 `scoreProcedures`). LLM은 이미 정해진 1개 시술에 대해 "왜 추천하는지" 자연어 문구만 생성한다 — 잘못된 시술을 추천할 위험은 LLM과 무관하다.
+
+### 호출 시점
+- `reasons`: `computeNextCareRecommendation` 호출마다 (즉 `GET /next-care`, `GET /next-care/{id}`, `GET /home/summary` 전부) — 캐싱 없음
+- `detailDescription`: 상세 조회에서만, 그것도 추천 시술에 `procedures.description`(실제 카탈로그 큐레이션 문구)이 이미 있으면 LLM 호출 없이 그대로 사용. 없을 때만 추가 호출
+
+### 컨텍스트 주입 필드
+
+| 필드 | 출처 | 용도 |
+|---|---|---|
+| 추천 시술명·설명·카테고리태그 | `procedures` | LLM이 언급할 수 있는 유일한 "사실" |
+| `interestGoals`, 관심목표와 겹치는 태그 | `profiles.interest_goals` + 매칭 결과 | 왜 이 고객에게 맞는지 연결고리 |
+| 최근 관리명 | `care_records` | 최근 이력과의 연관성 언급 |
+
+### 시스템 프롬프트 (`server/src/services/llm/recommendation.prompt.ts`)
+
+```
+당신은 AAC 웰니스 클리닉의 다음 관리 추천 도우미입니다.
+아래 "추천된 시술 정보"와 "고객 정보"만을 근거로, 이 시술이 왜 추천되는지 자연스러운 한국어
+문장으로 설명하세요.
+
+규칙:
+- 주어진 정보에 없는 효능·효과를 지어내지 마세요.
+- 의료적 진단이나 시술 효과를 보장하는 표현은 쓰지 마세요.
+- 관심 목표 또는 최근 관리와 겹치는 부분이 있으면 그 연결고리를 구체적으로 언급하세요.
+- 반드시 도구 호출(tool call)로만 응답하세요.
+```
+
+### 출력 스키마 (구조화 출력)
+
+```json
+{
+  "reasons": ["string"],
+  "detailDescription": "string"
+}
+```
+
+### 실패 처리
+`503` 없음 — 1회 재시도 후에도 실패하거나 `OPENAI_API_KEY` 미설정이면 기존 정적 템플릿 문구(관심목표/최근관리 겹침 여부로 조합한 고정 문장)로 조용히 폴백한다. 추천 자체가 안 뜨는 일은 없다.
+
+---
+
 ## 프롬프트 버전 관리 (추후 확장)
 
 현재는 `generated_by` / `answered_by`가 `'llm'` 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 `prompt_version`, `model_name` 컬럼을 `aftercare_guides`/`questions`에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).
 
 ## 구현 시 확정된 사항 (server/ 참고)
-- LLM 모델: Anthropic Claude API (`ANTHROPIC_MODEL` 환경변수로 지정, 기본값 `claude-sonnet-5`)
+- LLM 모델: OpenAI API (`OPENAI_MODEL` 환경변수로 지정, 기본값 `gpt-5.4`)
 - 검수된 가이드(RAG 소스) 저장 위치: DB 테이블 `public.reference_guides`로 확정 (`docs/db-schema.md` 참고)
 - 출력 검증 실패 시 정책: **1회 재시도 → 그래도 실패하면** daily-guide는 `reference_guides` 원문으로 폴백(200), questions는 `503 ANSWER_GENERATION_FAILED` — `server/src/services/aftercare.service.ts`
-- 구조화 출력 강제 방식: Claude tool use(`tool_choice: {type:"tool"}`)로 구현 (`server/src/services/llm/client.ts`)
+- 구조화 출력 강제 방식: OpenAI function calling(`tool_choice: {type:"function"}`)로 구현 (`server/src/services/llm/client.ts`) — daily-guide/questions/recommendation 3곳 전부 이 공통 `callStructuredLlm` 함수를 재사용
 
 ## 미확정 사항
 - 위험 신호 키워드 목록의 구체적 범위 — `server/src/lib/riskKeywords.ts`에 초안만 작성, 전문가(의료진) 검수 필요

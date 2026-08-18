@@ -1,18 +1,18 @@
 # WHS After Mate — Server
 
-Android(Android Studio) 클라이언트가 호출하는 REST API 서버. Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 Anthropic Claude, 푸시는 Firebase Cloud Messaging(FCM)을 사용한다.
+Android(Android Studio) 클라이언트가 호출하는 REST API 서버. Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 OpenAI, 푸시는 Firebase Cloud Messaging(FCM)을 사용한다.
 
 문서 기준: `../docs/api-spec.md` v0.4, `../docs/db-schema.md` v0.2, `../docs/llm-prompt-design.md` v0.1
 
 ## 준비
 
 1. Supabase 프로젝트 생성 (https://supabase.com) 후 Settings > API에서 URL/anon key/service role key 확인
-2. Anthropic API 키 발급 (https://console.anthropic.com)
+2. OpenAI API 키 발급 (https://platform.openai.com)
 3. (선택, 나중에 해도 됨) Firebase 프로젝트 생성 → 서비스 계정 JSON 발급 (FCM 푸시 발송용)
 
 ```bash
 cp .env.example .env
-# .env에 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY 채우기
+# .env에 SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, OPENAI_API_KEY 채우기
 npm install
 ```
 
@@ -45,11 +45,11 @@ npm run typecheck
 
 ```
 src/
-  config/      # env, supabase, anthropic, firebase 클라이언트
+  config/      # env, supabase, openai, firebase 클라이언트
   middleware/  # 인증(requireAuth), 에러 핸들러
   lib/         # 에러 정의, 위험신호 키워드, 카테고리
   services/    # 도메인 로직 (DB 접근은 여기서만)
-    llm/       # Claude 프롬프트 + 구조화 출력 클라이언트
+    llm/       # OpenAI 프롬프트 + 구조화 출력 클라이언트
   validators/  # zod 요청 스키마
   routes/      # Express 라우터 (api-spec.md 절 구성과 1:1)
 db/

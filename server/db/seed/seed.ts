@@ -259,52 +259,233 @@ const REFERENCE_GUIDES: {
     basic_care: ["저자극 보습", "자외선 차단제 재도포"],
     next_check_offset_days: 14,
   },
-  // 아래 5종은 엠레드/더나 실제 시술 카탈로그 등록(treatment_catalog, 2026-08-17)을 위한 최소 스텁이다.
-  // assertValidCareType이 reference_guides에 해당 care_type이 "존재하는지"만 확인하므로 카탈로그 등록을
-  // 막지 않기 위해 우선 일반적인 시술 후 주의사항으로 채워뒀다 — 실제 의료진 검수 전까지는 잠정 문구다.
+  // 아래 5종은 엠레드/더나 실제 시술 카탈로그 등록(treatment_catalog, 2026-08-17)을 위한 경과일별
+  // 세분화 버전이다(2026-08-18, dd.txt 요청 — 기존엔 0-30 단일 구간이라 D+day 탭을 바꿔도 같은
+  // 내용이 나오는 문제가 있었음). assertValidCareType이 reference_guides에 해당 care_type이
+  // "존재하는지"만 확인하므로 카탈로그 등록엔 영향 없다 — 실제 의료진 검수 전까지는 잠정 문구다.
   {
     care_type: "energy_lifting",
     elapsed_range_start: 0,
-    elapsed_range_end: 30,
-    elapsed_range_label: "0-30",
+    elapsed_range_end: 1,
+    elapsed_range_label: "0-1",
     must_avoid: ["당일 사우나·찜질방", "당일 격한 운동", "장시간 직사광선 노출"],
     basic_care: ["냉찜질 (필요시)", "미온수 세안", "자외선 차단제 필수"],
+    next_check_offset_days: 2,
+  },
+  {
+    care_type: "energy_lifting",
+    elapsed_range_start: 2,
+    elapsed_range_end: 3,
+    elapsed_range_label: "2-3",
+    must_avoid: ["시술 부위 강한 마사지·압박", "사우나·찜질방"],
+    basic_care: ["저자극 보습", "자외선 차단제 재도포"],
+    next_check_offset_days: 4,
+  },
+  {
+    care_type: "energy_lifting",
+    elapsed_range_start: 4,
+    elapsed_range_end: 7,
+    elapsed_range_label: "4-7",
+    must_avoid: ["고강도 운동"],
+    basic_care: ["평소 스킨케어 루틴 서서히 복귀 가능", "자외선 차단제 유지"],
+    next_check_offset_days: 8,
+  },
+  {
+    care_type: "energy_lifting",
+    elapsed_range_start: 8,
+    elapsed_range_end: 14,
+    elapsed_range_label: "8-14",
+    must_avoid: [],
+    basic_care: ["남은 붓기·멍은 냉찜질로 완화", "자외선 차단제 유지"],
+    next_check_offset_days: 15,
+  },
+  {
+    care_type: "energy_lifting",
+    elapsed_range_start: 15,
+    elapsed_range_end: 30,
+    elapsed_range_label: "15-30",
+    must_avoid: [],
+    basic_care: ["정기 관리 권장", "자외선 차단제 유지"],
     next_check_offset_days: null,
   },
   {
     care_type: "botox",
     elapsed_range_start: 0,
-    elapsed_range_end: 30,
-    elapsed_range_label: "0-30",
-    must_avoid: ["당일 시술 부위 마사지·압박", "당일 눕거나 엎드리기", "당일 음주"],
+    elapsed_range_end: 1,
+    elapsed_range_label: "0-1",
+    must_avoid: ["당일 시술 부위 마사지·압박", "당일 눕거나 엎드리기", "당일 음주", "당일 격한 운동"],
     basic_care: ["시술 부위 청결 유지", "무리한 표정 자제"],
+    next_check_offset_days: 2,
+  },
+  {
+    care_type: "botox",
+    elapsed_range_start: 2,
+    elapsed_range_end: 3,
+    elapsed_range_label: "2-3",
+    must_avoid: ["시술 부위 마사지", "사우나·찜질방"],
+    basic_care: ["무리한 표정 자제", "자외선 차단제 사용"],
+    next_check_offset_days: 4,
+  },
+  {
+    care_type: "botox",
+    elapsed_range_start: 4,
+    elapsed_range_end: 7,
+    elapsed_range_label: "4-7",
+    must_avoid: [],
+    basic_care: ["평소 표정 습관 복귀 가능"],
+    next_check_offset_days: 8,
+  },
+  {
+    care_type: "botox",
+    elapsed_range_start: 8,
+    elapsed_range_end: 14,
+    elapsed_range_label: "8-14",
+    must_avoid: [],
+    basic_care: ["효과 발현 관찰 기간 — 좌우 비대칭 등 이상 있으면 재방문 상담"],
+    next_check_offset_days: 15,
+  },
+  {
+    care_type: "botox",
+    elapsed_range_start: 15,
+    elapsed_range_end: 30,
+    elapsed_range_label: "15-30",
+    must_avoid: [],
+    basic_care: ["효과 안정화 시기", "정기 관리 권장"],
     next_check_offset_days: null,
   },
   {
     care_type: "filler",
     elapsed_range_start: 0,
-    elapsed_range_end: 30,
-    elapsed_range_label: "0-30",
+    elapsed_range_end: 1,
+    elapsed_range_label: "0-1",
     must_avoid: ["당일 시술 부위 압박·마사지", "당일 사우나·찜질방", "당일 음주"],
     basic_care: ["냉찜질 (필요시)", "부기 완화를 위한 충분한 수분 섭취"],
+    next_check_offset_days: 2,
+  },
+  {
+    care_type: "filler",
+    elapsed_range_start: 2,
+    elapsed_range_end: 3,
+    elapsed_range_label: "2-3",
+    must_avoid: ["시술 부위 강한 압박", "격한 운동"],
+    basic_care: ["냉찜질 지속 가능(필요시)", "충분한 수분 섭취"],
+    next_check_offset_days: 4,
+  },
+  {
+    care_type: "filler",
+    elapsed_range_start: 4,
+    elapsed_range_end: 7,
+    elapsed_range_label: "4-7",
+    must_avoid: [],
+    basic_care: ["부기·멍 감소 관찰", "평소 스킨케어 루틴 복귀 가능"],
+    next_check_offset_days: 8,
+  },
+  {
+    care_type: "filler",
+    elapsed_range_start: 8,
+    elapsed_range_end: 14,
+    elapsed_range_label: "8-14",
+    must_avoid: [],
+    basic_care: ["안정화 진행 중", "자외선 차단제 유지"],
+    next_check_offset_days: 15,
+  },
+  {
+    care_type: "filler",
+    elapsed_range_start: 15,
+    elapsed_range_end: 30,
+    elapsed_range_label: "15-30",
+    must_avoid: [],
+    basic_care: ["최종 모양 확인 시기 — 비대칭·뭉침 있으면 재방문 상담"],
     next_check_offset_days: null,
   },
   {
     care_type: "skin_booster",
     elapsed_range_start: 0,
-    elapsed_range_end: 30,
-    elapsed_range_label: "0-30",
-    must_avoid: ["당일 메이크업", "당일 사우나·찜질방"],
+    elapsed_range_end: 1,
+    elapsed_range_label: "0-1",
+    must_avoid: ["당일 메이크업", "당일 사우나·찜질방", "당일 격한 운동"],
     basic_care: ["미온수 세안", "저자극 보습제 사용", "자외선 차단제 필수"],
+    next_check_offset_days: 2,
+  },
+  {
+    care_type: "skin_booster",
+    elapsed_range_start: 2,
+    elapsed_range_end: 3,
+    elapsed_range_label: "2-3",
+    must_avoid: ["각질 제거 제품 사용"],
+    basic_care: ["저자극 보습 유지", "자외선 차단제 재도포"],
+    next_check_offset_days: 4,
+  },
+  {
+    care_type: "skin_booster",
+    elapsed_range_start: 4,
+    elapsed_range_end: 7,
+    elapsed_range_label: "4-7",
+    must_avoid: [],
+    basic_care: ["평소 스킨케어 루틴 복귀 가능"],
+    next_check_offset_days: 8,
+  },
+  {
+    care_type: "skin_booster",
+    elapsed_range_start: 8,
+    elapsed_range_end: 14,
+    elapsed_range_label: "8-14",
+    must_avoid: [],
+    basic_care: ["수분감 유지를 위한 보습 지속"],
+    next_check_offset_days: 15,
+  },
+  {
+    care_type: "skin_booster",
+    elapsed_range_start: 15,
+    elapsed_range_end: 30,
+    elapsed_range_label: "15-30",
+    must_avoid: [],
+    basic_care: ["정기 관리 권장"],
     next_check_offset_days: null,
   },
   {
     care_type: "hair_removal",
     elapsed_range_start: 0,
-    elapsed_range_end: 30,
-    elapsed_range_label: "0-30",
+    elapsed_range_end: 1,
+    elapsed_range_label: "0-1",
     must_avoid: ["당일 직사광선 노출", "당일 사우나·찜질방", "시술 부위 마찰"],
     basic_care: ["저자극 보습", "자외선 차단제 필수"],
+    next_check_offset_days: 2,
+  },
+  {
+    care_type: "hair_removal",
+    elapsed_range_start: 2,
+    elapsed_range_end: 3,
+    elapsed_range_label: "2-3",
+    must_avoid: ["각질 제거·왁싱", "뜨거운 물 샤워"],
+    basic_care: ["저자극 보습 유지"],
+    next_check_offset_days: 4,
+  },
+  {
+    care_type: "hair_removal",
+    elapsed_range_start: 4,
+    elapsed_range_end: 7,
+    elapsed_range_label: "4-7",
+    must_avoid: ["시술 부위 마찰"],
+    basic_care: ["자외선 차단제 유지"],
+    next_check_offset_days: 8,
+  },
+  {
+    care_type: "hair_removal",
+    elapsed_range_start: 8,
+    elapsed_range_end: 14,
+    elapsed_range_label: "8-14",
+    must_avoid: [],
+    basic_care: ["평소 루틴 복귀 가능"],
+    next_check_offset_days: 15,
+  },
+  {
+    care_type: "hair_removal",
+    elapsed_range_start: 15,
+    elapsed_range_end: 30,
+    elapsed_range_label: "15-30",
+    must_avoid: [],
+    basic_care: ["정기 관리 권장"],
     next_check_offset_days: null,
   },
 ];
@@ -449,6 +630,19 @@ async function main() {
   }
 
   console.log("[seed] reference_guides 등록 중...");
+  // 2026-08-18: botox/filler/energy_lifting/skin_booster/hair_removal을 0-30 단일 구간에서
+  // 5구간으로 세분화하며 옛 0-30 스텁 행이 orphan으로 남는다 — upsert의 onConflict 키
+  // (care_type,elapsed_range_start,elapsed_range_end)와 안 겹쳐서 자동 정리가 안 되고, 그대로 두면
+  // findReferenceGuide()의 .maybeSingle()이 "여러 행 매칭"으로 에러나 daily-guide/questions가
+  // 이 5종 전체에서 조용히 폴백/실패하게 된다. 새 구간 upsert 전에 먼저 지운다.
+  const SPLIT_CARE_TYPES = ["energy_lifting", "botox", "filler", "skin_booster", "hair_removal"];
+  await supabase
+    .from("reference_guides")
+    .delete()
+    .in("care_type", SPLIT_CARE_TYPES)
+    .eq("elapsed_range_start", 0)
+    .eq("elapsed_range_end", 30);
+
   for (const guide of REFERENCE_GUIDES) {
     await supabase.from("reference_guides").upsert(guide, {
       onConflict: "care_type,elapsed_range_start,elapsed_range_end",

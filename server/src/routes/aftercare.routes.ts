@@ -4,7 +4,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { dailyGuideQuerySchema, submitQuestionSchema } from "../validators/aftercare.validators";
 
 // 3. 사후관리 안내 및 Q&A — LLM 기반 (api-spec.md §3, R-USXPEM → F-GBZTGO, F-ULCIXA)
-// 최근 관리명·관리일·경과일·검수된 관리 가이드(reference_guides, RAG 소스)를 컨텍스트로 LLM(Claude)이 생성.
+// 최근 관리명·관리일·경과일·검수된 관리 가이드(reference_guides, RAG 소스)를 컨텍스트로 LLM(OpenAI)이 생성.
 // 의료적 진단/처방은 생성하지 않도록 시스템 프롬프트에서 제한 (server/src/services/aftercare.service.ts 참고)
 
 export const aftercareRouter = Router();

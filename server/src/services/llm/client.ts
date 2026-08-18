@@ -1,5 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { ANTHROPIC_MODEL, anthropic } from "../../config/anthropic";
+import { OPENAI_MODEL, openai } from "../../config/openai";
 
 interface StructuredCallParams {
   system: string;
@@ -12,25 +11,30 @@ interface StructuredCallParams {
 
 // 구조화 출력 강제(공통 원칙 4) — 자유 텍스트를 파싱하지 않고 tool_choice로 스키마를 강제한다.
 export async function callStructuredLlm<T>(params: StructuredCallParams): Promise<T> {
-  const response = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: params.maxTokens ?? 1024,
-    system: params.system,
-    messages: [{ role: "user", content: params.userMessage }],
+  const response = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    max_completion_tokens: params.maxTokens ?? 1024,
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.userMessage },
+    ],
     tools: [
       {
-        name: params.toolName,
-        description: params.toolDescription,
-        input_schema: params.inputSchema as Anthropic.Tool["input_schema"],
+        type: "function",
+        function: {
+          name: params.toolName,
+          description: params.toolDescription,
+          parameters: params.inputSchema,
+        },
       },
     ],
-    tool_choice: { type: "tool", name: params.toolName },
+    tool_choice: { type: "function", function: { name: params.toolName } },
   });
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
+  const toolCall = response.choices[0]?.message.tool_calls?.[0];
+  if (!toolCall || toolCall.type !== "function" || toolCall.function.name !== params.toolName) {
     throw new Error("LLM이 구조화 출력을 반환하지 않았습니다.");
   }
 
-  return toolUse.input as T;
+  return JSON.parse(toolCall.function.arguments) as T;
 }

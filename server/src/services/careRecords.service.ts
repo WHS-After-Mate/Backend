@@ -14,14 +14,14 @@ export interface CareRecordRow {
   doctor_comment: string | null;
   session_number?: number | null;
   total_sessions?: number | null;
-  membership?: { id: string; product_name: string } | null;
+  membership?: { id: string; product_name: string; total_count: number } | null;
 }
 
 const LIST_COLUMNS =
   "id, care_name, care_type, care_date, part_of_body, brand, practitioner, status, basic_aftercare_guide, doctor_comment";
 
 // 상세 화면 전용 — 회차·연결 이용권까지 조회 (v0.5). memberships FK(membership_id)로 상품명을 조인한다.
-const DETAIL_COLUMNS = `${LIST_COLUMNS}, session_number, total_sessions, membership:memberships(id, product_name)`;
+const DETAIL_COLUMNS = `${LIST_COLUMNS}, session_number, total_sessions, membership:memberships(id, product_name, total_count)`;
 
 export function toCareRecordSummary(row: CareRecordRow) {
   return {
@@ -45,7 +45,11 @@ export function toCareRecordDetail(row: CareRecordRow) {
         ? { number: row.session_number, total: row.total_sessions }
         : null,
     membership: row.membership
-      ? { membershipId: row.membership.id, productName: row.membership.product_name }
+      ? {
+          membershipId: row.membership.id,
+          productName: row.membership.product_name,
+          totalCount: row.membership.total_count,
+        }
       : null,
     basicAftercareGuide: row.basic_aftercare_guide,
   };
