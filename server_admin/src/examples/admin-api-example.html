@@ -152,6 +152,10 @@
     이 환자가 이미 회원가입(claim)한 상태여도 추가할 수 있다 — 그 경우 <code>emr_care_records</code>가
     아니라 실제 <code>care_records</code>/<code>memberships</code>에 바로 기록된다(응답의
     <code>source</code> 필드로 <code>"emr"</code>/<code>"app"</code> 어느 쪽인지 확인 가능).
+    <b>이용권 소모 확인용 팁</b>: 아래에서 시술기록을 추가/삭제할 때마다 바로 위 "이용권 선택" 드롭다운이
+    자동으로 다시 조회돼, 방금 고른 이용권의 <code>N/M회 사용, N회 남음</code> 표시가 그 자리에서
+    바뀐다(C를 따로 다시 누를 필요 없음) — 같은 이용권을 select에서 계속 골라 추가를 반복하면 잔여
+    횟수가 매번 1씩 줄어드는 걸, 삭제하면 다시 1 늘어나는 걸 바로 확인할 수 있다.
   </p>
 
   <label>careName (관리명)</label>
@@ -566,24 +570,46 @@
       const res = await fetch(adminUrl(`/patients/${patientId}`), { headers: authHeaders() });
       const data = await res.json();
       setResult(resultEl, statusEl, res.ok, data);
-      if (res.ok) {
-        // 이 응답에 딸려온 이용권 목록(memberships)으로, 아래 D 섹션의 "이용권 선택" 드롭다운을
-        // 지금 막 채워 넣는다 — 그래야 D에서 "기존 이용권에서 차감"을 고를 때 실제로 이 환자가
-        // 가진 이용권들이 보인다. C를 먼저 눌러야 D의 select가 채워지는 이유가 이거다.
-        const select = $("careMembershipSelect");
-        select.innerHTML = '<option value="">— 직접 입력(새 이용권 생성) —</option>';
-        for (const m of data.memberships ?? []) {
-          const remaining = m.remaining_count ?? m.total_count - m.used_count;
-          const opt = document.createElement("option");
-          opt.value = m.id; // 실제로 서버에 보낼 값(이용권의 UUID)
-          opt.textContent = `${m.product_name} (${m.used_count}/${m.total_count}회 사용, ${remaining}회 남음)`; // 화면에 보이는 글자
-          select.appendChild(opt);
-        }
-      }
+      if (res.ok) populateMembershipSelect(data.memberships);
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
     }
   });
+
+  // 위 C 응답의 이용권 목록(memberships)으로 D 섹션의 "이용권 선택" 드롭다운을 채운다 — 그래야
+  // D에서 "기존 이용권에서 차감"을 고를 때 이 환자가 실제로 가진 이용권들이 보인다. C를 처음 누를 때뿐
+  // 아니라, D에서 시술기록을 추가/삭제해 이용권이 소모/반환될 때마다 다시 불러 최신 잔여횟수를 보여준다
+  // (아래 addCareRecordBtn/deleteCareRecordBtn 핸들러 참고) — 그래야 "선택 → 차감 → 잔여횟수 감소"가
+  // 매번 C를 따로 누르지 않아도 바로 눈에 보인다.
+  function populateMembershipSelect(memberships) {
+    const select = $("careMembershipSelect");
+    const previouslySelected = select.value;
+    select.innerHTML = '<option value="">— 직접 입력(새 이용권 생성) —</option>';
+    for (const m of memberships ?? []) {
+      const remaining = m.remaining_count ?? m.total_count - m.used_count;
+      const opt = document.createElement("option");
+      opt.value = m.id; // 실제로 서버에 보낼 값(이용권의 UUID)
+      opt.textContent = `${m.product_name} (${m.used_count}/${m.total_count}회 사용, ${remaining}회 남음)`; // 화면에 보이는 글자
+      select.appendChild(opt);
+    }
+    // 방금 D에서 골랐던 이용권이 갱신된 목록에도 여전히 있으면(소진돼서 사라진 게 아니면) 선택 유지 —
+    // 같은 이용권으로 연달아 차감하는 테스트를 편하게 반복할 수 있도록.
+    if ([...select.options].some((o) => o.value === previouslySelected)) select.value = previouslySelected;
+  }
+
+  // 현재 대상 환자의 이용권 select만 조용히 새로고침한다(화면 전체 결과 표시는 안 건드림) — D에서
+  // 시술기록을 추가/삭제한 직후, "방금 고른 이용권의 사용/잔여 횟수가 실제로 바뀌었는지"를 C를 다시
+  // 누르지 않고도 바로 확인할 수 있게 해준다.
+  async function refreshMembershipSelectQuietly() {
+    const patientId = $("patientId").value.trim();
+    if (!patientId) return;
+    try {
+      const res = await fetch(adminUrl(`/patients/${patientId}`), { headers: authHeaders() });
+      if (res.ok) populateMembershipSelect((await res.json()).memberships);
+    } catch {
+      // 조용한 새로고침이라 실패해도 화면엔 아무것도 표시하지 않는다 — 다음에 C를 직접 눌러 확인 가능.
+    }
+  }
 
   // ============================================================
   // D: 시술 기록 추가/삭제 — 이용권 선택 시 그 자리에서 1회 차감, 직접 입력 시 새 이용권 생성
@@ -629,6 +655,7 @@
         // 방금 만든 시술기록 id를 기억해뒀다가, 바로 아래 "삭제" 버튼에서 재사용한다.
         lastCareRecordId = data.careRecord.id;
         loadPatients(); // B 목록의 "최근 받은 시술" 칸도 바로 갱신되도록 새로고침
+        refreshMembershipSelectQuietly(); // 방금 차감/생성된 이용권의 사용·잔여 횟수를 select에 바로 반영
       }
     } catch (err) {
       setResult(resultEl, statusEl, false, { error: String(err) });
@@ -655,6 +682,7 @@
         setResult(resultEl, statusEl, true, { status: 204, message: "삭제됨" });
         lastCareRecordId = undefined;
         loadPatients(); // 이용권까지 함께 정리됐으니 B의 "최근 받은 시술" 칸도 새로고침
+        refreshMembershipSelectQuietly(); // 되돌려진(또는 통째로 삭제된) 이용권 상태를 select에 바로 반영
         return;
       }
       // 204가 아니면(보통 404 등 에러) 이때는 본문에 에러 JSON이 있으므로 파싱해서 보여준다.
