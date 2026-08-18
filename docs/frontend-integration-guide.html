@@ -181,9 +181,10 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>프론트엔드(Android) 연동 가이드</h1>
-    <p class="subtitle">Android Studio에서 이 백엔드(<code>server/</code>)를 로컬로 띄우고 API를 호출하기 위한 안내 문서. API 요청/응답 스펙 자체는 <a href="./api-spec.html">api-spec.html</a>을 참고하고, 이 문서는 <strong>"내 컴퓨터에서 서버를 켜고 앱에서 연결하는 절차"</strong>에 집중한다.</p>
+    <p class="subtitle">이 백엔드(<code>server/</code>)의 API를 안드로이드 앱에서 호출하기 위한 안내 문서. API 요청/응답 스펙 자체는 <a href="./api-spec.html">api-spec.html</a>을 참고하고, 이 문서는 <strong>"서버를 켜고 앱에서 연결하는 절차"</strong>에 집중한다.</p>
     <div class="badges">
-      <span class="badge">v0.1</span>
+      <span class="badge">v0.2</span>
+      <span class="badge outline">배포된 서버 추가(가비아, 8/28까지)</span>
       <span class="badge outline">대상: 프론트(Android) 담당자</span>
       <span class="badge outline">API 계약 아님 — 실행/연동 절차</span>
     </div>
@@ -191,6 +192,7 @@
 
   <nav class="toc">
     <div class="toc-title">목차</div>
+    <a href="#deployed">0. 배포된 서버 쓰기(추천)</a>
     <a href="#repo">1. 저장소 준비</a>
     <a href="#env">2. 환경변수 설정</a>
     <a href="#run">3. 서버 실행</a>
@@ -201,6 +203,20 @@
   </nav>
 
   <main>
+    <section id="deployed">
+      <h2>0. 배포된 서버 쓰기 <span class="tag">추천 — 2026-08-18부터</span></h2>
+      <p class="desc">가비아 클라우드에 서버가 상시로 떠있다(해커톤 지원 기간 8/28까지). <strong>더 이상 프론트 담당자 컴퓨터에서 서버를 직접 띄울 필요 없이</strong> 아래 주소로 바로 호출하면 된다.</p>
+      <div class="endpoint-card">
+        <div class="endpoint-head"><span class="path">baseUrl</span></div>
+        <div class="endpoint-body">
+          <pre class="code-block">http://1.201.116.115/api/v1/</pre>
+          <p style="margin:0;font-size:13.8px;">HTTPS가 아니라서(도메인이 없어 SSL 인증서 발급 불가) 안드로이드 기본 정책상 그냥은 막힌다. 아래 4번의 <span class="mono">network_security_config.xml</span>에 이 IP(<span class="mono">1.201.116.115</span>)를 도메인 항목으로 추가해야 한다.</p>
+          <p style="margin:0;font-size:13.8px;color:var(--text-muted);">이 서버는 8/28(금) 23:59에 삭제될 예정(해커톤 지원 종료)이니 그 이후엔 다시 로컬 실행(1~3번) 또는 새 서버로 전환 필요.</p>
+        </div>
+      </div>
+      <p class="desc" style="margin-top:12px;"><strong>로컬에서 직접 서버를 띄워야 하는 경우</strong>(코드 수정하면서 즉시 반영해서 테스트하고 싶을 때)만 아래 1~3번을 따른다 — 배포된 서버를 쓸 거면 건너뛰어도 된다.</p>
+    </section>
+
     <section id="repo">
       <h2>1. 저장소 준비</h2>
       <p class="desc">GitHub 저장소(<span class="mono">WHS-After-Mate/Backend</span>)는 private — Collaborator 초대를 받은 계정으로 로그인 후 접근한다.</p>
@@ -224,7 +240,7 @@ npm install</pre>
           <thead><tr><th>변수</th><th>설명</th></tr></thead>
           <tbody>
             <tr><td class="mono">SUPABASE_URL<br/>SUPABASE_SERVICE_ROLE_KEY<br/>SUPABASE_ANON_KEY</td><td>백엔드에서 이미 만든 Supabase 프로젝트 값 — <strong>같은 프로젝트 키를 써야</strong> 데모 계정 4개가 동일하게 보임</td></tr>
-            <tr><td class="mono">ANTHROPIC_API_KEY</td><td>사후관리 가이드/Q&amp;A 생성용 Claude API 키 — <strong>선택.</strong> 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. 없을 때 <span class="mono">GET /aftercare/daily-guide</span>는 검수된 가이드 원문으로 자동 폴백되고, <span class="mono">POST /aftercare/questions</span>만 <span class="mono">500 ANSWER_GENERATION_FAILED</span>를 응답한다</td></tr>
+            <tr><td class="mono">OPENAI_API_KEY</td><td>사후관리 가이드/Q&amp;A 생성용 OpenAI API 키 — <strong>선택.</strong> 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. 없을 때 <span class="mono">GET /aftercare/daily-guide</span>는 검수된 가이드 원문으로 자동 폴백되고, <span class="mono">POST /aftercare/questions</span>만 <span class="mono">500 ANSWER_GENERATION_FAILED</span>를 응답한다</td></tr>
           </tbody>
         </table>
       </div>
@@ -249,8 +265,9 @@ npm install</pre>
         <table>
           <thead><tr><th>실행 환경</th><th>baseUrl</th><th>비고</th></tr></thead>
           <tbody>
-            <tr><td>안드로이드 에뮬레이터</td><td class="mono">http://10.0.2.2:4000/api/v1/</td><td>에뮬레이터 입장에서 자기 컴퓨터를 가리키는 특수 주소</td></tr>
-            <tr><td>같은 Wi-Fi의 실기기</td><td class="mono">http://&lt;서버 컴퓨터의 LAN IP&gt;:4000/api/v1/</td><td><span class="mono">ipconfig</span>(Windows)로 LAN IP 확인, 컴퓨터 방화벽에서 4000 포트 허용 필요</td></tr>
+            <tr><td><strong>배포된 서버(추천)</strong></td><td class="mono">http://1.201.116.115/api/v1/</td><td>어디서나 접속 가능, 로컬 서버 실행 불필요(가비아 클라우드, 8/28까지)</td></tr>
+            <tr><td>안드로이드 에뮬레이터(로컬 서버)</td><td class="mono">http://10.0.2.2:4000/api/v1/</td><td>에뮬레이터 입장에서 자기 컴퓨터를 가리키는 특수 주소</td></tr>
+            <tr><td>같은 Wi-Fi의 실기기(로컬 서버)</td><td class="mono">http://&lt;서버 컴퓨터의 LAN IP&gt;:4000/api/v1/</td><td><span class="mono">ipconfig</span>(Windows)로 LAN IP 확인, 컴퓨터 방화벽에서 4000 포트 허용 필요</td></tr>
           </tbody>
         </table>
       </div>
@@ -261,6 +278,7 @@ npm install</pre>
           <pre class="code-block">&lt;!-- res/xml/network_security_config.xml --&gt;
 &lt;network-security-config&gt;
     &lt;domain-config cleartextTrafficPermitted="true"&gt;
+        &lt;domain includeSubdomains="false"&gt;1.201.116.115&lt;/domain&gt;
         &lt;domain includeSubdomains="false"&gt;10.0.2.2&lt;/domain&gt;
     &lt;/domain-config&gt;
 &lt;/network-security-config&gt;</pre>
@@ -301,7 +319,7 @@ npm install</pre>
 }
 
 val retrofit = Retrofit.Builder()
-    .baseUrl("http://10.0.2.2:4000/api/v1/")
+    .baseUrl("http://1.201.116.115/api/v1/") // 배포된 서버(추천). 로컬 서버 쓸 땐 "http://10.0.2.2:4000/api/v1/"
     .addConverterFactory(GsonConverterFactory.create())
     .build()
 
@@ -325,6 +343,6 @@ val api = retrofit.create(WhsApi::class.java)</pre>
       </div>
     </section>
 
-    <footer>WHS After Mate · Backend Reference · frontend-integration-guide v0.1 · api-spec v0.4 기준</footer>
+    <footer>WHS After Mate · Backend Reference · frontend-integration-guide v0.2 · api-spec v0.12 기준</footer>
   </main>
 </div>

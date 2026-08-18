@@ -16,7 +16,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 
 `server_admin`은 "실제 클리닉 데스크가 환자를 접수하듯, 아직 앱 계정이 없는 환자의 이름·생년월일·전화번호·시술 이력·이용권을 먼저 입력"해두는 가상 EMR 데이터 입력 도구다. 여기서 등록한 데이터는 환자가 실제로 앱에 회원가입(`POST /auth/signup` — `server/`)하는 순간 실제 앱 DB로 이관(claim)된다. 회원가입 이후 그 환자가 재방문해도 시술기록 추가는 계속 가능하다 — 다만 그 이후 기록은 스테이징 테이블(`emr_*`)이 아니라 실제 앱 테이블(`care_records`/`memberships`)에 곧바로 쌓인다(3절 참고).
 
-- Base URL: `/api/v1`
+- Base URL: `/api/v1` — **배포된 서버(2026-08-18~8/28)**: `http://1.201.116.115/admin-api/api/v1`(nginx가 `/admin-api` 접두사를 떼고 4100번으로 전달, 고객용 `server`와 같은 IP·80번 포트를 공유). 로컬 실행 시엔 `http://localhost:4100/api/v1`
 - 인증: `Authorization: Bearer {token}` — **`POST /auth/login` 하나만 예외**, 그 외 모든 엔드포인트에 필수
 - 포맷: `application/json`, 날짜는 `YYYY-MM-DD`
 - 공통 에러 형식:
