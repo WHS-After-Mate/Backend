@@ -4,6 +4,7 @@ import * as profileService from "../services/profile.service";
 import {
   changePasswordSchema,
   updateInterestsSchema,
+  updateNotificationSettingsSchema,
   updateProfileSchema,
 } from "../validators/profile.validators";
 
@@ -47,5 +48,25 @@ profileRouter.put(
     const { goals } = updateInterestsSchema.parse(req.body);
     const result = await profileService.updateInterestGoals(req.userId, goals);
     res.status(200).json(result);
+  }),
+);
+
+// 알림 설정 조회 — 관리(사후관리 안내 등)/마케팅 두 종류. push.service.sendPushToUser가
+// 발송 시 이 값을 실제로 읽어 분기한다(꺼져 있으면 스킵)
+profileRouter.get(
+  "/notifications",
+  asyncHandler(async (req, res) => {
+    const settings = await profileService.getNotificationSettings(req.userId);
+    res.status(200).json(settings);
+  }),
+);
+
+// 알림 설정 변경 — { careNotification?, marketingNotification? } 중 최소 하나
+profileRouter.patch(
+  "/notifications",
+  asyncHandler(async (req, res) => {
+    const patch = updateNotificationSettingsSchema.parse(req.body);
+    const settings = await profileService.updateNotificationSettings(req.userId, patch);
+    res.status(200).json(settings);
   }),
 );

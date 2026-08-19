@@ -4,12 +4,13 @@
 server/node_modules/
 server/dist/
 server/.env
-server/firebase-service-account.json
+server/secrets/
 
 # server_admin
 server_admin/node_modules/
 server_admin/dist/
 server_admin/.env
+server_admin/secrets/
 
 # admin-web (별도 GitHub 저장소, 여기선 클론 사본만 보관)
 admin-web/

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WHS 알림 테스트</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 24px auto; padding: 0 16px; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  input { display: block; width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0; font-size: 16px; }
+  button { width: 100%; padding: 12px; font-size: 16px; margin-top: 6px; }
+  pre { background: #f2f2f2; padding: 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+  .ok { color: green; } .err { color: red; }
+</style>
+</head>
+<body>
+
+<h2>1. 로그인</h2>
+<input id="email" type="email" placeholder="이메일" />
+<input id="password" type="password" placeholder="비밀번호" />
+<button id="loginBtn">로그인</button>
+<pre id="loginStatus"></pre>
+
+<h2>2. 알림 권한 요청 + 토큰 등록</h2>
+<button id="registerBtn" disabled>알림 권한 요청 &amp; 등록</button>
+<pre id="tokenStatus"></pre>
+
+<h2>수신 로그(포그라운드)</h2>
+<pre id="messageLog">(아직 없음)</pre>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBttVzV1R99FtqRkZVnkkfVMAWgeFwYWWY",
+    authDomain: "ms-project-da87f.firebaseapp.com",
+    projectId: "ms-project-da87f",
+    storageBucket: "ms-project-da87f.firebasestorage.app",
+    messagingSenderId: "248951374187",
+    appId: "1:248951374187:web:4c0f31acee70dd76c9cc2e",
+    measurementId: "G-3HNJNKH67R",
+  };
+  const VAPID_KEY = "BHydR513IZLk0OnFGQBqH3xP8VPM6sQ2RkVInHNot31EEzF9BpPSkfxJVh4MeEuAYtzJ6c_CklD2-nmCBGkgn7M";
+  const API_BASE = "/api/v1";
+
+  firebase.initializeApp(firebaseConfig);
+  const messaging = firebase.messaging();
+
+  let accessToken = null;
+
+  const loginStatus = document.getElementById("loginStatus");
+  const tokenStatus = document.getElementById("tokenStatus");
+  const registerBtn = document.getElementById("registerBtn");
+  const messageLog = document.getElementById("messageLog");
+
+  document.getElementById("loginBtn").addEventListener("click", async () => {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    loginStatus.textContent = "로그인 중...";
+    loginStatus.className = "";
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error?.message || `HTTP ${res.status}`);
+      accessToken = body.accessToken;
+      loginStatus.textContent = `로그인 성공 (userId: ${body.user.id})`;
+      loginStatus.className = "ok";
+      registerBtn.disabled = false;
+    } catch (e) {
+      loginStatus.textContent = "로그인 실패: " + e.message;
+      loginStatus.className = "err";
+    }
+  });
+
+  registerBtn.addEventListener("click", async () => {
+    tokenStatus.textContent = "권한 요청 중...";
+    tokenStatus.className = "";
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("알림 권한이 거부됨");
+
+      const swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+      if (!token) throw new Error("토큰 발급 실패(권한/브라우저 확인)");
+
+      const res = await fetch(`${API_BASE}/notifications/device-token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ fcmToken: token }),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error?.message || `HTTP ${res.status}`);
+      }
+      tokenStatus.textContent = "토큰 등록 완료:\n" + token;
+      tokenStatus.className = "ok";
+    } catch (e) {
+      tokenStatus.textContent = "실패: " + e.message;
+      tokenStatus.className = "err";
+    }
+  });
+
+  messaging.onMessage((payload) => {
+    const { title, body } = payload.notification || {};
+    messageLog.textContent = `[${new Date().toLocaleTimeString()}] ${title}: ${body}`;
+  });
+</script>
+</body>
+</html>

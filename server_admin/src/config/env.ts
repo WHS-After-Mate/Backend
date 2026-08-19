@@ -13,6 +13,14 @@ const envSchema = z.object({
 
   // 클리닉 관리자 로그인 토큰 서명용. server/의 Supabase Auth와 무관한 별도 발급 체계.
   ADMIN_JWT_SECRET: z.string().min(16),
+
+  // 시술 등록 즉시 알림(예약/오늘시술) 발송용 — server/의 FCM 설정과 동일한 값을 각자 보관한다
+  // (프로세스가 분리돼 있어 공유 불가). 없어도 서버는 기동하고 알림만 스킵.
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  FCM_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 const parsed = envSchema.safeParse(process.env);

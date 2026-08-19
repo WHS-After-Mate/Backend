@@ -4,7 +4,6 @@ import { Errors } from "../lib/errors";
 export interface CareRecordRow {
   id: string;
   care_name: string;
-  care_type: string | null;
   care_date: string;
   part_of_body: string[];
   brand: string | null;
@@ -18,7 +17,7 @@ export interface CareRecordRow {
 }
 
 const LIST_COLUMNS =
-  "id, care_name, care_type, care_date, part_of_body, brand, practitioner, status, basic_aftercare_guide, doctor_comment";
+  "id, care_name, care_date, part_of_body, brand, practitioner, status, basic_aftercare_guide, doctor_comment";
 
 // 상세 화면 전용 — 회차·연결 이용권까지 조회 (v0.5). memberships FK(membership_id)로 상품명을 조인한다.
 const DETAIL_COLUMNS = `${LIST_COLUMNS}, session_number, total_sessions, membership:memberships(id, product_name, total_count)`;

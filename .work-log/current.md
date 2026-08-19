@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-19 17:20
+최종 업데이트: 2026-08-19 (4, 와이파이 끊김 복구 세션)
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브, **프론트엔드는 사용자 담당 아님**), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, **LLM은 OpenAI API**(`gpt-4.1-mini`), 푸시는 FCM. 관리자용 웹(`admin-web`, 별도 저장소, **임시/프로토타입 취급**)과 그 백엔드(`server_admin/`, 이 리포 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구. **가비아 클라우드에 실제 배포됨**(`1.201.116.115`, 2026-08-18~8/28 한시 운영) — 두 프론트팀(Android/admin-web)이 이 서버를 baseUrl로 쓰고 있음.
@@ -21,18 +21,21 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
   - 사용자가 "admin-web은 임시라 안 고쳐도 된다, API가 그 기능을 제공하는지가 중요하다"고 명확히 함 → `GET /patients/{patientId}` 응답이 이미 `patient`(이름/생년월일 등) + `memberships`(보유 이용권 전체, 잔여횟수 포함) 전부 반환하고 있어 **API 설계상으로는 필요한 데이터가 이미 완전히 제공됨**을 확인해 답변(프론트가 안 쓴 것뿐, 백엔드 갭 아님)
 
 ## 현재 작업 중
-- (없음 — 이번 세션 작업은 모두 커밋/배포/검증까지 완료됨)
+- **와이파이 끊김으로 이전 세션(17:20~23:40, work-log 미기록)의 대형 변경분이 아직 commit/push 전 상태**: FCM 푸시 알림(설정/로그/스케줄러/발송), `treatment_catalog` brand 컬럼, `treatment_guides` 신규 테이블(시술명+day 직접매칭, daily-guide/questions의 근거 소스를 `reference_guides`에서 이걸로 교체), 마이그레이션 024(`care_type` 컬럼 2곳 + `reference_guides`/`aftercare_guides` 테이블 완전 삭제)
+- 위 변경은 **DB에는 이미 적용 완료**(직접 조회로 확인), 코드도 `tsc --noEmit` 통과 + 라이브 검증(daily-guide/questions) 통과 상태
+- 이번 복구 세션에서 회귀 버그 1건 발견·수정: `server/src/services/auth.service.ts`의 EMR 회원가입 이관 로직이 삭제된 `care_type` 컬럼을 여전히 insert하려 해서 시술이력 있는 환자 가입이 전부 실패하던 것 → 수정 후 실제 signup 재검증 완료
+- **아직 안 한 것**: 이 큰 변경분 전체의 commit/push, `docs/*` 문서 동기화(api-spec/db-schema/admin-api-spec 등이 여전히 v0.9 수준 — treatment_guides/FCM/브랜드컬럼/care_type삭제 전부 미반영), work-log의 "다음 할 일" 목록 중 `care_type`/`reference_guides` 관련 이월 항목들은 이번 변경으로 사실상 해소됨(아래 정리)
 
 ## 다음 할 일
+- **다음 세션 우선순위**: 위 미기록 대형 변경분(FCM/브랜드/treatment_guides/care_type삭제) 커밋 여부를 사용자에게 확인하고, 커밋한다면 문서(api-spec/db-schema/admin-api-spec/README) 동기화도 필요
 - admin-web의 이용권 자동서치 미구현은 "임시 프로토타입이라 안 고쳐도 됨"으로 사용자가 결정 — 별도 후속 조치 불필요(참고용으로만 기록)
-- `treatment_catalog`의 `botox` care_type 분리(근육형/피부형) — 여전히 미착수(이월)
+- ~~`treatment_catalog`의 `botox` care_type 분리~~ — `care_type` 개념 자체가 024에서 삭제되고 `treatment_guides`(시술명 직접매칭)로 대체되어 해소됨
 - `treatment_catalog` 시술명 2건 오타/불일치(`튠 콩피에르®`, `레이저 제모 솔루션`) 실제 엑셀 원본과 맞출지 결정 필요(이월)
-- questions.prompt는 여전히 `reference_guides`(미검수 5종 포함)를 `reviewedGuide`로 주입 중 — 근거 원칙 바꿀지 미정(이월)
-- `reference_guides` 미검수 스텁 전문가 검수 여전히 필요(이월)
+- ~~questions.prompt의 reference_guides 근거~~ — `reference_guides` 테이블 자체가 024에서 삭제되고 `treatment_guides` 기반 그라운딩으로 교체됨(라이브 검증 완료)
 - 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가 검수(이월)
 - `docs/image.png`가 원인불명으로 변경돼 있음(171KB→13KB) — 여전히 미해결, 이번 세션에도 커밋 대상에서 계속 제외
 - 미추적 파일(관례상 커밋 제외 중): `docs/AAC_클리닉_자산_조사.docx`, `docs/WHS_After_Mate_Admin_revised.html`
-- FCM 실제 발송 스케줄러 트리거 로직 미구현(이월)
+- ~~FCM 실제 발송 스케줄러 트리거 로직 미구현~~ — `notificationScheduler.service.ts`/`push.service.ts`로 구현되어 `server.ts`에 배선 완료(커밋 전)
 - refreshToken 만료 정책 확정 미완료(이월)
 
 ## 주요 파일

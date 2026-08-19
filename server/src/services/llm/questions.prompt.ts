@@ -1,12 +1,12 @@
 import type { MedicalProfile } from "../medicalProfile.service";
-import type { ReferenceGuideRow } from "../referenceGuides.service";
+import type { TreatmentGuideRow } from "../treatmentGuides.service";
 
 export interface QuestionContext {
   careName: string;
   daysElapsed: number;
   doctorComment: string | null;
   medicalProfile: MedicalProfile;
-  referenceGuide: ReferenceGuideRow | null;
+  treatmentGuide: TreatmentGuideRow | null;
   category: string;
   question: string;
 }
@@ -71,11 +71,11 @@ export function buildQuestionUserMessage(ctx: QuestionContext): string {
       chronicConditions: ctx.medicalProfile.chronicConditions,
       doctorGeneralComment: ctx.medicalProfile.doctorGeneralComment,
     },
-    reviewedGuide: ctx.referenceGuide
+    reviewedGuide: ctx.treatmentGuide
       ? {
-          elapsedRangeLabel: ctx.referenceGuide.elapsed_range_label,
-          mustAvoid: ctx.referenceGuide.must_avoid,
-          basicCare: ctx.referenceGuide.basic_care,
+          keyCare: ctx.treatmentGuide.key_care,
+          aftercare: ctx.treatmentGuide.aftercare,
+          precautions: ctx.treatmentGuide.precautions,
         }
       : null,
     question: { category: ctx.category, text: ctx.question },

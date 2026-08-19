@@ -18,3 +18,12 @@ export const registerDeviceTokenSchema = z.object({
   fcmToken: z.string().min(1),
   platform: z.literal("android").default("android"),
 });
+
+export const updateNotificationSettingsSchema = z
+  .object({
+    careNotification: z.boolean().optional(),
+    marketingNotification: z.boolean().optional(),
+  })
+  .refine((v) => v.careNotification !== undefined || v.marketingNotification !== undefined, {
+    message: "careNotification 또는 marketingNotification 중 최소 하나는 필요합니다.",
+  });

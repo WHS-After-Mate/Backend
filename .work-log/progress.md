@@ -1,3 +1,16 @@
+## 2026-08-19 (4, 이어서 — 와이파이 끊김 복구)
+- 사용자가 "마이그레이션 24 적용된거 테스트하다가 와이파이 멈춰서 껐다켰어, 저장되어있는지 확인하고 이어서 진행해줘" 요청 — 직전 세션(work-log 미기록 상태로 17:20~23:40 진행됨)이 `scratch-final-verify.ts` 실행 도중 끊긴 것으로 추정
+- work-log(`current.md`)가 17:20 시점(careType 자동조회)에서 멈춰있고, 그 이후 세션에서 만든 미추적 파일 다수(마이그레이션 019~024, `notificationScheduler.service.ts`, `treatmentGuides.service.ts`, `server_admin`의 `firebase.ts`/`push.service.ts`, `server/public/`의 FCM 서비스워커·테스트 페이지 등)가 work-log에 전혀 반영 안 된 채 남아있던 것을 확인 — 이번 세션 범위는 이 미기록 구간의 실제 완료 여부 검증
+- 파일 mtime으로 진행 순서 재구성: FCM 푸시(알림 설정/로그 마이그레이션+스케줄러+`server_admin` 발송 서비스, 19:57~21:09) → `treatment_catalog` brand 컬럼+`care_type` nullable화(22:16~22:21) → `treatment_guides` 신규 테이블+서비스+시드(시술명+day 직접매칭으로 daily-guide/questions의 근거 소스 교체, 22:57~23:21) → `024_drop_care_type.sql`(`care_records`/`treatment_catalog`의 `care_type` 컬럼과 `reference_guides`/`aftercare_guides` 테이블 완전 삭제, 23:36) → `scratch-final-verify.ts`로 최종 검증 중(23:40) 끊김
+- **DB 상태 직접 조회로 확인**: `care_records.care_type`/`treatment_catalog.care_type` 컬럼 없음, `reference_guides`/`aftercare_guides` 테이블 없음, `treatment_guides` 테이블 존재 — **마이그레이션 024는 이미 정상 적용 완료된 상태**(재적용 불필요)
+- `server`/`server_admin` 양쪽 `tsc --noEmit` 통과 확인
+- 끊겼던 `scratch-final-verify.ts`를 그대로 재실행 — daily-guide(`generatedBy: "treatment_guide"`, LLM 미호출)/questions(LLM 그라운딩, `consultationLevel: "NONE"`) 둘 다 정상 응답, 테스트 데이터 정리까지 성공 — **직전에 하려던 검증 자체는 문제 없이 통과함**
+- **🐛 실제 회귀 버그 발견**: `grep`으로 `care_type`/`careType` 잔여 참조 전수 확인 중 `server/src/services/auth.service.ts:85`(`migrateEmrDataToApp`, EMR→앱 회원가입 이관)가 `care_records.insert()`에 여전히 `care_type: r.care_type`을 포함하고 있는 것 발견 — `care_records`는 더 이상 그 컬럼이 없어 insert 자체가 실패, `signup()`의 catch가 이를 삼켜 auth 유저 롤백 후 "가입 처리 중 의료기록 이관에 실패했습니다" 500으로 귀결 → **시술 이력이 있는 모든 환자의 회원가입이 깨지는 상태였음**(`emr_care_records.care_type`은 스테이징 테이블이라 024에서 안 건드려져 남아있고, `tsc`는 Supabase insert가 느슨한 타입이라 못 잡음)
+  - `care_type: r.care_type,` 한 줄 삭제로 수정
+  - 서비스role 스크립트로 `emr_patients`+`emr_care_records`(시술이력 1건) 생성 → 실제 `signup()` 호출 → `care_records`로 정상 이관 확인(수정 전엔 여기서 실패했을 케이스) → 생성한 auth 유저/emr_patients 전부 정리
+- 임시 검증 스크립트(`scratch-final-verify.ts`, `scratch-test-signup.ts`) 삭제
+- work-log 정리 — `/기록저장` 절차 없이 이번 세션 결과 반영(사용자가 명시적 커밋 요청은 아직 안 함)
+
 ## 2026-08-19 (3, 신규 세션)
 - 새 세션 시작, work-log 브리핑
 - 사용자가 "작업현황파악" 요청 → 이전 세션 work-log 요약해 브리핑

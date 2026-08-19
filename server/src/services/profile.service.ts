@@ -77,3 +77,41 @@ export async function updateInterestGoals(userId: string, goals: string[]) {
   if (error || !data) throw Errors.noActiveCustomerProfile();
   return { interestGoals: data.interest_goals as string[] };
 }
+
+export async function getNotificationSettings(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("care_notification, marketing_notification")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) throw Errors.noActiveCustomerProfile();
+  return {
+    careNotification: data.care_notification as boolean,
+    marketingNotification: data.marketing_notification as boolean,
+  };
+}
+
+export async function updateNotificationSettings(
+  userId: string,
+  patch: { careNotification?: boolean; marketingNotification?: boolean },
+) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      ...(patch.careNotification !== undefined && { care_notification: patch.careNotification }),
+      ...(patch.marketingNotification !== undefined && {
+        marketing_notification: patch.marketingNotification,
+      }),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select("care_notification, marketing_notification")
+    .single();
+
+  if (error || !data) throw Errors.noActiveCustomerProfile();
+  return {
+    careNotification: data.care_notification as boolean,
+    marketingNotification: data.marketing_notification as boolean,
+  };
+}

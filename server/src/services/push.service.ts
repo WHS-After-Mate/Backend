@@ -1,10 +1,31 @@
 import { getMessaging } from "../config/firebase";
 import { supabaseAdmin } from "../config/supabase";
 
+// 사후관리 안내(care) vs 마케팅(marketing) — profiles.care_notification/marketing_notification
+// (PATCH /profile/notifications로 사용자가 끌 수 있음) 중 해당 종류가 꺼져 있으면 발송 스킵
+export type PushKind = "care" | "marketing";
+
+const SETTING_COLUMN: Record<PushKind, "care_notification" | "marketing_notification"> = {
+  care: "care_notification",
+  marketing: "marketing_notification",
+};
+
 // 사후관리/이용권 만료 리마인더 발송용 (스케줄러/배치에서 호출 예정 — MVP 범위 밖, 배선만 준비)
-export async function sendPushToUser(userId: string, notification: { title: string; body: string }) {
+export async function sendPushToUser(
+  userId: string,
+  notification: { title: string; body: string },
+  kind: PushKind,
+) {
   const messaging = getMessaging();
   if (!messaging) return; // FCM_ENABLED=false면 조용히 스킵
+
+  const { data: profileRow } = await supabaseAdmin
+    .from("profiles")
+    .select("care_notification, marketing_notification")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const profile = profileRow as { care_notification: boolean; marketing_notification: boolean } | null;
+  if (!profile || profile[SETTING_COLUMN[kind]] === false) return; // 사용자가 해당 종류 알림을 꺼둔 경우 스킵
 
   const { data: tokens } = await supabaseAdmin.from("device_tokens").select("fcm_token").eq("user_id", userId);
   if (!tokens || tokens.length === 0) return;

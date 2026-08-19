@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase";
 import { BODY_PARTS } from "../lib/bodyParts";
 import { Errors } from "../lib/errors";
+import { sendCareRegisteredPush } from "./push.service";
 
 // 관리 부위 고정 목록 — 정적 상수라 DB 조회 없이 바로 반환한다.
 export function listBodyParts() {
@@ -395,39 +396,6 @@ async function findContinuableMembership(
   );
 }
 
-// careType은 관리자가 자유 입력하는 값이 아니라, 전문가 검수를 거쳐 reference_guides에 실제로
-// 등록된 가이드 카테고리 중에서만 고를 수 있어야 한다(그래야 daily-guide가 항상 응답 가능함이 보장됨).
-// reference_guides는 클리닉 공통 자료라 브랜드 격리 대상이 아니다.
-export async function listCareTypes() {
-  const { data, error } = await supabaseAdmin.from("reference_guides").select("care_type");
-  if (error) throw Errors.internal(error.message);
-  return [...new Set((data ?? []).map((row) => row.care_type as string))].sort();
-}
-
-export async function assertValidCareType(careType: string) {
-  const { data, error } = await supabaseAdmin
-    .from("reference_guides")
-    .select("care_type")
-    .eq("care_type", careType)
-    .limit(1)
-    .maybeSingle();
-  if (error) throw Errors.internal(error.message);
-  if (!data) throw Errors.invalidCareType();
-}
-
-// 웹/앱 모두 관리명+부위만 입력받기로 해서(프론트 피드백) careType은 클라이언트 입력을 없애고
-// treatment_catalog(care_name unique)에서 자동 조회한다. 카탈로그에 없는 시술명이면 null —
-// 이 경우 daily-guide는 기존과 동일하게 404 GUIDE_NOT_AVAILABLE로 폴백된다.
-async function lookupCareType(careName: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin
-    .from("treatment_catalog")
-    .select("care_type")
-    .eq("care_name", careName)
-    .maybeSingle();
-  if (error) throw Errors.internal(error.message);
-  return data?.care_type ?? null;
-}
-
 // 회원가입(claim) 여부에 따라 어느 테이블에 쓸지 정한다 — claim 전이면 emr_* 스테이징,
 // claim 후면 실제 앱 테이블(care_records/memberships)에 곧바로 기록한다. 예전엔 claim된 환자에
 // 새 시술기록 자체를 막았지만(1회성 이관), 재방문 고객의 시술을 기록할 방법이 없어지는 문제가 있어
@@ -447,7 +415,6 @@ export async function addCareRecord(
   brand: string,
 ) {
   const patient = await findPatientOrThrow(patientId, brand);
-  const careType = await lookupCareType(input.careName);
 
   const claimed = !!patient.claimed_user_id;
   const membershipTable: MembershipTable = claimed ? "memberships" : "emr_memberships";
@@ -487,7 +454,6 @@ export async function addCareRecord(
   const insertPayload: Record<string, unknown> = {
     [ownerColumn]: ownerId,
     care_name: input.careName,
-    care_type: careType,
     care_date: input.careDate,
     part_of_body: input.partOfBody,
     // brand는 수동 입력이 아니라 로그인한 클리닉 계정에서 그대로 가져온다(수동 선택 시 실수로
@@ -524,6 +490,27 @@ export async function addCareRecord(
         { onConflict: "membership_id,session_number" },
       );
     if (usageError) throw Errors.internal(usageError.message);
+  }
+
+  // 예약(미래 careDate) 등록 즉시 알림. 오늘 날짜 시술(0일차)은 등록 직후가 아니라 그날 저녁
+  // 알림으로 별도 처리한다(server/의 일일 크론, "시술 등록하자마자 축하 알림"은 어색해서 제외) —
+  // 과거 날짜로 소급 등록하는 경우(백필)도 대상 아님. 알림 발송 실패가 시술 등록 자체를
+  // 실패시키면 안 되므로 별도로 감싼다.
+  if (claimed && input.careDate > kstDateString(0)) {
+    const notification = {
+      title: "WHS After Mate",
+      body: `${input.careDate} ${input.careName} 예약이 등록되었습니다.`,
+    };
+    try {
+      await sendCareRegisteredPush(ownerId, notification);
+      await supabaseAdmin.from("notification_log").upsert(
+        { user_id: ownerId, type: "care_registered", ref_id: data.id, ref_key: "registered" },
+        { onConflict: "type,ref_id,ref_key", ignoreDuplicates: true },
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[addCareRecord] 예약 알림 발송 실패:", err);
+    }
   }
 
   return {

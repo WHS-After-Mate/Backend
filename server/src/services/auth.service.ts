@@ -82,7 +82,6 @@ async function migrateEmrDataToApp(patientId: string, userId: string) {
         emrCareRecords.map((r) => ({
           user_id: userId,
           care_name: r.care_name,
-          care_type: r.care_type,
           care_date: r.care_date,
           part_of_body: r.part_of_body,
           brand: r.brand,

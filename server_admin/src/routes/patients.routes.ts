@@ -12,19 +12,6 @@ import {
 // 이 라우터 전체가 requireAdminAuth 뒤에 걸려있어(routes/index.ts) req.admin이 항상 채워져 있다.
 export const patientsRouter = Router();
 
-// treatment_catalog에 새 시술명을 등록/수정할 때(POST/PATCH /treatment-catalog) 고를 careType
-// select용 — reference_guides에 실제로 검수 등록된 값만 노출한다. 시술기록 추가(D) 화면은 더 이상
-// careType을 입력받지 않는다(treatment_catalog에서 careName으로 자동 조회). 클리닉 공통 자료라
-// 브랜드 격리 대상 아님
-
-patientsRouter.get(
-  "/care-types",
-  asyncHandler(async (_req, res) => {
-    const careTypes = await patientsService.listCareTypes();
-    res.status(200).json({ careTypes });
-  }),
-);
-
 // 시술기록 추가(D) 화면의 관리 부위 다중선택용 — 고정 목록(클리닉 공통, 브랜드 격리 대상 아님)
 patientsRouter.get(
   "/body-parts",
