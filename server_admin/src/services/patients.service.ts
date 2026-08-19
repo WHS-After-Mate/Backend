@@ -346,6 +346,23 @@ async function deductMembershipSession(
   return data;
 }
 
+// 예약(미래 careDate) 등록 시 사용 — 소유자·잔여횟수·만료일은 그대로 검증하지만 used_count는
+// 건드리지 않는다. 아직 실제로 시술받은 게 아니므로 "차감 없이 이용권만 연결"하는 것.
+async function reserveMembershipSession(
+  table: MembershipTable,
+  ownerColumn: "patient_id" | "user_id",
+  ownerId: string,
+  membershipId: string,
+  careDate: string,
+) {
+  const { data: membership, error } = await supabaseAdmin.from(table).select("*").eq("id", membershipId).maybeSingle();
+  if (error) throw Errors.internal(error.message);
+  if (!membership || membership[ownerColumn] !== ownerId) throw Errors.membershipNotFound();
+  if (membership.used_count >= membership.total_count) throw Errors.membershipExhausted();
+  if (membership.expires_at && membership.expires_at < careDate) throw Errors.membershipExpired();
+  return membership;
+}
+
 // 이용권 만료일 = 생성일(=첫 시술일, careDate) + 1년. 날짜 문자열(YYYY-MM-DD) 그대로 연산해
 // 타임존 이슈 없이 처리한다.
 function addOneYear(dateStr: string): string {
@@ -354,7 +371,8 @@ function addOneYear(dateStr: string): string {
   return next.toISOString().slice(0, 10);
 }
 
-// "직접 입력" — 시술기록을 추가하면서 그 자리에서 새 이용권을 만들고 1회차를 바로 사용 처리한다.
+// "직접 입력" — 시술기록을 추가하면서 그 자리에서 새 이용권을 만든다. careDate가 오늘이면 1회차를
+// 바로 사용 처리하고, 미래 예약이면 아직 아무 회차도 안 쓴 상태(used_count 0)로 만들어 연결만 한다.
 // 만료일은 이 이용권의 생성일(=첫 시술일) 기준 +1년으로 고정(이후 재방문으로 만료일이 계속 밀리지 않음).
 async function createMembershipFromCareRecord(
   table: MembershipTable,
@@ -364,6 +382,7 @@ async function createMembershipFromCareRecord(
   totalSessions: number,
   careDate: string,
   brand: string,
+  deductImmediately: boolean,
 ) {
   const { data, error } = await supabaseAdmin
     .from(table)
@@ -371,9 +390,9 @@ async function createMembershipFromCareRecord(
       [ownerColumn]: ownerId,
       product_name: careName,
       total_count: totalSessions,
-      used_count: 1,
+      used_count: deductImmediately ? 1 : 0,
       expires_at: addOneYear(careDate),
-      last_used_at: careDate,
+      last_used_at: deductImmediately ? careDate : null,
       available_care_names: [careName],
       // 순수 표시용 메타데이터 — 이 이용권을 처음 만든 클리닉. 이어서 차감할 때(findContinuableMembership)
       // 매칭 조건엔 안 쓴다(이용권은 여전히 클리닉 간 격리되지 않음, 기존 정책 유지).
@@ -438,11 +457,20 @@ export async function addCareRecord(
   const ownerColumn = claimed ? "user_id" : "patient_id";
   const ownerId = claimed ? (patient.claimed_user_id as string) : patientId;
 
-  // membershipId를 직접 고르면 그 이용권에서 차감. totalSessions만 왔으면(=패키지 구매) 같은
-  // 치료명+같은 횟수권으로 아직 유효한 이용권을 먼저 찾아 이어서 차감하고, 없을 때만 새로 만든다.
+  // 이용권 차감은 careDate가 오늘(KST)인 등록에만 일어난다 — 미래 날짜(예약)로 등록하면 이용권을
+  // 연결만 해두고 차감하지 않는다. 그래야 같은 패키지로 여러 미래 예약을 잡아도(예: 다음주 3회권
+  // 예약 + 다다음주 3회권 예약) 아직 받지도 않은 시술 때문에 이용권이 먼저 소진되지 않는다 — 실제
+  // 시술일에 그 날짜로 다시 등록해야 그때 차감된다.
+  const isToday = input.careDate === kstDateString(0);
+
+  // membershipId를 직접 고르면 그 이용권을 쓴다(오늘이면 차감, 아니면 예약만). totalSessions만
+  // 왔으면(=패키지 구매) 같은 치료명+같은 횟수권으로 아직 유효한 이용권을 먼저 찾아 이어서 쓰고,
+  // 없을 때만 새로 만든다.
   let membershipCreated = false;
   const membership = input.membershipId
-    ? await deductMembershipSession(membershipTable, ownerColumn, ownerId, input.membershipId, input.careDate)
+    ? isToday
+      ? await deductMembershipSession(membershipTable, ownerColumn, ownerId, input.membershipId, input.careDate)
+      : await reserveMembershipSession(membershipTable, ownerColumn, ownerId, input.membershipId, input.careDate)
     : await (async () => {
         const continuable = await findContinuableMembership(
           membershipTable,
@@ -453,7 +481,9 @@ export async function addCareRecord(
           input.careDate,
         );
         if (continuable) {
-          return deductMembershipSession(membershipTable, ownerColumn, ownerId, continuable.id, input.careDate);
+          return isToday
+            ? deductMembershipSession(membershipTable, ownerColumn, ownerId, continuable.id, input.careDate)
+            : continuable;
         }
         membershipCreated = true;
         return createMembershipFromCareRecord(
@@ -464,8 +494,13 @@ export async function addCareRecord(
           input.totalSessions!,
           input.careDate,
           brand,
+          isToday,
         );
       })();
+
+  // 오늘 등록이면 이미 차감된 used_count 그대로가 이번 회차 번호. 예약이면 아직 차감 전이라
+  // "이 예약이 실제로 이뤄지면 몇 회차가 될지"(used_count + 1)를 미리 보여준다.
+  const sessionNumberForRecord = isToday ? membership.used_count : membership.used_count + 1;
 
   const insertPayload: Record<string, unknown> = {
     [ownerColumn]: ownerId,
@@ -478,10 +513,12 @@ export async function addCareRecord(
     practitioner: input.practitioner ?? null,
     basic_aftercare_guide: input.basicAftercareGuide,
     doctor_comment: input.doctorComment ?? null,
-    session_number: membership.used_count,
+    session_number: sessionNumberForRecord,
     total_sessions: membership.total_count,
     // 삭제 시 이 이용권을 함께 정리(차감 취소/이용권 삭제)하기 위한 연결.
     membership_id: membership.id,
+    // DELETE /care-records/{id}가 이 값을 보고 used_count를 되돌릴지 판단한다(tryDeleteCareRecordFrom).
+    session_consumed: isToday,
   };
   if (claimed) {
     insertPayload.source_system = "aac_emr";
@@ -491,9 +528,10 @@ export async function addCareRecord(
   const { data, error } = await supabaseAdmin.from(careRecordTable).insert(insertPayload).select().single();
   if (error) throw Errors.internal(error.message);
 
-  // 회원가입(claim) 후에만 존재하는 이용권 회차별 사용 이력(GET /memberships의 usageHistory) —
-  // membership_usages.membership_id가 memberships(앱 테이블) FK라 claim 전(emr_memberships)엔 대상 없음.
-  if (claimed) {
+  // 회원가입(claim) 후 + 실제로 차감된 경우에만 이용권 회차별 사용 이력(GET /memberships의
+  // usageHistory) 기록 — membership_usages.membership_id가 memberships(앱 테이블) FK라 claim 전
+  // (emr_memberships)엔 대상 없고, 예약(미차감)은 아직 실제로 쓴 회차가 아니라 이력에 남기지 않는다.
+  if (claimed && isToday) {
     const { error: usageError } = await supabaseAdmin
       .from("membership_usages")
       .upsert(
@@ -551,9 +589,9 @@ async function tryDeleteCareRecordFrom(
 ) {
   const { data: record, error } = await supabaseAdmin
     .from(careRecordTable)
-    .select("id, membership_id, brand")
+    .select("id, membership_id, brand, session_consumed")
     .eq("id", careRecordId)
-    .maybeSingle<{ id: string; membership_id: string | null; brand: string | null }>();
+    .maybeSingle<{ id: string; membership_id: string | null; brand: string | null; session_consumed: boolean }>();
   if (error) throw Errors.internal(error.message);
   if (!record || record.brand !== brand) return false;
 
@@ -580,6 +618,10 @@ async function tryDeleteCareRecordFrom(
     if (deleteMembershipError) throw Errors.internal(deleteMembershipError.message);
     return true;
   }
+
+  // 이 기록이 애초에 차감을 안 한 예약(session_consumed: false)이었으면 used_count를 되돌릴 것도
+  // 없다 — 되돌리면 실제로 소비되지 않은 회차를 잘못 되돌려 다른 기록의 차감분을 훼손하게 된다.
+  if (!record.session_consumed) return true;
 
   const { data: membership, error: membershipError } = await supabaseAdmin
     .from(membershipTable)
