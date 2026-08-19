@@ -49,11 +49,13 @@ export async function createTreatment(
 export async function updateTreatment(
   id: string,
   input: Partial<{ careName: string; bodyParts: string[]; description: string }>,
+  brand: string,
 ) {
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("treatment_catalog")
     .select("id")
     .eq("id", id)
+    .eq("brand", brand)
     .maybeSingle();
   if (existingError) throw Errors.internal(existingError.message);
   if (!existing) throw Errors.treatmentNotFound();
@@ -67,6 +69,7 @@ export async function updateTreatment(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("brand", brand)
     .select()
     .single();
 
@@ -77,8 +80,14 @@ export async function updateTreatment(
   return data;
 }
 
-export async function deleteTreatment(id: string) {
-  const { data, error } = await supabaseAdmin.from("treatment_catalog").delete().eq("id", id).select("id").maybeSingle();
+export async function deleteTreatment(id: string, brand: string) {
+  const { data, error } = await supabaseAdmin
+    .from("treatment_catalog")
+    .delete()
+    .eq("id", id)
+    .eq("brand", brand)
+    .select("id")
+    .maybeSingle();
   if (error) throw Errors.internal(error.message);
   if (!data) throw Errors.treatmentNotFound();
 }

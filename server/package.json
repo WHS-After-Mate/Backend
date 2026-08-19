@@ -10,7 +10,8 @@
     "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx db/seed/seed.ts",
-    "seed:care-catalog": "tsx db/seed/seedCareCatalog.ts"
+    "seed:care-catalog": "tsx db/seed/seedCareCatalog.ts",
+    "seed:treatment-guides": "tsx db/seed/seedTreatmentGuides.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
