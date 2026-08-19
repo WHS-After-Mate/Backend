@@ -1,66 +1,54 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-18 17:20
+최종 업데이트: 2026-08-19 03:20
 
 ## 프로젝트 개요
-WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브 Android, **프론트엔드는 사용자 담당 아님 — 이 세션에서 다루지 않음**), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, **LLM은 OpenAI API(2026-08-18부터, 기존 Anthropic Claude에서 전환 — 해커톤 무료 크레딧)**, 푸시는 FCM. 관리자용 웹(`admin-web`, **별도 GitHub 저장소 — 이 백엔드 리포에서는 건드리지 않음**)과 그 백엔드(`server_admin/`, 이 리포에 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구로 자리잡았다.
+WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브, **프론트엔드는 사용자 담당 아님**), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, **LLM은 OpenAI API**(`gpt-4.1-mini`), 푸시는 FCM. 관리자용 웹(`admin-web`, 별도 저장소)과 그 백엔드(`server_admin/`, 이 리포 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구. **가비아 클라우드에 실제 배포됨**(`1.201.116.115`, 2026-08-18~8/28 한시 운영) — 두 프론트팀(Android/admin-web)이 이 서버를 baseUrl로 쓰고 있음.
 
 ## 완료된 작업
-- **LLM 프로바이더 Anthropic Claude → OpenAI 전환** — 해커톤 무료 크레딧 활용 목적. `@anthropic-ai/sdk` 제거, `openai` SDK 설치. `server/src/config/anthropic.ts` 삭제 → `openai.ts` 신규. `env.ts`의 `ANTHROPIC_API_KEY`/`MODEL` → `OPENAI_API_KEY`/`MODEL`. `llm/client.ts`의 `callStructuredLlm`을 Anthropic tool_use → OpenAI function calling(`tool_choice:{type:"function"}`)으로 재작성(호출부 인터페이스는 그대로 유지해 다른 코드 무변경). `.env`/`.env.example`/`server/README.md`/`docs/llm-prompt-design.md`/`docs/frontend-integration-guide.md` 등 전부 갱신
-  - **모델 선정을 실측 벤치마크로 결정** — 처음 `gpt-4o-mini`로 설정했으나 사용자가 "미니 말고 다른거 쓰자"고 요청 → 여러 모델을 실제 tool-call 방식으로 벤치마크: `gpt-5`/`gpt-5-mini`는 추론모델이라 `max_completion_tokens` 예산을 전부 내부 추론에 써버려 tool call을 아예 못 냄(13~19초, 완전 실패) → 부적합 확정. `gpt-5.6-luna`/`sol`/`terra`는 `reasoning_effort:"none"`을 명시해야만 동작하고 느리며(3.3~7.5초) 코드네임 네이밍이라 프로덕션 안정성 불확실 → 기각. **`gpt-5.4`가 가장 빠르고(실측 daily-guide 1.9초, questions 1.4초) 기본 파라미터로 안정적으로 tool call을 반환** → 최종 채택
-  - GPT-5 계열은 `max_tokens`를 거부하고 `max_completion_tokens`만 지원한다는 것을 실측으로 발견 — `client.ts` 파라미터명 수정(구형 모델과도 호환 확인)
-  - `npm run dev`로 실서버 기동 + 실제 daily-guide/questions 프롬프트로 종단 검증
-- **dd.txt 프론트 요청 배치(6건) 처리** — 어제 예고됐던 "연동하면서 모아서 보내드릴게요" 배치
-  1. `GET /care-records/:id` 응답 `membership`에 `totalCount` 추가
-  2. `reference_guides`의 botox/filler/energy_lifting/skin_booster/hair_removal 5종을 기존 0-30 단일 스텁에서 0-1/2-3/4-7/8-14/15-30 5구간으로 세분화(25행). 옛 0-30 행을 안 지우면 `findReferenceGuide`의 `.maybeSingle()`이 다중매칭 에러로 daily-guide를 조용히 실패시키는 버그를 미리 발견해 시드 스크립트에 정리 로직 추가. `npm run seed` 재실행 + 실DB 조회로 25행 정확히 생성됐는지 검증
-  3. **실제 버그 발견·수정**: "이용권 사용이력이 안 뜬다"는 신고(실사용자 오세훈 계정으로 직접 진단) → 회원가입(claim) 이관 시 `care_records.membership_id` 연결이 아예 빠지고 `membership_usages`도 안 채워지는 버그를 `server/auth.service.ts`(`migrateEmrDataToApp`)에서 발견. `server_admin`의 `addCareRecord`(재방문 시술기록 추가 경로)도 동일 버그 있어 같이 수정 + `DELETE /care-records`에 `membership_usages` 정리 로직 추가. 기존에 이미 깨져있던 데이터 3건(오세훈 포함) 백필 완료, 재조회로 확인
-  4/5. **다음 관리 추천을 OpenAI 기반으로 전환** — 시술 후보 선정(관심목표/최근시술 매칭 점수)은 그대로 규칙 기반 유지, `reasons`/`detailDescription` 문구 생성만 `recommendation.prompt.ts`(신규) + OpenAI로 교체(시술마다 다른 문구 생성). 실패/키 미설정 시 기존 정적 템플릿으로 자동 폴백. 실제 계정(오세훈)으로 라이브 검증 — 부작용으로 `GET /next-care`/`GET /home/summary` 응답시간이 즉시 응답 → 약 4~6초로 증가(사용자에게 명확히 고지함)
-  6. `GET /recommendations/next-care/:id` 응답 `relatedRecentCares[]`에 `brand` 추가
-  - 부수적으로 **엑셀(`docs/care_procedure_template.xlsx`) vs DB `procedures` 테이블 완전성을 코드로 1:1 재검증** — 46건 전부 일치, 사업장·카테고리 태그 불일치 0건. `description` 15건은 줄바꿈/마크다운만 다듬어진 것(내용 손실 없음, 오히려 엑셀 원본의 잘린 문장 하나를 자연스럽게 완성해둔 것도 발견)
-- **문서 동기화 + 아티팩트 재발행** — `docs/api-spec.md`/`.html`(v0.11→v0.12), `docs/admin-api-spec.md`/`.html`(v0.6→v0.7), `docs/llm-prompt-design.md`/`.html`(v0.1→v0.2, LLM 호출 지점 2곳→3곳으로 갱신). 아티팩트 3종(API 명세서 `5cf6ed55`, 관리자 API 명세서 `743df35b`, LLM 프롬프트 설계 `48a5799c`) WebFetch로 최신본 확인 후 재발행
-- commit+push 완료 (`756fcb7`) — `docs/AAC_클리닉_자산_조사.docx`/`docs/WHS_After_Mate_Admin_revised.html`은 이번에도 무관해 제외
+- **추천 상세 응답 필드 `popularWithSimilarCustomers` → `categoryTags`로 교체** (이번 세션) — 사용자가 "쓸 일이 없다"고 판단해 제거 요청 + 대신 엑셀(`docs/care_procedure_template.xlsx`)에서 시술마다 O로 표시된 관심목표 칼럼을 응답에 노출해달라고 요청. `server/src/services/recommendations.service.ts`의 `getNextCareRecommendationDetail()`에서 "태그를 공유하는 다른 시술명 3개를 새로 계산"하던 로직을 삭제하고, 추천된 시술 자신의 `procedures.category_tags`(이미 시딩 시점에 엑셀 O 표시를 그대로 옮겨둔 값)를 그대로 `categoryTags` 필드로 반환하도록 단순화. `tsc --noEmit` 통과 확인. `docs/api-spec.md`/`.html`(v0.14→v0.15), `docs/db-schema.md`/`.html`, `server/README.md` changelog까지 문서 동기화 완료
+- **OpenAI 모델 최종 확정: `gpt-4.1-mini`** — 처음 `gpt-4o-mini` → "미니 말고 다른거" 요청으로 `gpt-5.4`로 변경(벤치마크상 가장 빠름) → **배포 후 실사용자 신고("홈/추천 화면 로딩 30초 넘게 안 뜸")로 심각한 버그 발견**: `gpt-5.4`가 계정 기준 **일일 50 요청 하드 레이트리밋**에 걸려있었고, OpenAI SDK 기본 재시도(`maxRetries:2`)가 앱 자체 재시도 루프와 중첩돼 24초까지 응답이 늘어짐 → `gpt-4.1-mini`로 최종 교체(레이트리밋 없음) + `server/src/config/openai.ts`에 `maxRetries:0` 추가로 SDK 재시도 자체를 꺼서 재발 방지. 벤치마크: 24132ms → 1381ms
+- **가비아 클라우드 배포 완료**(사용자와 단계별로 확인해가며 진행) — 서버 생성, Node/git 설치, `.env` 구성, pm2로 `server`(4000)/`server_admin`(4100) 구동, nginx로 `/`→4000, `/admin-api`→4100 경로 분기, 보안그룹 80/22 오픈, fail2ban으로 SSH 브루트포스 방어. `package.json`의 `main`/`start` 경로 버그(`dist/server.js`→`dist/src/server.js`, `rootDir` 설정 때문) 수정. 두 프론트팀에게 각자 baseUrl 문서 전달(`frontend-integration-guide.md`: Android용 `/api/v1`, `admin-api-spec.md`: admin-web용 `/admin-api/api/v1`)
+- **membership_usages 실버그 수정** — 실사용자 오세훈 계정에서 "이용권 사용이력이 안 뜬다" 신고 → claim 이관(`auth.service.ts`)과 재방문 시술기록 추가(`server_admin`) 양쪽에서 `membership_usages`를 안 채우던 버그, 기존 데이터 백필까지 완료
+- **`GET /visit-stats` 의미 변경** — 전날/금일 카운트를 "방문(시술기록 있음)"에서 **"신규 등록(환자번호 최초 발급)"**으로 변경(`server_admin/patients.service.ts`의 `getVisitStats`). 익일(예약)은 기존 방식 유지. `admin-api-spec.md`/`.html` v0.8로 반영
+- **사후관리 레퍼런스 콘텐츠 재작성** — dd.txt 피드백("내용이 너무 뻔하다") 반영해 `energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal` 5종 × 5구간(0-1/2-3/4-7/8-14/15-30) 문구를 전문적인 내용으로 재작성(`seed.ts`)
+- **`docs/prompt.docx`(사용자 팀 작성 프롬프트 재설계안) 전체 반영** — recommendation.prompt.ts(few-shot 예시 반전), questions.prompt.ts(`consultationLevel` 추가), dailyGuide.prompt.ts(근거 원칙 폐기, `precautions`/`aftercare`/`keyCare` 전면 교체) 세 프롬프트 전면 재작성 + 라이브 검증 완료
+- **문서 동기화 + 아티팩트 재발행** — `docs/api-spec.md`/`.html`, `docs/admin-api-spec.md`/`.html`, `docs/llm-prompt-design.md`/`.html`
+- commit+push 완료 (`1de2080`) — `docs/prompt.docx` 포함
 
 ## 현재 작업 중
-- (없음 — 위 작업 전부 커밋+푸시 완료)
+- **categoryTags 변경 아직 커밋 전** — 코드/문서 수정은 끝났고 typecheck도 통과했지만 아직 git commit/push 안 함(사용자 확인 대기)
+- **🚨 (이전 세션부터 이월, 이번 세션엔 미확인) 배포 서버(가비아) 코드가 최신 반영 안 됐을 가능성** — DB 마이그레이션 017/018은 공유 Supabase에 적용됐는데 배포 서버 코드가 예전 버전이라 컬럼 불일치로 `GET /aftercare/daily-guide` 503, `GET /home/summary`의 `aftercareCard: null` 발생했었음. 사용자에게 `git pull && npm run build && pm2 restart whs-server` 요청했었으나 **실행 여부 이번 세션에서 재확인 안 함**
 
 ## 다음 할 일
-- (신규) `reference_guides` 5종의 세분화된 경과일 문구는 여전히 전문가(의료진) 미검수 잠정 문구 — 검수 필요(기존 미검수 이슈에 세분화만 추가된 상태)
-- (신규) 추천 응답 지연(즉시→4~6초) 트레이드오프를 프론트(진정님)에게 전달했는지 확인 필요 — UI에 로딩 표시 필요할 수 있음
-- (신규) `procedures.description`을 엑셀 원문 그대로(줄바꿈 유지)로 바꿀지, 지금처럼 다듬어진 프로즈 버전으로 유지할지 — 사용자에게 물어봤으나 아직 답변 없음
-- 프론트 연동 중 추가로 나올 요청 배치 대응 대기(계속 이어질 수 있음)
-- 클라이언트(앱) 회원가입 화면에 전화번호 입력란 추가 필요 — 프론트엔드는 사용자 담당 아님, 전달만 필요
-- (README에 기록됨) 치료-부위 카탈로그가 시술기록 저장을 강제하지 않음 — 필요해지면 서버 레벨 검증 추가 검토
-- (README에 기록됨) 이용권 자동 이어쓰기 매칭 정확도 — `product_name`+`total_count` 완전 일치만 인식
-- 다중 클리닉 자동 연결은 이름+생년월일+전화번호 완전 일치로만 판별 — 클리닉마다 전화번호가 다르면(번호 변경 등) 연결 안 됨. 별도 대응 필요해지면 검토
-- 다중 클리닉 자동 연결 안내(SMS 등)는 로그만 남기는 스텁 — 실제 발송 수단 미정, 필요해지면 SMS/이메일 인프라 재검토 필요(비용 이슈로 한 번 제거된 이력 있음)
-- 가비아 클라우드 배포 — 크레딧 지급 조건 확인 후 진행 예정(아직 착수 전)
-- (이월) 프론트 담당자 GitHub Collaborator 초대 미발송
-- (이월) `.env` 비밀값을 프론트 담당자에게 git 아닌 채널로 전달
-- (이월) 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가(의료진) 검수
-- (이월) FCM 실제 발송 스케줄러 트리거 로직 미구현
-- (이월) refreshToken 만료 정책 확정 미완료
-- (이월) `docs/AAC_클리닉_자산_조사.docx` git 커밋 여부 여전히 미결정(untracked)
-- (이월) admin-api-example.html "G. 예약 목록/취소" 섹션 실브라우저 클릭 검증 아직 안 됨
+- categoryTags 변경 커밋 여부 사용자에게 확인 후 commit+push
+- **최우선(이월)**: 배포 서버 `git pull` + 빌드 + `pm2 restart whs-server` 완료 여부 확인 — 안 됐다면 지금 이 세션의 categoryTags 변경도 함께 배포해야 함
+- 배포 서버 재기동 후 실제 curl로 `GET /aftercare/daily-guide`/`GET /home/summary`/`GET /recommendations/next-care/{id}`(categoryTags 포함 여부) 재검증
+- `treatment_catalog`의 `botox` care_type 분리(근육형/피부형) — 아직 미착수
+- `treatment_catalog` 시술명 2건 오타/불일치(`튠 콩피에르®`, `레이저 제모 솔루션`) 실제 엑셀 원본과 맞출지 결정 필요
+- questions.prompt는 여전히 `reference_guides`(미검수 5종 포함)를 `reviewedGuide`로 주입 중 — 근거 원칙 바꿀지 미정
+- `reference_guides` 미검수 스텁 전문가 검수 여전히 필요
+- 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가 검수 (이월)
+- `docs/image.png`가 원인불명으로 변경돼 있음(171KB→13KB) — 여전히 미해결, 커밋 대상에서 계속 제외 중
+- 미추적 파일(8/18부터 관례상 커밋 제외 중): `docs/AAC_클리닉_자산_조사.docx`, `docs/WHS_After_Mate_Admin_revised.html` — 이번 세션에도 그대로 둠
+- FCM 실제 발송 스케줄러 트리거 로직 미구현 (이월)
+- refreshToken 만료 정책 확정 미완료 (이월)
 
 ## 주요 파일
-- `server/src/config/openai.ts` — **신규, 이번 세션**. `anthropic.ts` 대체, OpenAI 클라이언트 + `OPENAI_MODEL`(`gpt-5.4`) export
-- `server/src/services/llm/client.ts` — **이번 세션**. `callStructuredLlm`을 OpenAI function calling으로 재작성(`max_completion_tokens` 사용). daily-guide/questions/recommendation 3곳 전부 이 함수 재사용
-- `server/src/services/llm/recommendation.prompt.ts` — **신규, 이번 세션**. 추천 사유/설명 생성용 프롬프트+스키마
-- `server/src/services/recommendations.service.ts` — **이번 세션**. `generateRecommendationCopy`로 OpenAI 연동(실패 시 템플릿 폴백), `relatedRecentCares`에 `brand` 추가
-- `server/src/services/auth.service.ts` — **이번 세션 버그 수정**. `migrateEmrDataToApp`이 이제 이용권을 먼저 이관해 id 매핑을 만든 뒤 `care_records.membership_id`를 연결하고 `membership_usages`까지 채움
-- `server_admin/src/services/patients.service.ts` — **이번 세션 버그 수정**. `addCareRecord`가 claim된 환자 시술기록 추가 시 `membership_usages`도 기록, 삭제 시 정리
-- `server/src/services/careRecords.service.ts` — **이번 세션**. `membership.totalCount` 추가
-- `server/db/seed/seed.ts` — **이번 세션**. `reference_guides` 5종을 5구간(0-1/2-3/4-7/8-14/15-30)으로 세분화 + 옛 0-30 행 정리 로직
-- `docs/api-spec.md`/`.html` — v0.12(이번 세션 갱신). 아티팩트: `5cf6ed55-908b-4567-aa90-6357b35c52b6`
-- `docs/admin-api-spec.md`/`.html` — v0.7(이번 세션 갱신). 아티팩트: `743df35b-45c3-4c54-8214-75838c32181b`
-- `docs/llm-prompt-design.md`/`.html` — v0.2(이번 세션 갱신). 아티팩트: `48a5799c-bcb7-497e-b670-da211a14b1be`
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `756fcb7`)
+- `server/src/services/recommendations.service.ts` — **이번 세션**. `categoryTags` 필드로 교체(구 `popularWithSimilarCustomers`)
+- `server/src/services/careCatalog.service.ts` — `procedures.category_tags` 조회(`listAllProcedures`) — categoryTags 값의 실제 출처
+- `server/db/seed/seedCareCatalog.ts` — 엑셀 O 표시를 옮겨 담은 `PROCEDURES[].tags` 원본 데이터
+- `server/src/config/openai.ts` — `OPENAI_MODEL` 기본값 `gpt-4.1-mini`, `maxRetries: 0`
+- `server/src/services/llm/dailyGuide.prompt.ts` / `questions.prompt.ts` / `recommendation.prompt.ts` — `docs/prompt.docx` 반영 재작성
+- `server/db/migrations/017_add_question_consultation_level.sql`, `018_daily_guide_docx_redesign.sql` — 적용 완료(공유 Supabase)
+- `docs/api-spec.md`/`.html` — v0.15. `docs/admin-api-spec.md`/`.html` — v0.8. `docs/db-schema.md`/`.html`, `server/README.md`도 이번 세션에 함께 갱신
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `1de2080` — 이번 세션 변경분은 아직 미푸시)
+- 배포 서버: 가비아 클라우드 `1.201.116.115` — `~/Backend`에 git clone, pm2 프로세스명 `whs-server`(4000)/`server_admin` 쪽 프로세스명은 미기록, nginx가 `/admin-api` 접두사 라우팅
 
 ## 특이사항 / 결정 사항
-- **`OPENAI_MODEL` 기본값은 `gpt-5.4`로 확정** — 실측 벤치마크 근거(위 완료된 작업 참고). 향후 다른 GPT-5 계열 모델로 바꿀 일이 있으면, 그 모델이 추론모델(`gpt-5`/`gpt-5-mini` 같은)인지 먼저 확인할 것 — 추론모델은 강제 `tool_choice` 구조화 출력과 궁합이 안 좋아 우리 파이프라인(daily-guide/questions/recommendation 전부)에서 실패한다
-- **GPT-5 계열은 `max_tokens`가 아니라 `max_completion_tokens`를 써야 함** — 구형 모델(`gpt-4o` 등)에서도 `max_completion_tokens`가 호환되는 것 확인했으므로 코드에서는 이 파라미터명으로 통일
-- **`membership_usages`는 claim 이관(`auth.service.ts`)과 재방문 시술기록 추가(`server_admin`) 두 경로에서만 채워짐** — `emr_memberships`(claim 전 스테이징)는 대상 아님, FK가 앱 테이블 `memberships`만 참조하기 때문. 비슷한 "회원가입 이관 시 놓치기 쉬운 연결" 버그가 또 있을 수 있으니, claim 관련 새 기능을 만들 때 `migrateEmrDataToApp`을 참고 템플릿으로 삼을 것
-- **추천 LLM화로 인한 응답 지연(4~6초)은 사용자가 명확히 인지한 상태로 진행 결정** — "LLM으로 전환" 확답을 AskUserQuestion으로 받은 뒤 구현, 트레이드오프도 별도로 강조해 전달함
-- **git-bash Bash 도구로 한글 payload를 다루면 인코딩이 깨짐** — `curl -d '...한글...'`이나 heredoc 직접 사용 금지. Write 도구로 파일을 작성한 뒤 `curl --data-binary @file.json`으로 ASCII-only 커맨드라인만 Bash에 전달할 것
-- **Windows git-bash에서 python3는 MS Store stub이라 openpyxl 등 패키지가 없음** — `/c/Users/PC/anaconda3/python`을 명시적으로 써야 pandas/openpyxl 등 실제 패키지 사용 가능(이번 세션에 엑셀 대조 작업에서 확인)
-- **claude-in-chrome 브라우저 확장이 이 환경에 연결 안 됨** — UI 변경 실브라우저 검증이 필요할 때 다음 세션에서 다시 시도해볼 것
+- **`categoryTags`는 새 계산이 아니라 기존 데이터 노출** — `procedures.category_tags`는 원래도 추천 매칭(관심목표·최근시술 연관성 스코어링)에 쓰이고 있던 값이라, 이번 변경은 그 값을 상세 응답 필드로도 그대로 내려주기만 하면 됐음. 프론트/다른 코드에서 `popularWithSimilarCustomers`를 참조하는 곳 없음을 확인 후 제거
+- **daily-guide의 "검수된 가이드만 근거" 원칙을 폐기한 이유**: `reference_guides`의 `botox` care_type이 근육 주입형과 피부층 주입형이라는 서로 다른 시술을 같은 문구로 묶고 있었음 — LLM이 시술명·환자 정보를 보고 직접 판단하게 하는 쪽으로 설계 변경
+- **API 필드명 변경은 하위호환 없음이 이 프로젝트의 관례** — `mustAvoid`/`basicCare`→`precautions`/`aftercare`, 이번 `popularWithSimilarCustomers`→`categoryTags`도 동일 기조. Android 프론트가 구 필드명을 참조 중이면 갱신 필요(전달 여부 미확인)
+- **배포 서버에 DB 마이그레이션과 코드 배포 사이에 시차가 생기면 바로 장애로 이어짐** — 실제로 겪은 사례 있음. 스키마 변경 수반 작업은 "마이그레이션 적용 확인 → 즉시 배포 서버도 함께 갱신"을 한 세트로 처리할 것
+- **커밋 전 항상 사용자에게 확인** — 세션 규칙으로 고정(사용자가 명시적으로 교정한 적 있음). 원인 불명 변경분(`docs/image.png`)은 임의로 커밋에 포함하지 않고 먼저 물어봄
+- 가비아 서버 root 비밀번호는 어디에도 기록돼 있지 않음(의도적으로 저장 안 함) — 필요시 가비아 콘솔에서 직접 확인해야 함
 - 세션 재시작 시 이 파일이 자동으로 브리핑됨(글로벌 CLAUDE.md 설정)

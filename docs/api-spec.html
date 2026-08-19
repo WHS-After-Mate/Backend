@@ -467,7 +467,8 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 OpenAI API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다. 2026-08-18부터 Anthropic Claude에서 전환), 다음 관리 추천 MVP(추천 사유/설명도 v0.12부터 OpenAI 기반). 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.14</span>
+      <span class="badge">v0.15</span>
+      <span class="badge outline">추천 상세 categoryTags로 교체(popularWithSimilarCustomers 제거)</span>
       <span class="badge outline">daily-guide/questions 프롬프트 전면 재설계</span>
       <span class="badge outline">OpenAI gpt-4.1-mini 전환</span>
       <span class="badge outline">추천 사유·설명 OpenAI 생성</span>
@@ -883,7 +884,7 @@
                 <tr><td class="mono">relatedRecentCares[].careName</td><td class="mono">string</td><td>—</td></tr>
                 <tr><td class="mono">relatedRecentCares[].daysElapsed</td><td class="mono">number</td><td>—</td></tr>
                 <tr><td class="mono">relatedRecentCares[].brand</td><td class="mono">string</td><td><span class="done-badge">v0.12</span> 이 관리를 받은 클리닉</td></tr>
-                <tr><td class="mono">popularWithSimilarCustomers</td><td class="mono">string[]</td><td><span class="done-badge">v0.8</span> "비슷한 고민의 다른 관리" — 추천 시술과 category_tags를 공유하는 다른 시술명(최대 3개, 사업장 무관). 실제 카탈로그 기반으로 교체(구 care_type 규칙 매핑 폐기)</td></tr>
+                <tr><td class="mono">categoryTags</td><td class="mono">string[]</td><td><span class="done-badge">v0.15</span> 추천된 시술이 다루는 관심목표(procedures.category_tags) — care_procedure_template.xlsx에서 O로 표시된 항목 그대로. 이전 popularWithSimilarCustomers(태그 공유 다른 시술명) 미사용으로 교체</td></tr>
                 <tr><td class="mono">clinicContacts</td><td class="mono">object[]</td><td><span class="done-badge">v0.8</span> 추천 시술의 사업장(businessId) 연락처 1건. businesses 테이블 기반으로 교체(구: 최근 이력 brand distinct)</td></tr>
                 <tr><td class="mono">clinicContacts[].brand</td><td class="mono">string</td><td>admin_accounts.brand/care_records.brand와 동일 값</td></tr>
                 <tr><td class="mono">clinicContacts[].label</td><td class="mono">string</td><td>화면에 표시할 클리닉명(카카오톡 상담 채널명)</td></tr>
@@ -1395,7 +1396,7 @@
             <tr><td class="mono">Membership</td><td class="mono">id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, <b>usageHistory[]</b> <span class="done-badge">v0.5</span></td></tr>
             <tr><td class="mono">AftercareGuide</td><td class="mono">id, careType, elapsedRangeStart, elapsedRangeEnd, precautions[], aftercare[], generatedAt, generatedBy, cacheExpiresAt, <b>isToday</b> <span class="done-badge">v0.5</span>, <b>keyCare</b> <span class="done-badge">v0.14</span> (필드명 mustAvoid/basicCare→precautions/aftercare로 변경)</td></tr>
             <tr><td class="mono">Question</td><td class="mono">id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, <b>consultationLevel</b> <span class="done-badge">v0.14</span>, createdAt</td></tr>
-            <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,<b>brand</b> <span class="done-badge">v0.12</span>}, popularWithSimilarCustomers[], clinicContacts[] <span class="done-badge">v0.5</span>, <b>businessId</b> <span class="done-badge">v0.8</span></td></tr>
+            <tr><td class="mono">Recommendation</td><td class="mono">id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,<b>brand</b> <span class="done-badge">v0.12</span>}, <b>categoryTags[]</b> <span class="done-badge">v0.15</span>, clinicContacts[] <span class="done-badge">v0.5</span>, <b>businessId</b> <span class="done-badge">v0.8</span></td></tr>
             <tr><td class="mono">Procedure</td><td class="mono">id, businessId, name, categoryTags[], description <span class="done-badge">v0.8 — procedures 테이블, 실제 시술 46종</span></td></tr>
             <tr><td class="mono">Business</td><td class="mono">id, name, brand, talkChannelLabel, talkChannelUrl, phone <span class="done-badge">v0.8 — businesses 테이블, 사업장 3곳</span></td></tr>
             <tr><td class="mono">Profile</td><td class="mono">userId, name, email, interestGoals[], <b>birthDate, phone</b> <span class="done-badge">v0.5</span></td></tr>
@@ -1538,6 +1539,6 @@
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.14 MVP · 2026-08-19 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.15 MVP · 2026-08-19 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

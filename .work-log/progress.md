@@ -1,3 +1,37 @@
+## 2026-08-19 (이어서, 새 세션)
+- 사용자가 "popularWithSimilarCustomers 이게 뭐지?" 질문 → 코드/문서 확인해 설명(추천된 시술과 category_tags를 공유하는 다른 시술명 최대 3개, v0.8부터 실카탈로그 기반)
+- 사용자가 "쓸 일이 없어서 제거해도 될 것 같다, 대신 엑셀에 시술마다 O 표시된 열(탄력/색소침착 등)이 들어가게 해달라"고 요청 → `docs/care_procedure_template.xlsx`를 python openpyxl로 직접 읽어 구조 확인(사업장 3곳 × 시술 46건, concernTag 10종 × O/공백). `seedCareCatalog.ts`의 `PROCEDURES[].tags`가 이미 이 O 표시를 그대로 옮긴 값이라 새 계산 없이 그대로 노출하면 됨을 확인
+- `server/src/services/recommendations.service.ts`의 `getNextCareRecommendationDetail()` 수정: `popularWithSimilarCustomers`(다른 시술명 3개 계산 로직) 삭제 → `categoryTags`(추천된 시술 자신의 `procedures.category_tags`)로 교체. `SIMILAR_PROCEDURES_LIMIT` 상수도 함께 제거. `tsc --noEmit` 통과 확인
+- 프론트/다른 코드에 `popularWithSimilarCustomers` 참조 없음을 grep으로 확인 후 안전하게 제거 가능 판단
+- 문서 동기화: `docs/api-spec.md`/`.html`(v0.14→v0.15, 응답 예시·필드표·엔티티 요약표 갱신), `docs/db-schema.md`/`.html`("전용 테이블 없음" 설명 갱신), `server/README.md`(구현 changelog 한 줄 추가)
+- 사용자가 "어디에 적용시켰어? 바꾼 코드 알려줘봐" → `git diff`로 실제 코드 diff 제시(문서 변경과 구분해서 설명)
+- 사용자가 "categoryTags 이건 어디있어" → DB 컬럼(`procedures.category_tags`, 마이그레이션 015) → 시드 데이터(`seedCareCatalog.ts`) → 조회 서비스(`careCatalog.service.ts`의 `listAllProcedures`) → 응답 조립(`recommendations.service.ts`) 순으로 전체 경로 설명
+- 아직 commit/push 전 상태 — `/기록저장`으로 work-log만 우선 정리
+
+## 2026-08-19
+- 이전 세션에서 압축(compaction)되어 이어진 세션 — 가비아 배포, 실사용자(오세훈) membership_usages 버그 수정, visit-stats 의미 변경, 사후관리 레퍼런스 콘텐츠 재작성, 그리고 배포 후 발견된 24초 지연 장애(gpt-5.4 일일 50회 레이트리밋 + SDK/앱 재시도 중첩)를 gpt-4.1-mini 교체+`maxRetries:0`으로 수정한 것까지 이어받은 상태에서 시작
+- 사용자가 "다 했어 명세서 같은거 최신화 하고 /기록저장" 요청 → 문서 동기화부터 시작. `admin-api-spec.md`/`.html`의 `GET /visit-stats` 섹션이 여전히 옛 "방문 기준" 설명이던 걸 발견해 "신규 등록 기준"으로 재작성(v0.8), `api-spec.md`(v0.13, 모델 변경+추천 필드 제약 구체화), `llm-prompt-design.md`(v0.3, 모델/레이트리밋/제약 반영)까지 동기화
+- 사용자가 "dailyguide프롬프트가 뭔가요" 질문 → 설명 후, "docs에 프롬포트 문서 넣었어 확인해봐" 요청 → `docs/prompt.docx`(python-docx로 텍스트 추출) 확인 — recommendation/questions/dailyGuide 세 프롬프트를 재설계한 문서였음을 발견. 코드와 대조해 3가지 핵심 차이 정리해 보고:
+  1. recommendation: 기존 few-shot 모범 예시가 실제로는 "피해야 할 예시"였음(추천 이유가 뻔했던 원인)
+  2. questions: `consultationLevel`(NONE/RECOMMENDED/URGENT) 신규 축 — 스키마 변경 필요
+  3. dailyGuide: "검수된 가이드만 근거" 원칙 자체를 폐기하는 설계 — 가장 큰 변경
+- 사용자가 "recommendation부터 먼저 적용하자" → `recommendation.prompt.ts` 시스템 프롬프트만 교체(스키마/컨텍스트 구조는 기존과 동일해서 문구만 바뀜), typecheck 통과 확인
+- "다음 항목 가보자" → questions.prompt 적용: `consultationLevel` 스키마 추가, 마이그레이션 `017_add_question_consultation_level.sql` 작성(사용자가 Supabase에서 직접 적용) + `aftercare.service.ts`/`listQuestions`에 반영
+- dailyGuide는 원칙 자체가 바뀌는 큰 변경이라 AskUserQuestion으로 반영 수준 확인 → "전면 반영을 해야돼 불일치 부분이 많아서" 답변 받음 → 전면 재작성 착수:
+  - `dailyGuide.prompt.ts` 전체 재작성(`reviewedGuide` 컨텍스트 제거, `aftercare`/`precautions`/`keyCare` 출력)
+  - 마이그레이션 `018_daily_guide_docx_redesign.sql`(컬럼 rename `must_avoid`→`precautions`, `basic_care`→`aftercare`, `key_care` 신규 추가)
+  - `aftercare.service.ts`(`generateViaLlm`/`getReferenceGuidePreview`/`getOrGenerateDailyGuide`/`CachedGuideRow` 전부 수정, `isValidGuideArrays`/`fallbackKeyCare` 헬퍼 추가), `home.service.ts`(`aftercareCard.cautions` 소스 변경), `aftercare.routes.ts` 주석 갱신
+  - 로컬 dev 서버로 실라이브 테스트 중 **stale 프로세스 문제 발견**(포트 4000을 예전 코드로 점유 중이던 프로세스가 있어 결과가 꼬임) → 종료 후 재기동해서 정상 테스트 진행
+  - 마이그레이션 적용 시점 착오로 한 번 실패(017만 적용됐다고 착각하고 018 미적용 상태에서 테스트 시도 → `GUIDE_GENERATION_FAILED`) → 사용자에게 018 적용 요청해 해결
+  - 최종 라이브 검증 성공: daily-guide가 알러지 정보 반영해 `aftercare`/`precautions`(각 3개)/`keyCare` 정상 생성, 비-오늘 탭 폴백도 정상, `GET /home/summary` 연동 확인. questions도 애매한 증상 질문에 `consultationLevel: "RECOMMENDED"` 정상 판정 확인
+- **엑셀(`docs/care_procedure_template.xlsx`) 시술 시트 vs `reference_guides`/`treatment_catalog` 크로스체크**(사용자 요청, dailyGuide 작업 중간에 병행) — `botox` care_type이 근육 주입형(`초음파™ 보톡스`)과 피부층 주입형(`스킨 보톡스`)이라는 서로 다른 시술을 같은 문구로 묶고 있는 구조적 문제 발견. 이 발견이 dailyGuide "전면 반영" 결정의 근거가 됨. 부수적으로 치료명 2건 표기 불일치(`튠 콩피에르®`/`레이저 제모 솔루션`)도 발견(미해결)
+- 문서 동기화 2차 — `api-spec.md`(v0.13→v0.14, daily-guide/questions 필드 변경 반영), `llm-prompt-design.md`(v0.3→v0.4, 세 프롬프트 재설계 전체 반영 + "왜 바뀌었나" 설명 추가), 각 `.html` 카운터파트도 동일 반영
+- commit+push 전 `git status` 점검 중 `docs/image.png`가 원인불명으로 171KB→13KB 변경된 것 발견 → 사용자에게 보고, "그냥 놔둬"로 결정(커밋 제외). `docs/prompt.docx`는 "같이 커밋해줘"로 포함 결정
+- commit+push 완료 (`1de2080`)
+- 사용자가 "배포 서버에도 반영 됐는지 확인해줘" 요청 → 배포 서버(`1.201.116.115`)에 직접 curl로 확인한 결과 **실제 장애 발견**: DB 마이그레이션은 공유 Supabase에 이미 적용됐는데 배포 서버 코드는 예전 버전이라 `GET /aftercare/daily-guide`가 `503`, `GET /home/summary`의 `aftercareCard`가 `null`로 깨져 있음 → 사용자에게 `git pull && npm run build && pm2 restart whs-server` 요청
+- 사용자가 "터미널 root 비밀번호가 뭐였지" 질문 → work-log 전체 검색해봤으나 어디에도 기록 안 돼 있음(의도적으로 저장 안 함) 확인 후, 가비아 콘솔에서 직접 확인하도록 안내
+- work-log 정리 — `/기록저장`으로 저장 (배포 서버 반영 여부는 아직 미확인 상태로 다음 세션에 이어감)
+
 ## 2026-08-18 (2, 신규 세션)
 - 새 세션 시작, 사용자가 "claude api를 openai api로 바꾸고 싶다(해커톤 무료 크레딧)"고 요청
 - **LLM 프로바이더 전환** — `@anthropic-ai/sdk` 제거, `openai` SDK 설치. `config/anthropic.ts` 삭제 → `config/openai.ts` 신규, `env.ts`의 `ANTHROPIC_API_KEY`/`MODEL` → `OPENAI_API_KEY`/`MODEL`, `llm/client.ts`의 `callStructuredLlm`을 Anthropic tool_use → OpenAI function calling(`tool_choice`)으로 재작성(다른 코드는 인터페이스 그대로라 무변경). `.env`/`.env.example`/`README.md`/관련 docs 갱신

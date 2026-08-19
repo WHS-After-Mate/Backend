@@ -16,7 +16,6 @@ import {
 const DISCLAIMER = "의료적 진단이 아니며 최종 관리는 전문가 상담 후 결정하세요.";
 const RECENT_CARES_FOR_MATCH = 10; // 최근 시술 이력에서 categoryTags를 뽑아 연관성 가중치를 매길 때 볼 개수
 const RELATED_CARES_LIMIT = 3;
-const SIMILAR_PROCEDURES_LIMIT = 3;
 
 // 2026-08-17 — docs/care_recommendation_data_guide.md 설계로 교체 (기존엔 고객이 "이미 보유한
 // 이용권(memberships.availableCareNames)" 안에서만 추천 후보를 골랐음). 이제는 실제 사업장 전체
@@ -174,13 +173,8 @@ export async function getNextCareRecommendationDetail(userId: string, recommenda
   }));
 
   const recommendedProcedure = allProcedures.find((p) => p.name === recommendation.careName);
-  const recommendedTags = new Set(recommendedProcedure?.category_tags ?? []);
-
-  // "비슷한 고민의 다른 관리" — 추천된 시술과 category_tags를 공유하는 다른 시술 후보
-  const popularWithSimilarCustomers = allProcedures
-    .filter((p) => p.name !== recommendation.careName && p.category_tags.some((tag) => recommendedTags.has(tag)))
-    .slice(0, SIMILAR_PROCEDURES_LIMIT)
-    .map((p) => p.name);
+  // 엑셀(care_procedure_template.xlsx)에서 시술마다 O로 표시된 관심목표 칼럼 — procedures.category_tags 그대로 노출
+  const categoryTags = recommendedProcedure?.category_tags ?? [];
 
   const business = allBusinesses.find((b) => b.id === recommendation.businessId);
   const clinicContacts = business
@@ -214,7 +208,7 @@ export async function getNextCareRecommendationDetail(userId: string, recommenda
     ...recommendation,
     detailDescription,
     relatedRecentCares,
-    popularWithSimilarCustomers,
+    categoryTags,
     clinicContacts,
   };
 }

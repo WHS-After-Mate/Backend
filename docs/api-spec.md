@@ -1,7 +1,9 @@
-# WHS After Mate — API 명세서 (v0.14, MVP)
+# WHS After Mate — API 명세서 (v0.15, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.15 변경 (2026-08-19): `GET /recommendations/next-care/{recommendationId}` 응답에서 `popularWithSimilarCustomers`(쓰이지 않아 제거) 대신 **`categoryTags`**를 내려준다 — 추천된 시술이 `care_procedure_template.xlsx`에서 O로 표시된 관심목표 칼럼(= `procedures.category_tags`) 그대로. 하위호환 없음.
 
 v0.14 변경 (2026-08-19): `docs/prompt.docx` 설계로 LLM 프롬프트 3곳 전면 재작성.
 - **`GET /aftercare/daily-guide` 응답 필드명·설계 변경(하위호환 없음)**: `mustAvoid`/`basicCare` → **`precautions`/`aftercare`**로 이름이 바뀌고, **`keyCare`**(오늘 가장 중요한 한 줄 요약) 신규 추가. 이전엔 검수된 가이드(`reference_guides`) 원문을 그대로 재서술했지만, 이제는 시술·환자 정보를 근거로 LLM이 직접 종합해서 생성한다(회복 주요 기간이 지난 시점이면 `aftercare`/`precautions`는 빈 배열이 되고 `keyCare`에 "일상 복귀 가능" 취지 안내). `reference_guides`는 LLM 실패 시 폴백 용도로만 남음.
@@ -322,7 +324,7 @@ accessToken 재발급.
   "relatedRecentCares": [
     { "careRecordId": "C-2001", "careName": "울쎄라피 프라임", "daysElapsed": 10, "brand": "AMRED CLINIC" }
   ],
-  "popularWithSimilarCustomers": ["튠 콩피에르(Tune Confier)", "울쎄라피 프라임", "써마지 FLX"],
+  "categoryTags": ["리프팅·탄력", "모공·피지 관리", "색소침착 개선"],
   "clinicContacts": [
     { "brand": "AMRED CLINIC", "label": "엠레드 클리닉", "talkChannelUrl": "https://pf.kakao.com/_jyzAT/chat", "phone": "02-543-3110" }
   ]
@@ -336,7 +338,7 @@ accessToken 재발급.
 | `relatedRecentCares[].careName` | string | |
 | `relatedRecentCares[].daysElapsed` | number | |
 | `relatedRecentCares[].brand` | string | `(v0.12)` 이 관리를 받은 클리닉 — 다중 클리닉 자동 연결로 한 계정이 여러 클리닉 이력을 가질 수 있어 추가 |
-| `popularWithSimilarCustomers` | string[] | `(v0.8)` "비슷한 고민의 다른 관리" — 추천된 시술과 `category_tags`를 하나 이상 공유하는 다른 시술명(최대 3개, 사업장 무관). 기존엔 `care_type`별 사전 정의 태그 매핑이었으나 실제 카탈로그 기반으로 교체 |
+| `categoryTags` | string[] | `(v0.15)` 추천된 시술이 다루는 관심목표(`procedures.category_tags`) — `concernTags` 고정 10종 중 해당 시술 엑셀(`care_procedure_template.xlsx`)에 O로 표시된 항목 그대로. 이전엔 이 자리에 `popularWithSimilarCustomers`(태그를 공유하는 다른 시술명 목록)가 있었으나 미사용으로 교체 |
 | `clinicContacts` | object[] | `(v0.8)` 추천된 시술의 사업장(`businessId`) 연락처 1건. 기존엔 사용자의 최근 관리 이력 `brand` distinct 목록이었으나, 추천 시술을 보유한 사업장 정보로 교체(`businesses` 테이블) |
 | `clinicContacts[].brand` | string | `admin_accounts.brand`/`care_records.brand`와 동일 값(예: `"AMRED CLINIC"`) |
 | `clinicContacts[].label` | string | 화면에 표시할 클리닉명(카카오톡 상담 채널명) |
@@ -752,7 +754,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
 | AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, precautions[], aftercare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)*, **keyCare** *(v0.14, 필드명도 mustAvoid/basicCare→precautions/aftercare로 변경)* |
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, **consultationLevel** *(v0.14)*, createdAt |
-| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,**brand** *(v0.12)*}, popularWithSimilarCustomers[], clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
+| Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,**brand** *(v0.12)*}, **categoryTags[]** *(v0.15, 이전 popularWithSimilarCustomers 대체)*, clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
 | Procedure | id, businessId, name, categoryTags[], description *(v0.8, `procedures` 테이블 — 46개 실제 시술 카탈로그)* |
 | Business | id, name, brand, talkChannelLabel, talkChannelUrl, phone *(v0.8, `businesses` 테이블 — 사업장 3곳)* |
 | Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)* |

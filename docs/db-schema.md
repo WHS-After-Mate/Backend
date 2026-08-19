@@ -463,7 +463,7 @@ create table public.admin_accounts (
 | **전화 인증은 미구현으로 제거** | 국내 SMS 업체 연동 비용이 MVP 범위 밖이라 판단, `phone_verifications` 테이블·`phoneVerifiedToken` 흐름 전부 삭제(`004_remove_phone_verification.sql`) |
 | **알러지·의사코멘트는 별도 테이블(`medical_profiles`)로 분리** | `profiles`(앱 계정 데이터)와 성격이 달라 접근 권한·감사 로그를 다르게 관리하기 위함. EMR 동기화 대상이라는 점도 명확히 구분 |
 | **의료정보 접근은 감사 로그(`medical_data_access_log`) 필수** | 알러지·의사 코멘트가 민감정보라 "누가/언제/왜" 봤는지 남겨야 함. LLM이 컨텍스트로 읽을 때도 기록 |
-| **`relatedRecentCares`/`popularWithSimilarCustomers`/`clinicContacts` 전용 테이블 없음** *(v0.3)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, `care_type`별 사전 정의 매핑, `care_records.brand` distinct 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
+| **`relatedRecentCares`/`categoryTags`/`clinicContacts` 전용 테이블 없음** *(v0.3, categoryTags는 v0.15에서 popularWithSimilarCustomers를 대체)* | 추천 상세 화면(`api-spec.md` v0.5)의 확장 필드들이지만 각각 `care_records` 최신 N건 조회, 추천된 시술의 `procedures.category_tags` 그대로 노출, `businesses` 연락처 조회로 즉석 계산 가능해 저장할 필요가 없음 — 기존 "추천 테이블 없음" 결정과 같은 이유 |
 | **비밀번호 재설정/변경 전용 테이블 없음** *(v0.3)* | Supabase Auth가 재설정 토큰 발급·검증·비밀번호 해싱을 전담. 전화 인증과 달리 국내 제약이 없어 자체 구현 불필요 |
 | **가상 EMR 스테이징 테이블은 `auth.users`와 완전히 분리** *(v0.4)* | `emr_patients` 등 4종은 `server_admin`이 다루는 "계정 연결 전" 데이터라 고객용 테이블(`profiles`/`care_records`/`memberships`)과 독립적으로 존재. claim(회원가입) 시점에만 1회성으로 실제 테이블로 복사되며, 이후 EMR 테이블에 추가된 데이터는 자동 동기화되지 않는다(의도적 범위 제한 — 실제 서비스라면 배치 ETL 필요) |
 | **관리자 로그인은 Supabase Auth가 아니라 자체 bcrypt+JWT** *(v0.6, 008)* | 클리닉 계정 3개가 고정이라 가입 플로우 자체가 필요 없고(시드 스크립트로만 생성), 고객용 `auth.users`와 완전히 다른 성격의 인증(브랜드별 격리)이라 별도 테이블+토큰 체계로 분리하는 편이 단순함 |
