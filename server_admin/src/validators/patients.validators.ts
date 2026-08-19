@@ -32,9 +32,9 @@ export const updatePatientSchema = z.object({
 export const createCareRecordSchema = z
   .object({
     careName: z.string().min(1),
-    // /aftercare/daily-guide가 reference_guides에서 찾는 키. 목록 밖 값도 저장은 되지만
-    // claim 이후 daily-guide 조회 시 404 GUIDE_NOT_AVAILABLE로 폴백된다(server-code-guide.html 참고).
-    careType: z.string().min(1),
+    // careType은 더 이상 클라이언트가 입력하지 않는다 — treatment_catalog에서 careName으로 자동
+    // 조회한다(patients.service.ts의 lookupCareType 참고). 카탈로그에 없는 시술명이면 null로
+    // 저장되고, 그 경우 /aftercare/daily-guide는 404 GUIDE_NOT_AVAILABLE로 폴백된다.
     careDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     // 관리 상세 화면(와이어프레임 11번)처럼 한 시술에 여러 부위가 동시에 해당할 수 있어 중복 선택 가능.
     // 고정 목록(GET /body-parts) 밖의 값은 거부한다.

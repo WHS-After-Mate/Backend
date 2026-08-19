@@ -146,9 +146,10 @@
     항상 1:1이라, 아래 라디오로 <b>① 이미 갖고 있는 이용권에서 1회 차감</b>하거나
     <b>② 직접 입력으로 새 이용권을 만들면서 1회차를 바로 소비</b>하는 것 중 하나만 고른다(실제 admin-web
     화면은 라디오 버튼 UI지만, 이 테스트 페이지는 같은 의미를 select로 단순화했다).
-    <code>careType</code>은 <code>/aftercare/daily-guide</code>가 검수 가이드를 찾는 매칭 키다.
-    현재 시드 데이터는 <code>peeling</code>/<code>laser_toning</code> 2종만 지원하므로, 나중에 이 환자로
-    가입해 daily-guide까지 테스트해보려면 둘 중 하나를 써야 한다.
+    <code>careType</code>은 더 이상 여기서 입력하지 않는다 — <code>treatment_catalog</code>에서
+    careName으로 자동 조회된다(카탈로그에 없는 이름이면 null로 저장돼 daily-guide가 404로 폴백됨).
+    나중에 이 환자로 가입해 daily-guide까지 테스트해보려면 <code>treatment_catalog</code>에 등록된
+    시술명(예: care_type이 <code>peeling</code>/<code>laser_toning</code>인 것)을 careName에 그대로 써야 한다.
     이 환자가 이미 회원가입(claim)한 상태여도 추가할 수 있다 — 그 경우 <code>emr_care_records</code>가
     아니라 실제 <code>care_records</code>/<code>memberships</code>에 바로 기록된다(응답의
     <code>source</code> 필드로 <code>"emr"</code>/<code>"app"</code> 어느 쪽인지 확인 가능).
@@ -160,9 +161,6 @@
 
   <label>careName (관리명)</label>
   <input id="careName" value="울쎄라 300샷" />
-
-  <label>careType (reference_guides에 검수 등록된 값만 선택 가능 — GET /care-types로 채워짐)</label>
-  <select id="careType"></select>
 
   <label>careDate</label>
   <input id="careDate" type="date" value="2026-08-01" />
@@ -321,29 +319,8 @@
     $("loginPassword").value = `${e.target.value}1234`;
   });
 
-  // GET /care-types 호출 → 응답의 careTypes 배열로 D 화면의 <select id="careType"> 옵션을 채운다.
-  // 로그인 직후 자동으로 한 번 실행된다(아래 0단계 로그인 성공 콜백에서 호출).
-  async function loadCareTypes() {
-    try {
-      // GET 요청은 method를 안 써도 된다(fetch 기본값이 GET) — headers만 넘긴다.
-      const res = await fetch(adminUrl("/care-types"), { headers: authHeaders() });
-      const data = await res.json(); // 응답 body(JSON 문자열)를 JS 객체로 파싱
-      const select = $("careType");
-      select.innerHTML = ""; // 기존 옵션 비우고
-      for (const type of data.careTypes ?? []) {
-        // <option value="peeling">peeling</option> 같은 요소를 코드로 하나씩 만들어 넣는다
-        const opt = document.createElement("option");
-        opt.value = type;
-        opt.textContent = type;
-        select.appendChild(opt);
-      }
-    } catch (err) {
-      console.error("careType 목록 로드 실패:", err);
-    }
-  }
-
   // GET /body-parts 호출 → 관리 부위 고정 목록으로 체크박스를 동적으로 만든다(중복 선택 가능이라
-  // <select>가 아니라 체크박스 여러 개로 구현했다). loadCareTypes와 흐름은 완전히 동일하고,
+  // <select>가 아니라 체크박스 여러 개로 구현했다).
   // <option> 대신 "체크박스+글자" 한 쌍(<label>)을 반복해서 만든다는 점만 다르다.
   async function loadBodyParts() {
     try {
@@ -402,7 +379,6 @@
         // 로그인 성공 직후 세 가지를 한꺼번에 미리 불러온다 — 사용자가 D/B 섹션까지 스크롤했을 때
         // 이미 데이터가 채워져 있도록. 세 함수 다 fetch가 끝날 때까지 안 기다리고(await 없음)
         // 그냥 실행만 시켜두는 "fire and forget" 방식이다(로그인 자체를 지연시키지 않으려는 의도).
-        loadCareTypes();
         loadBodyParts();
         loadPatients();
       }
@@ -637,7 +613,6 @@
         headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           careName: $("careName").value,
-          careType: $("careType").value,
           careDate: $("careDate").value,
           partOfBody,
           basicAftercareGuide: [],

@@ -42,13 +42,13 @@ npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/api/v1/auth/login` | 클리닉 관리자 로그인 (유일하게 인증 불필요) |
-| GET | `/api/v1/care-types` | 시술기록 추가 시 고를 수 있는 careType 목록 (reference_guides에 검수 등록된 값만) |
+| GET | `/api/v1/care-types` | 치료-부위 카탈로그 등록/수정 시 고를 수 있는 careType 목록 (reference_guides에 검수 등록된 값만, 2026-08-19부터 시술기록 추가에는 안 쓰임 — 아래 참고) |
 | GET | `/api/v1/body-parts` | 시술기록 추가 시 고를 수 있는 관리 부위 목록 (중복 선택 가능, 23개 고정) |
 | POST | `/api/v1/patients` | 환자 등록 (이름/생년월일/전화번호 + 선택: 기타사항) → 환자번호만 발급. 같은 클리닉에 이름+생년월일+전화번호가 일치하는 환자가 이미 있으면 새로 만들지 않고 재사용(기타사항은 다르면 갱신) 후 `200`+`duplicate: true` |
 | GET | `/api/v1/patients?search=` | 환자 목록/검색 (로그인한 클리닉 소유 환자만, 이름·전화번호·환자번호 부분일치) |
 | GET | `/api/v1/patients/:patientId` | 환자 상세 (프로필 + 시술기록 + 이용권, claim 여부와 무관하게 항상 기록 가능) |
 | PATCH | `/api/v1/patients/:patientId` | 환자 프로필 수정 |
-| POST | `/api/v1/patients/:patientId/care-records` | 시술 기록 추가 — `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접 입력). `totalSessions`는 같은 치료명+같은 횟수권으로 아직 유효한 이용권이 있으면 이어서 차감, 없으면 새로 생성(만료일=`careDate`+1년). claim 여부에 따라 스테이징(`emr_*`) 또는 실제 앱 테이블에 기록 |
+| POST | `/api/v1/patients/:patientId/care-records` | 시술 기록 추가 — `membershipId`(기존 이용권 차감) 또는 `totalSessions`(직접 입력). `totalSessions`는 같은 치료명+같은 횟수권으로 아직 유효한 이용권이 있으면 이어서 차감, 없으면 새로 생성(만료일=`careDate`+1년). claim 여부에 따라 스테이징(`emr_*`) 또는 실제 앱 테이블에 기록. `careType`은 요청에 없음 — `treatment_catalog`에서 `careName`으로 자동 조회(2026-08-19) |
 | DELETE | `/api/v1/care-records/:careRecordId` | 시술 기록 삭제 — 연결된 이용권도 함께 정리(유일 참조면 이용권 삭제, 아니면 `used_count` -1). 별도 "이용권 삭제" API는 없음 |
 | GET | `/api/v1/visit-stats` | 전날/금일(KST) 방문 + 익일 예약 고객 수 (중복 제거) |
 | GET | `/api/v1/reservations?date=` | 특정 날짜(미지정 시 오늘)의 예약 목록(`careRecordId`+환자명+전화번호). 취소는 별도 API 없이 이 목록에서 얻은 `careRecordId`로 기존 `DELETE /care-records/:careRecordId`를 그대로 호출 |
@@ -68,9 +68,11 @@ npm run seed:admins     # 클리닉 3계정(amred/derna/wim) 생성 — 최초 1
   트레이드오프로 채택됨, 실서비스 전환 시 재검토 필요
 - 이용권(`memberships`)은 클리닉별로 격리되지 않는다 — 회원가입한 고객의 이용권은 어느 클리닉에서 만들었든 전부
   조회·차감 대상에 뜬다(실제 `memberships` 테이블에 `brand` 컬럼 자체가 없음)
-- **치료-부위 카탈로그(`treatment_catalog`)가 시술기록 저장을 강제하지 않는다** — `POST .../care-records`는
-  카탈로그와 무관하게 `careName`/`careType`/`partOfBody`를 그대로 받는다. 프론트가 카탈로그로 자동완성을 붙이더라도
-  서버는 그 값이 카탈로그와 일치하는지 검증하지 않음(카탈로그에 없는 치료명도 그대로 등록됨)
+- **치료-부위 카탈로그(`treatment_catalog`)에 없는 치료명이면 `care_type`이 `null`로 저장된다** (2026-08-19) —
+  `POST .../care-records`는 더 이상 `careType`을 받지 않고 `treatment_catalog`에서 `careName`으로 자동 조회한다.
+  정확히 일치하는 등록이 없으면(오타·표기 불일치 포함) 시술기록 자체는 그대로 등록되지만 `care_type: null`로
+  저장되고, 그 시술기록의 고객용 `/aftercare/daily-guide`는 항상 404 `GUIDE_NOT_AVAILABLE`로 실패한다.
+  `partOfBody`(관리 부위)는 이전과 동일하게 카탈로그와 무관한 자유 선택
 - **이용권 만료일은 재계산되지 않는다** — 자동 이어쓰기로 기존 이용권을 계속 써도 `expires_at`은 최초 생성 시점
   값 그대로 유지된다("이어서 쓰면 만료일도 연장"은 이번 범위 밖)
 - **이용권 자동 이어쓰기 매칭이 정확히 일치할 때만 동작** — `product_name`+`total_count`가 완전히 같아야 이어서

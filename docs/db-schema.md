@@ -1,6 +1,6 @@
 # WHS After Mate — DB 스키마 (v0.9)
 
-기준: `api-spec.md` v0.10, `admin-api-spec.md` v0.6. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.15, `admin-api-spec.md` v0.9. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
 
 v0.9 변경: 앱 연동 중 "이용권이 어느 클리닉 것인지 구분해야 한다"는 요청으로 `memberships`/`emr_memberships`에 `brand` 컬럼 추가(`016_add_membership_brand.sql`) — `care_records`/`emr_care_records`는 처음부터 갖고 있던 필드다. 순수 표시용 메타데이터로, 이용권 차감/자동 이어쓰기 매칭 로직은 여전히 브랜드와 무관하게 동작한다(정책 변경 아님). 기존 행은 `membership_id`로 연결된 시술기록의 `brand`로 백필됨. 자세한 내용은 하단 "public.memberships"/"public.emr_memberships" 절 참고.
 
@@ -425,7 +425,7 @@ create table public.treatment_catalog (
 - 클리닉(브랜드)별로 나누지 않고 **전체 클리닉 공통**으로 관리(brand 컬럼 없음) — 로그인만 되어 있으면 어느 클리닉 관리자든 CRUD 가능
 - `care_type`은 등록/수정 시 `reference_guides`에 실제로 존재하는 값인지 서버가 재검증(`GET /care-types`와 동일 로직)
 - **참조 관계 없음** — 이미 저장된 시술기록/이용권은 카탈로그를 FK로 참조하지 않고 등록 시점 값을 그대로 복사해 쓴다. 카탈로그 항목을 수정/삭제해도 과거 시술기록엔 영향 없음
-- `POST .../care-records`는 이 카탈로그를 강제하지 않는다 — 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다(카탈로그는 프론트 자동완성 제안용일 뿐)
+- `body_parts`(관리 부위 후보)는 여전히 프론트 자동완성 제안용일 뿐 `POST .../care-records`의 `partOfBody`를 강제하지 않지만, `care_type`은 *(2026-08-19, 스키마 변경 없음)* 더 이상 클라이언트가 보내지 않고 `care_records`/`emr_care_records` 저장 시 `careName`으로 이 테이블을 조회해 자동으로 채운다 — 매칭되는 `care_name`이 없으면 `care_type`은 `null`로 저장된다(`admin-api-spec.md` v0.9 참고)
 - `remaining_count` *(v0.6, 마이그레이션 007)*: `public.memberships`와 동일한 패턴의 GENERATED 컬럼. 시술기록 추가 화면에서 "이 이용권 몇 회 남았는지" 토글 목록을 보여줄 때 프론트/서버가 직접 계산하지 않아도 됨
 
 ### public.admin_accounts — 클리닉별 관리자 로그인 계정 *(v0.6, 마이그레이션 008/009)*

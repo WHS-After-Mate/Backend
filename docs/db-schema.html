@@ -758,6 +758,7 @@ erDiagram
             </table>
           </div>
           <p style="margin:0; font-size:12.5px; color:var(--text-muted);">FK 없음 — 어떤 테이블도 이 테이블을 참조하지 않는다. 시술기록/이용권은 카탈로그 값을 등록 시점에 그대로 복사해 쓸 뿐이라, 카탈로그를 수정/삭제해도 과거 기록엔 영향이 없다. 브랜드 컬럼 없음(전체 클리닉 공통).</p>
+          <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="done-badge">2026-08-19, 스키마 변경 없음</span> <span class="mono">body_parts</span>는 여전히 프론트 자동완성 제안용일 뿐 <span class="mono">partOfBody</span>를 강제하지 않지만, <span class="mono">care_type</span>은 더 이상 클라이언트가 보내지 않고 <span class="mono">care_records</span>/<span class="mono">emr_care_records</span> 저장 시 <span class="mono">careName</span>으로 이 테이블을 조회해 자동으로 채운다 — 매칭되는 <span class="mono">care_name</span>이 없으면 <span class="mono">care_type</span>은 <span class="mono">null</span>로 저장된다(<span class="mono">admin-api-spec.md</span> v0.9 참고).</p>
         </div>
       </div>
 
@@ -1010,7 +1011,7 @@ erDiagram
       <p class="note">참고: 같은 날 별도로 진행하던 <span class="mono">treatment_catalog.description</span> 컬럼 + <span class="mono">clinics</span>/<span class="mono">clinic_doctors</span> 테이블 작업(<span class="mono">014_add_treatment_description_clinic_info_doctors.sql</span>)은 이 변경과 무관하며 <b>보류 상태</b>(마이그레이션 미적용).</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.11 기준 · db-schema v0.9 · 2026-08-18</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.15 기준 · admin-api-spec v0.9 기준 · db-schema v0.9 · 2026-08-19</footer>
   </main>
 </div>
 

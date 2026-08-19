@@ -415,6 +415,19 @@ export async function assertValidCareType(careType: string) {
   if (!data) throw Errors.invalidCareType();
 }
 
+// 웹/앱 모두 관리명+부위만 입력받기로 해서(프론트 피드백) careType은 클라이언트 입력을 없애고
+// treatment_catalog(care_name unique)에서 자동 조회한다. 카탈로그에 없는 시술명이면 null —
+// 이 경우 daily-guide는 기존과 동일하게 404 GUIDE_NOT_AVAILABLE로 폴백된다.
+async function lookupCareType(careName: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("treatment_catalog")
+    .select("care_type")
+    .eq("care_name", careName)
+    .maybeSingle();
+  if (error) throw Errors.internal(error.message);
+  return data?.care_type ?? null;
+}
+
 // 회원가입(claim) 여부에 따라 어느 테이블에 쓸지 정한다 — claim 전이면 emr_* 스테이징,
 // claim 후면 실제 앱 테이블(care_records/memberships)에 곧바로 기록한다. 예전엔 claim된 환자에
 // 새 시술기록 자체를 막았지만(1회성 이관), 재방문 고객의 시술을 기록할 방법이 없어지는 문제가 있어
@@ -423,7 +436,6 @@ export async function addCareRecord(
   patientId: string,
   input: {
     careName: string;
-    careType: string;
     careDate: string;
     partOfBody: string[];
     practitioner?: string;
@@ -435,7 +447,7 @@ export async function addCareRecord(
   brand: string,
 ) {
   const patient = await findPatientOrThrow(patientId, brand);
-  await assertValidCareType(input.careType);
+  const careType = await lookupCareType(input.careName);
 
   const claimed = !!patient.claimed_user_id;
   const membershipTable: MembershipTable = claimed ? "memberships" : "emr_memberships";
@@ -475,7 +487,7 @@ export async function addCareRecord(
   const insertPayload: Record<string, unknown> = {
     [ownerColumn]: ownerId,
     care_name: input.careName,
-    care_type: input.careType,
+    care_type: careType,
     care_date: input.careDate,
     part_of_body: input.partOfBody,
     // brand는 수동 입력이 아니라 로그인한 클리닉 계정에서 그대로 가져온다(수동 선택 시 실수로

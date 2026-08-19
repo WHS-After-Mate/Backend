@@ -1,6 +1,8 @@
-# WHS After Mate — 관리자 API 명세서 (server_admin, v0.8)
+# WHS After Mate — 관리자 API 명세서 (server_admin, v0.9)
 
 기준 프로젝트: Manyfast "WHS After Mate". 이 문서는 `admin-web`(관리자 웹, 별도 GitHub 저장소)이 호출하는 **`server_admin`**(포트 4100, 이 리포 소속)의 API를 다룬다. 고객용 `server/` API는 `api-spec.md` 참고 — 두 서버는 같은 Supabase 프로젝트를 공유하지만 서로 다른 서버 프로세스이고, 이 문서의 범위는 `server_admin`으로 한정된다.
+
+v0.9 변경 (2026-08-19): 웹/앱 프론트 모두 시술기록 입력 화면을 "관리명+부위"만 구현하기로 확정하면서, `POST .../care-records`가 더 이상 `careType`을 클라이언트에서 받지 않는다. 대신 `treatment_catalog`(2절)에서 `careName`으로 `care_type`을 자동 조회해 채운다 — 카탈로그에 없는 치료명이면 `care_type: null`로 저장되고, 이 경우 `/aftercare/daily-guide`(고객용 `server/`)는 기존과 동일하게 404 `GUIDE_NOT_AVAILABLE`로 폴백된다. `GET /care-types`는 이제 시술기록 입력이 아니라 `treatment_catalog` 등록/수정(2절) 화면에서만 쓰인다. 자세한 내용은 하단 "3. 시술기록 / 이용권" 절 참고.
 
 v0.8 변경 (2026-08-18): `GET /visit-stats`의 전날/금일 의미를 "방문(시술기록 있음)"에서 **"신규 등록(환자번호 최초 발급)"**으로 변경 — 같은 환자의 반복 방문마다 카운트되는 것보다 "그날 새로 등록된 환자 수"가 더 유의미한 지표라는 사용자 요청. 익일(예약) 의미는 변경 없음. 자세한 내용은 하단 "4. 통계" 절 참고.
 
@@ -36,7 +38,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | POST | `/auth/login` | 불필요 | 클리닉 관리자 로그인 |
-| GET | `/care-types` | 필요 | 시술기록 추가 시 고를 수 있는 careType 목록 |
+| GET | `/care-types` | 필요 | 치료-부위 카탈로그 등록/수정 시 고를 수 있는 careType 목록 `(v0.9)` |
 | GET | `/body-parts` | 필요 | 시술기록 추가 시 고를 수 있는 관리 부위 목록(중복 선택) |
 | GET | `/treatment-catalog?search=` | 필요 | 치료-부위 카탈로그 목록/검색 (치료명 자동완성용) |
 | POST | `/treatment-catalog` | 필요 | 치료-부위 카탈로그 항목 등록 |
@@ -52,7 +54,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | GET | `/reservations?date=` | 필요 | 특정 날짜(미지정 시 오늘)의 예약 목록 (예약 취소 대상 조회용) |
 | GET | `/clinic-info` | 필요 | 로그인 클리닉의 카카오톡/전화번호 + 담당 의료진 목록 `(v0.5)` |
 
-별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(아래 3절 참고). 치료-부위 카탈로그(`treatment_catalog`)는 이용권과 별개로, 치료명 선택 시 careType/관리 부위 후보를 자동 제안하기 위한 참조 데이터일 뿐이다(아래 2절 참고) — 시술기록 저장 자체는 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다(카탈로그로 강제 대체하지 않음).
+별도의 "이용권 추가"·"이용권 삭제" 엔드포인트는 없다 — 이용권은 시술기록 추가·삭제에 묶여서만 생성·정리된다(아래 3절 참고). 치료-부위 카탈로그(`treatment_catalog`)는 관리 부위 후보 제안은 여전히 참고용이지만, `care_type`만큼은 `(v0.9)` 시술기록 저장 시 `careName`으로 자동 조회해 그대로 쓴다(아래 2·3절 참고) — `careType`은 더 이상 시술기록 등록 화면에서 입력받지 않는다.
 
 ---
 
@@ -103,7 +105,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 ## 1. 환자
 
 ### GET /care-types
-`careType`은 관리자가 자유 입력하는 값이 아니라, `reference_guides`에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 `/aftercare/daily-guide`가 항상 응답 가능함이 보장됨). 이 목록은 클리닉 공통 자료라 브랜드 격리 대상이 아니다.
+`careType`은 관리자가 자유 입력하는 값이 아니라, `reference_guides`에 실제로 등록된 카테고리 중에서만 고를 수 있다(그래야 고객용 `/aftercare/daily-guide`가 항상 응답 가능함이 보장됨). `(v0.9)` 시술기록 추가(D) 화면은 더 이상 이 값을 직접 입력받지 않으므로, 이 엔드포인트는 이제 **치료-부위 카탈로그(2절) 등록/수정 화면**에서만 쓰인다. 이 목록은 클리닉 공통 자료라 브랜드 격리 대상이 아니다.
 
 **DB**: `reference_guides` **SELECT** — `care_type` 컬럼만 조회해서 중복 제거(`Set`) 후 정렬. `brand` 조건 없이 테이블 전체 대상(공용 자료라서).
 
@@ -113,7 +115,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `careTypes` | string[] | D 화면 careType select에 그대로 뿌릴 선택 가능 값 목록 |
+| `careTypes` | string[] | 치료-부위 카탈로그 등록/수정 화면의 careType select에 그대로 뿌릴 선택 가능 값 목록 `(v0.9)` |
 
 현재 등록된 값은 7개(`peeling`/`laser_toning`/`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`) `(v0.5)`. **주의**: 이 목록에 있다고 전부 전문가 검수를 마친 것은 아니다 — `peeling`/`laser_toning`은 기존 검수 문구, 나머지 5종은 2026-08-17에 `treatment_catalog` 등록을 위해 추가한 미검수 스텁이다(자세한 내용은 `server/README.md` TODO 절 참고). `reference_guides.reviewed_by`가 코드에서 실제로 검사되지 않아, `GET /care-types`만으로는 검수 여부를 구분할 수 없다.
 
@@ -299,7 +301,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | `patient_id` | string(uuid) | `source: "emr"`일 때만 존재 |
 | `user_id` | string(uuid) | `source: "app"`일 때만 존재 |
 | `care_name` | string | 관리명 |
-| `care_type` | string | `GET /care-types` 값 중 하나 |
+| `care_type` | string \| null | `(v0.9)` `treatment_catalog` 자동 조회 결과 — 매칭되면 `GET /care-types` 값 중 하나, 없으면 `null` |
 | `care_date` | string | `YYYY-MM-DD` |
 | `part_of_body` | string[] | 관리 부위(중복 선택된 값들) |
 | `brand` | string | |
@@ -354,7 +356,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 
 ## 2. 치료-부위 카탈로그
 
-치료명(예: "울쎄라 리프팅")을 고르면 그 치료의 기본 careType/관리 부위 후보를 자동으로 채워주기 위한 참조 테이블(`treatment_catalog`). 클리닉(브랜드)별로 나누지 않고 **전체 클리닉 공통**으로 관리한다(로그인만 되어 있으면 어느 클리닉 계정이든 조회/추가/수정/삭제 가능 — brand 격리 대상 아님). 어디까지나 **제안**일 뿐 강제가 아니다 — `POST .../care-records`는 이 카탈로그를 거치지 않고 여전히 `careName`/`careType`/`partOfBody`를 그대로 받는다.
+치료명(예: "울쎄라 리프팅")별로 careType/관리 부위 후보를 담아두는 참조 테이블(`treatment_catalog`). 클리닉(브랜드)별로 나누지 않고 **전체 클리닉 공통**으로 관리한다(로그인만 되어 있으면 어느 클리닉 계정이든 조회/추가/수정/삭제 가능 — brand 격리 대상 아님). `body_parts`(관리 부위 후보)는 어디까지나 **제안**일 뿐 강제가 아니라 `POST .../care-records`의 `partOfBody`를 검증하지 않지만, `care_type`만큼은 `(v0.9)` 시술기록 저장 시 `careName`으로 이 테이블을 조회해 자동으로 채운다(아래 3절 참고) — 카탈로그에 등록되지 않은 치료명이면 `care_type`이 `null`로 저장된다.
 
 ### GET /treatment-catalog?search=
 
@@ -437,18 +439,17 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 
 **DB** — 순서대로 실행됨
 1. `emr_patients` **SELECT** `*` (`id`+`brand` 확인). `claimed_user_id`가 있는지로 이후 단계가 `emr_care_records`/`emr_memberships`(스테이징) 쪽으로 갈지 `care_records`/`memberships`(실제 앱) 쪽으로 갈지 정해진다 — 더 이상 여기서 막지 않는다
-2. `reference_guides` **SELECT** (`care_type` 존재 확인, 없으면 `400`으로 중단)
+2. `(v0.9)` `treatment_catalog` **SELECT** (`care_name`=`careName`으로 `care_type` 조회) — 매칭되면 그 값을, 없으면 `null`을 이후 단계에 그대로 넘긴다(더 이상 400으로 막지 않음)
 3. **여기서 갈림 — `membershipId`를 보냈으면:**
    (1번에서 정해진) 이용권 테이블 **SELECT** `*` (`id`로 조회, 소유자 일치·`used_count < total_count`·`expires_at`이 `careDate`보다 이전이 아님을 확인) → **UPDATE** `used_count`+1, `last_used_at`=`careDate`
    **`totalSessions`를 보냈으면:**
    먼저 이용권 테이블 **SELECT** (소유자+`product_name`=`careName`+`total_count`=`totalSessions`, 생성일순) 중 아직 유효한(`used_count < total_count`이고 만료 전) 것이 있는지 확인 — **있으면** 그 이용권을 그대로 3번의 `membershipId` 경로와 동일하게 차감(새로 만들지 않음). **없으면** 이용권 테이블 **INSERT** — 소유자(미가입이면 `patient_id`, 가입 완료면 `user_id`), `product_name`=`careName`, `total_count`=`totalSessions`, `used_count`=1, `expires_at`=`careDate`+1년, `last_used_at`=`careDate`, `available_care_names`=[`careName`]
-4. 시술기록 테이블(`emr_care_records` 또는 `care_records`) **INSERT** — 소유자, `care_name`, `care_type`, `care_date`, `part_of_body`, `brand`(토큰에서), `practitioner`, `basic_aftercare_guide`, `doctor_comment`, `session_number`(=차감/생성 후 `used_count`), `total_sessions`(=`total_count`), `membership_id`(=3번에서 처리한 이용권 id). 가입 완료 환자면 추가로 `source_system`="aac_emr", `synced_at`=현재 시각도 같이 기록
+4. 시술기록 테이블(`emr_care_records` 또는 `care_records`) **INSERT** — 소유자, `care_name`, `care_type`(=2번에서 조회한 값, 카탈로그에 없으면 `null`), `care_date`, `part_of_body`, `brand`(토큰에서), `practitioner`, `basic_aftercare_guide`, `doctor_comment`, `session_number`(=차감/생성 후 `used_count`), `total_sessions`(=`total_count`), `membership_id`(=3번에서 처리한 이용권 id). 가입 완료 환자면 추가로 `source_system`="aac_emr", `synced_at`=현재 시각도 같이 기록
 
 **Request**
 ```json
 {
   "careName": "울쎄라 300샷",
-  "careType": "peeling",
   "careDate": "2026-08-15",
   "partOfBody": ["이마", "미간"],
   "practitioner": "김OO 원장",
@@ -457,10 +458,11 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
   "totalSessions": 3
 }
 ```
+`(v0.9)` `careType`은 요청에 없다 — `treatment_catalog`에서 `careName`으로 자동 조회된다(위 DB 2번 참고).
+
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| `careName` | string | required | 관리명 |
-| `careType` | string | required | `GET /care-types` 목록에 있는 값만 허용 |
+| `careName` | string | required | 관리명. `treatment_catalog`에 등록된 이름과 정확히 일치해야 `care_type`이 채워진다(대소문자·공백까지 완전 일치, 부분일치 아님) |
 | `careDate` | string | required | `YYYY-MM-DD` |
 | `partOfBody` | string[] | optional (기본 `[]`) | 관리 부위, `GET /body-parts` 목록 중 중복 선택 가능. 목록 밖 값은 `400 VALIDATION_ERROR` |
 | `practitioner` | string | optional | 시술한 의사 이름 |
@@ -506,13 +508,14 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
   "membershipCreated": true
 }
 ```
+`careRecord.care_type`은 `(v0.9)` 요청에 없던 값이 `treatment_catalog` 자동 조회로 채워진 것 — 카탈로그에 없는 `careName`이었으면 `null`로 저장된다(예시의 `"peeling"`은 `treatment_catalog`에 `care_type: "peeling"`으로 등록된 시술명이었을 때의 결과).
+
 `careRecord`/`membership` 필드는 각각 위 `GET /patients/{patientId}` 응답의 `careRecords[]`/`memberships[]` 항목과 필드 구성이 완전히 동일하다(위 표 참고 — 회원가입 완료 환자면 `patient_id` 대신 `user_id`, `source: "app"`). `session_number`/`total_sessions`는 이 시술이 이용권 처리 후의 스냅샷값(차감된 `used_count`/`total_count`)이다. 최상위 `source`(`"emr"`|`"app"`)는 이번 호출이 어느 테이블에 기록됐는지 알려주는 필드. `membershipCreated`(boolean)는 이번 호출로 이용권을 **새로** 만들었는지 여부 — `membershipId`를 직접 골랐거나 `totalSessions`가 기존 이용권에 이어서 차감됐으면 `false`, 진짜 새 이용권을 만들었을 때만 `true`(프론트에서 "새 이용권 발급" vs "기존 이용권에 이어서 차감" 안내 분기에 사용). `membership.expires_at`은 이용권을 새로 만든 경우 이 시술 날짜(`careDate`) 기준 +1년, 기존 이용권에서 차감한 경우 그 이용권이 원래 만들어질 때 정해진 값 그대로(재계산 안 됨).
 
 **에러**
 | status/code | 상황 |
 |---|---|
 | `404 PATIENT_NOT_FOUND` | 존재하지 않거나 다른 클리닉 소유 |
-| `400 INVALID_CARE_TYPE` | `careType`이 `GET /care-types` 목록에 없음 |
 | `404 MEMBERSHIP_NOT_FOUND` | `membershipId`가 존재하지 않거나 다른 환자(또는 다른 앱 유저) 소유 |
 | `409 MEMBERSHIP_EXHAUSTED` | 선택한 이용권의 잔여 횟수가 0 (`used_count >= total_count`) |
 | `409 MEMBERSHIP_EXPIRED` | 선택한 이용권이 만료됨(`expires_at` < `careDate`) — `membershipId`를 직접 고른 경우에만 발생. `totalSessions` 자동매칭 경로는 만료된 이용권을 애초에 후보에서 제외하고 새 이용권을 만들어서 이 에러가 나지 않음 |
@@ -661,7 +664,7 @@ v0.2 변경: 관리자 웹 대시보드 프로토타입 검토 결과 `GET /visi
 | 모델 | 테이블 | 핵심 필드 |
 |---|---|---|
 | Patient | `emr_patients` | id, patient_no, name, birth_date, phone, notes, brand, claimed_user_id, claimed_at |
-| CareRecord | `emr_care_records`(미가입) 또는 `care_records`(가입 완료) | id, patient_id 또는 user_id, care_name, care_type, care_date, part_of_body, brand, practitioner, basic_aftercare_guide, doctor_comment, session_number, total_sessions, membership_id, **source**(API 응답에서만 붙는 파생 필드) |
+| CareRecord | `emr_care_records`(미가입) 또는 `care_records`(가입 완료) | id, patient_id 또는 user_id, care_name, care_type(`(v0.9)` `treatment_catalog`에서 자동 조회, 매칭 없으면 null), care_date, part_of_body, brand, practitioner, basic_aftercare_guide, doctor_comment, session_number, total_sessions, membership_id, **source**(API 응답에서만 붙는 파생 필드) |
 | Membership | `emr_memberships`(미가입) 또는 `memberships`(가입 완료) | id, patient_id 또는 user_id, product_name, total_count, used_count, remaining_count(생성 컬럼), expires_at(생성일+1년, 재계산 안 됨), last_used_at, available_care_names, **source** |
 | TreatmentCatalog | `treatment_catalog` | id, care_name(unique), care_type, body_parts, **description** `(v0.5)`, created_at, updated_at — 클리닉 공통, brand 없음 |
 | ClinicDoctor | `clinic_doctors` `(v0.5)` | id, brand, name, created_at — 클리닉별 담당 의료진 후보 목록 |
@@ -677,7 +680,7 @@ CareRecord/Membership이 어느 테이블에서 왔는지는 환자의 회원가
 | `UNAUTHORIZED` | 401 | 토큰 없음/무효/만료 |
 | `INVALID_CREDENTIALS` | 401 | 로그인 아이디/비밀번호 불일치 |
 | `PATIENT_NOT_FOUND` | 404 | 환자 없음 또는 다른 클리닉 소유 |
-| `INVALID_CARE_TYPE` | 400 | 검수되지 않은 careType |
+| `INVALID_CARE_TYPE` | 400 | 검수되지 않은 careType — `(v0.9)` `treatment-catalog` 등록/수정에서만 발생, `care-records` 추가는 더 이상 이 검증을 하지 않음 |
 | `MEMBERSHIP_NOT_FOUND` | 404 | 이용권 없음 또는 다른 환자 소유 |
 | `MEMBERSHIP_EXHAUSTED` | 409 | 이용권 잔여 횟수 0 |
 | `MEMBERSHIP_EXPIRED` | 409 | 이용권 만료(`expires_at` < `careDate`) |
@@ -696,7 +699,7 @@ CareRecord/Membership이 어느 테이블에서 왔는지는 환자의 회원가
 - **`patientId`/`careRecordId` 경로 파라미터가 UUID 형식으로 사전 검증되지 않음** — 잘못된 형식을 보내면 Supabase 레벨 오류가 `500 INTERNAL_ERROR`로 나올 수 있음
 - **회원가입 이관 시점의 시술기록 중복 표시** — `GET /patients/{patientId}`에서 회원가입 이전 시술기록이 `source: "emr"`(원본)과 `source: "app"`(이관 복사본) 양쪽에 나타난다(위 해당 절 참고). 프론트에서 "같은 시술이 두 번 온다"고 오인하지 않도록 주의 필요
 - **이용권(memberships)은 클리닉별로 격리되지 않음** — 회원가입한 고객의 이용권은 어느 클리닉에서 만들었든 전부 조회·차감 대상에 뜬다(실제 `memberships` 테이블에 `brand` 컬럼 자체가 없음). 다른 클리닉이 판 이용권을 실수로 차감하는 걸 막는 장치는 현재 없음
-- **치료-부위 카탈로그는 시술기록 저장을 강제하지 않음** — `POST .../care-records`는 여전히 `careName`/`careType`/`partOfBody`를 그대로 받고 카탈로그 값과 일치하는지 검증하지 않는다(어디까지나 프론트 자동완성용 제안 데이터). 카탈로그에 없는 치료명으로도 시술기록은 그대로 등록 가능
+- **`(v0.9)` 치료-부위 카탈로그에 없는 치료명이면 `care_type`이 `null`로 저장됨** — `POST .../care-records`는 더 이상 `careType`을 받지 않고 `treatment_catalog`에서 `careName`으로 자동 조회하는데, 정확히 일치하는 등록이 없으면(오타·표기 불일치 포함) 시술기록 자체는 그대로 등록되지만 `care_type: null`로 저장된다 — 이 경우 그 시술기록의 `/aftercare/daily-guide`(고객용)는 항상 404 `GUIDE_NOT_AVAILABLE`로 실패한다. `partOfBody`(관리 부위)는 이전과 동일하게 카탈로그와 무관한 자유 선택이라 이 문제가 없음
 - **이용권 만료일은 재계산되지 않음** — 기존 이용권에 이어서 차감해도 `expires_at`은 처음 만들 때(첫 시술일+1년) 값 그대로 유지된다. "이어서 쓰면 만료일도 갱신"은 이번 범위에 포함되지 않음(프로토타입도 이 정책까지는 명시하지 않아 더 단순한 쪽으로 결정)
 - **이용권 자동 이어쓰기 매칭은 `product_name`+`total_count` 정확히 일치할 때만 동작** — 치료명 표기가 조금이라도 다르면(오타, 띄어쓰기 등) 다른 이용권으로 취급돼 새로 생성됨. 관리자가 치료명을 카탈로그에서 선택해 입력하면 표기 불일치를 줄일 수 있음
 - **`clinic_doctors`(담당 의료진)는 CRUD API 없음** `(v0.5)` — `treatment-catalog`와 달리 관리자 웹에서 추가/수정/삭제할 수 없고, `server_admin/db/seed/seedClinicCatalog.ts` 시드 스크립트로만 채워진다(3개 클리닉 고정 전제, `admin_accounts`와 동일한 관리 방식). 새 의료진이 합류하면 시드 스크립트를 갱신해 재실행해야 함
