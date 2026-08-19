@@ -54,11 +54,22 @@ export function toCareRecordDetail(row: CareRecordRow) {
   };
 }
 
+// KST(한국 시간) 기준 오늘 날짜. "가장 최근 관리"는 예약(미래 careDate)을 후보에서 빼야 한다 —
+// server_admin이 예약 등록을 허용하면서(차감 없이 careDate만 미래로 등록 가능) "최근 관리"를
+// 단순히 care_date 내림차순으로만 고르면 아직 받지도 않은 미래 예약이 뽑혀버린다. 그 결과
+// daily-guide/questions(챗봇)의 "경과일" 계산이 엉망이 되고(예: 미래 예약을 기준으로 삼아 0일차로
+// 계산돼 "오늘이 시술 당일"처럼 잘못 안내), 다음 관리 추천의 "마지막 관리 후 경과일" 판단도 틀어진다.
+function kstToday(): string {
+  const now = new Date();
+  return new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" })).toLocaleDateString("en-CA");
+}
+
 export async function getLatestCareRecord(userId: string): Promise<CareRecordRow | null> {
   const { data, error } = await supabaseAdmin
     .from("care_records")
     .select(LIST_COLUMNS)
     .eq("user_id", userId)
+    .lte("care_date", kstToday())
     .order("care_date", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -89,6 +100,7 @@ export async function listRecentCareRecords(
     .from("care_records")
     .select(LIST_COLUMNS)
     .eq("user_id", userId)
+    .lte("care_date", kstToday())
     .order("care_date", { ascending: false })
     .limit(limit);
 
