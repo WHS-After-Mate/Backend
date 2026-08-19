@@ -21,6 +21,8 @@ export const Errors = {
   treatmentNameAlreadyExists: () =>
     new ApiError(409, "TREATMENT_NAME_ALREADY_EXISTS", "이미 등록된 치료명입니다."),
   invalidCredentials: () => new ApiError(401, "INVALID_CREDENTIALS", "아이디 또는 비밀번호가 올바르지 않습니다."),
+  phoneAlreadyRegistered: () =>
+    new ApiError(409, "PHONE_ALREADY_REGISTERED", "이미 다른 환자에게 등록된 전화번호입니다."),
   unauthorized: () => new ApiError(401, "UNAUTHORIZED", "로그인이 필요합니다."),
   validation: (message: string) => new ApiError(400, "VALIDATION_ERROR", message),
   notFound: (message = "요청한 리소스를 찾을 수 없습니다.") => new ApiError(404, "NOT_FOUND", message),

@@ -103,6 +103,22 @@ export async function createPatient(
     return { patient: maskAutoLinkedClaim(updated), duplicate: true };
   }
 
+  // 전화번호 재사용 차단 — 이름/생년월일이 달라도 이 번호를 쓰는 환자가 이미 있으면 등록 자체를
+  // 막는다. 이유: emr_patients.phone엔 unique 제약이 없어 여기선 통과되지만, 실제 회원가입 시
+  // profiles.phone은 유니크라 두 사람이 나중에 각자 가입하면 두 번째 사람이 원인을 알 수 없는
+  // 500으로 막힌다(auth.service.ts의 signup() catch). 미리 여기서 막아 그 사고를 예방한다.
+  // 단, 이름+생년월일+전화번호가 전부 같은 행(findLinkedAccountFromOtherClinic이 다루는 "다른
+  // 클리닉의 동일 인물" 자동 연결 케이스)은 제외 — 그건 충돌이 아니라 같은 사람이다.
+  const { data: samePhoneRows, error: phoneCheckError } = await supabaseAdmin
+    .from("emr_patients")
+    .select("id, name, birth_date")
+    .eq("phone", input.phone);
+  if (phoneCheckError) throw Errors.internal(phoneCheckError.message);
+  const hasConflict = (samePhoneRows ?? []).some(
+    (r) => !(r.name === input.name && r.birth_date === input.birthDate),
+  );
+  if (hasConflict) throw Errors.phoneAlreadyRegistered();
+
   const linkedUserId = await findLinkedAccountFromOtherClinic(input, brand);
   // 자동 연결 케이스는 created_at/claimed_at을 동일한 값으로 명시적으로 채워 maskAutoLinkedClaim이
   // 정상 가입(등록일 ≠ 가입일)과 구분할 수 있게 한다.
