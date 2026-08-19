@@ -1,3 +1,27 @@
+## 2026-08-19 (3, 신규 세션)
+- 새 세션 시작, work-log 브리핑
+- 사용자가 "작업현황파악" 요청 → 이전 세션 work-log 요약해 브리핑
+- "커밋 및 푸시" 요청 → categoryTags 변경(코드/문서, 지난 세션에서 준비만 돼있던 상태) 커밋+푸시 (`5da347b`) — `docs/image.png`/미추적 파일 2개는 관례대로 제외
+- 사용자가 서버 터미널에서 `git pull` 시도 중 "not a repository" 오류 보고 → `~/Backend` 디렉토리로 이동해서 시도하도록 안내(관례상 `pull`+`build`+`pm2 restart` 절차 재확인)
+- "다 했어 서버 배포 현황 파악해봐" 요청 → 배포 서버(`1.201.116.115`)에 로그인 필요해 처음엔 실사용자(오세훈) 계정으로 매직링크 로그인 시도 → **자동 실행 차단**(실고객 계정에 동의 없이 로그인하는 격이라 classifier가 거부) → 사용자에게 상황 설명 후 "새 테스트 계정을 만들자"로 재합의
+  - 서비스롤 키로 신규 테스트 계정+profiles+care_records(procedures 카탈로그 실데이터 참조)를 만들어 배포 서버에 직접 로그인+curl 검증 진행, 끝나면 전부 삭제하는 방식으로 전환
+  - `GET /recommendations/next-care/{id}`의 `categoryTags` 정상 반영 확인
+  - `GET /aftercare/daily-guide`가 처음엔 404(`GUIDE_NOT_AVAILABLE`) — 원인 진단해보니 테스트 데이터에 `care_type`을 안 채운 내 실수였음, `care_type: "energy_lifting"`으로 재시도해 200(`generatedBy: "llm"`) + `GET /home/summary`의 `aftercareCard`도 정상 채워짐 확인. 배포 서버가 최신 코드로 정상 동작 중임을 확인, 테스트 데이터 전부 정리
+- 사용자가 "care_type 이게 원래 존재했나?" 질문 → 마이그레이션(`001_init.sql`)부터 있던 원래 컬럼임을 확인해 답변, 실제 EMR 표준 필드가 아니라 이 프로젝트가 daily-guide 매칭용으로 자체 도입한 내부 분류값이라는 점도 같이 설명(8/15 세션 결정 재확인)
+- 사용자가 "웹/앱 둘 다 관리명+부위만 구현하기로 했었는데 careType 필수야?" 질문 → `patients.validators.ts`의 `createCareRecordSchema.careType`이 현재 필수값이고, daily-guide가 이 값을 매칭 키로 써서 없으면 기능 자체가 죽는다는 걸 설명 → `treatment_catalog`를 재활용해 careName으로 careType을 자동조회하는 옵션(A)을 제안 → 사용자가 "A로 해야지, 시술별 caretype은 db자체가 인식하면 되니깐"으로 확정
+  - `server_admin`의 `patients.validators.ts`(careType 필드 제거)/`patients.service.ts`(`lookupCareType()` 신규, `treatment_catalog.care_name`으로 자동조회, 매칭 없으면 null)/`routes/patients.routes.ts`(주석 갱신)/`examples/admin-api-example.html`(careType select 제거) 수정
+  - typecheck/build 통과, 로컬(4100)에서 treatment_catalog 등록→careType 없이 시술기록 생성→응답 care_type 자동 채워짐 라이브 검증(한글 payload 인코딩 이슈로 Node fetch 스크립트 사용, 기존에 알려진 우회법 재사용)
+- "문서 동기화 진행해줘" → `docs/admin-api-spec.md`/`.html`(v0.8→v0.9, GET /care-types 용도·POST care-records DB단계/요청/에러·알려진 제한사항 전면 갱신), `docs/db-schema.md`/`.html`(treatment_catalog 절 갱신, 상단/footer 스펙 버전 참조 오류도 같이 정정), `server_admin/README.md`(엔드포인트 표+미확정 과제) 갱신. HTML 태그 균형 확인
+- "커밋 및 푸시" → 위 변경 전부 커밋+푸시 (`38659a3`), `docs/image.png`/미추적 파일 2개 계속 제외
+- "배포 서버에 반영해줘 너가 할 수 있어?" 질문 → SSH/원격실행 툴이 없어 직접은 못 한다고 답변, 사용자가 서버에서 pull+build+restart 직접 진행
+- "했어 확인해봐" → 배포 서버에 새 테스트 계정으로 treatment_catalog 등록→careType 자동조회 재검증(로컬과 동일한 방식), 정상 확인 후 테스트 데이터 정리
+- 사용자가 이용권 차감/자동이어쓰기 로직 이해 확인 질문("관리명+횟수 같으면 1회차감, 다르면 추가, 0회 돼도 기록 삭제 안 됨 맞지?") → `findContinuableMembership`(`patients.service.ts:372-394`) 근거로 확인, 매칭이 `totalSessions` 경로에만 적용되고 만료 조건도 함께 본다는 점 보완 설명
+- "example에 예시 로직 있나" → `server_admin/src/examples/admin-api-example.html`의 D 섹션은 수동 테스트 폼일 뿐 매칭 로직 자체는 없다고 안내, 실제 재현 방법(같은 careName+totalSessions로 두 번 등록) 설명
+- 사용자가 "관리자 웹에서 시술추가 누르면 환자정보 자동입력+보유 이용권 자동서치되게 설계했는데 잘 됐나" 질문 → 로컬 `admin-web` 클론이 `initial commit`(스캐폴드)에서 멈춰있던 걸 발견, `git pull`로 실제 최신 코드 받아옴(로그인/대시보드/고객관리/시술등록 모달까지 이미 구현돼있었음)
+  - `TreatmentModal.jsx`/`CustomerDetailModal.jsx` 확인 — 이름 자동입력은 됨(생년월일은 이 모달에 필드 자체가 없어 해당없음), **이용권 자동서치는 미구현**(`GET /patients/:patientId`의 `memberships`를 안 불러오고, select UI 없고, 제출 시 항상 `totalSessions`만 보내고 `membershipId`는 안 보냄)을 코드로 확인해 보고
+- 사용자가 "admin-web은 임시니깐 안 해도 돼, API로 그런 기능을 제공했냐가 중요한거야"로 명확히 함 → `GET /patients/{patientId}` 응답이 이미 patient(이름/생년월일)+memberships(보유 이용권 전체, 잔여횟수 포함)를 전부 반환하고 있어 API 설계상으로는 필요한 데이터가 완전히 제공됨을 확인해 답변(프론트 미사용일 뿐 백엔드 갭 아님)
+- work-log 정리 — `/기록저장`으로 저장
+
 ## 2026-08-19 (이어서, 새 세션)
 - 사용자가 "popularWithSimilarCustomers 이게 뭐지?" 질문 → 코드/문서 확인해 설명(추천된 시술과 category_tags를 공유하는 다른 시술명 최대 3개, v0.8부터 실카탈로그 기반)
 - 사용자가 "쓸 일이 없어서 제거해도 될 것 같다, 대신 엑셀에 시술마다 O 표시된 열(탄력/색소침착 등)이 들어가게 해달라"고 요청 → `docs/care_procedure_template.xlsx`를 python openpyxl로 직접 읽어 구조 확인(사업장 3곳 × 시술 46건, concernTag 10종 × O/공백). `seedCareCatalog.ts`의 `PROCEDURES[].tags`가 이미 이 O 표시를 그대로 옮긴 값이라 새 계산 없이 그대로 노출하면 됨을 확인
