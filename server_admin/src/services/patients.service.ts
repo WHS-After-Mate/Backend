@@ -320,6 +320,43 @@ export async function updatePatient(
 type MembershipTable = "emr_memberships" | "memberships";
 type CareRecordTable = "emr_care_records" | "care_records";
 
+// 아직 소비 안 된(session_consumed: false) 예약들의 session_number를 이용권의 현재 used_count
+// 기준으로 다시 매긴다 — "몇 회차가 될지"는 등록 시점에 한 번 계산해서 저장해두는 값이라, 그 뒤에
+// 같은 이용권의 다른 회차가 실제로 소비되거나(차감) 소비된 기록이 삭제(차감 취소)되면 저장해둔
+// 값이 낡아버린다(예: 3회권 중 미래 29일 예약을 먼저 잡아 1회차로 저장해뒀는데, 그 전에 오늘
+// 날짜로 실제 시술을 등록해 1회차를 소비하면 29일 예약은 2회차가 돼야 정상). care_date가 이른
+// 예약부터 순서대로 다시 번호를 매긴다 — 이용권 관련 작업(차감/차감취소/새 예약 추가) 뒤에 항상
+// 호출해 저장된 값과 실제 상태가 어긋나지 않게 한다.
+async function resyncUnconsumedSessionNumbers(careRecordTable: CareRecordTable, membershipTable: MembershipTable, membershipId: string) {
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from(membershipTable)
+    .select("used_count")
+    .eq("id", membershipId)
+    .maybeSingle();
+  if (membershipError) throw Errors.internal(membershipError.message);
+  if (!membership) return;
+
+  const { data: unconsumed, error: unconsumedError } = await supabaseAdmin
+    .from(careRecordTable)
+    .select("id, session_number")
+    .eq("membership_id", membershipId)
+    .eq("session_consumed", false)
+    .order("care_date", { ascending: true });
+  if (unconsumedError) throw Errors.internal(unconsumedError.message);
+
+  let nextNumber = membership.used_count;
+  for (const row of unconsumed ?? []) {
+    nextNumber += 1;
+    if (row.session_number !== nextNumber) {
+      const { error: updateError } = await supabaseAdmin
+        .from(careRecordTable)
+        .update({ session_number: nextNumber })
+        .eq("id", row.id);
+      if (updateError) throw Errors.internal(updateError.message);
+    }
+  }
+}
+
 // 기존 이용권에서 1회 차감. 다른 소유이거나 잔여 횟수가 없으면 막는다.
 // ownerColumn/ownerId: 회원가입 전엔 emr_memberships.patient_id, 회원가입 후엔 memberships.user_id.
 async function deductMembershipSession(
@@ -525,8 +562,17 @@ export async function addCareRecord(
     insertPayload.synced_at = new Date().toISOString();
   }
 
-  const { data, error } = await supabaseAdmin.from(careRecordTable).insert(insertPayload).select().single();
+  let { data, error } = await supabaseAdmin.from(careRecordTable).insert(insertPayload).select().single();
   if (error) throw Errors.internal(error.message);
+
+  // 오늘 등록으로 차감이 일어났으면 그 이용권에 걸려있던 다른 미소비 예약들의 회차 번호가
+  // 하나씩 밀려야 하고, 예약을 새로 추가했으면 기존 미소비 예약들과 순서를 맞춰야 한다 — 두
+  // 경우 다 이 이용권의 미소비 예약 집합이 바뀐 것이므로 항상 다시 매긴다. 방금 만든 이 기록
+  // 자신의 session_number도 이때 바뀔 수 있어(예: 이미 더 이른 날짜의 미소비 예약이 있었던 경우)
+  // 응답에 최신값이 실리도록 다시 조회한다.
+  await resyncUnconsumedSessionNumbers(careRecordTable, membershipTable, membership.id);
+  const { data: refreshed } = await supabaseAdmin.from(careRecordTable).select().eq("id", data.id).single();
+  if (refreshed) data = refreshed;
 
   // 회원가입(claim) 후 + 실제로 차감된 경우에만 이용권 회차별 사용 이력(GET /memberships의
   // usageHistory) 기록 — membership_usages.membership_id가 memberships(앱 테이블) FK라 claim 전
@@ -621,7 +667,11 @@ async function tryDeleteCareRecordFrom(
 
   // 이 기록이 애초에 차감을 안 한 예약(session_consumed: false)이었으면 used_count를 되돌릴 것도
   // 없다 — 되돌리면 실제로 소비되지 않은 회차를 잘못 되돌려 다른 기록의 차감분을 훼손하게 된다.
-  if (!record.session_consumed) return true;
+  // 다만 이 예약이 빠지면서 뒤에 남은 다른 미소비 예약들의 회차 번호는 한 칸씩 당겨져야 한다.
+  if (!record.session_consumed) {
+    await resyncUnconsumedSessionNumbers(careRecordTable, membershipTable, record.membership_id);
+    return true;
+  }
 
   const { data: membership, error: membershipError } = await supabaseAdmin
     .from(membershipTable)
@@ -636,6 +686,9 @@ async function tryDeleteCareRecordFrom(
     .update({ used_count: Math.max(0, membership.used_count - 1) })
     .eq("id", record.membership_id);
   if (updateError) throw Errors.internal(updateError.message);
+
+  // 차감이 되돌아갔으니(used_count 감소) 남아있는 미소비 예약들의 회차 번호도 한 칸씩 당긴다.
+  await resyncUnconsumedSessionNumbers(careRecordTable, membershipTable, record.membership_id);
   return true;
 }
 
