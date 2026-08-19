@@ -203,10 +203,10 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>LLM 프롬프트 설계</h1>
-    <p class="subtitle">LLM은 <code>GET /aftercare/daily-guide</code>, <code>POST /aftercare/questions</code>, <code>GET /recommendations/next-care</code>(v0.2 신규) 세 곳에서 호출된다. 카테고리 검증과 위험 신호 감지는 LLM 호출 전 규칙 기반으로 처리해, LLM은 "이미 안전하다고 확인된 요청"만 받는다. 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반 — LLM은 문구 생성만 담당한다.</p>
+    <p class="subtitle">LLM은 <code>POST /aftercare/questions</code>, <code>GET /recommendations/next-care</code> 두 곳에서 호출된다. <b><code>GET /aftercare/daily-guide</code>는 v0.5부터 LLM을 호출하지 않는다</b>(<code>treatment_guides</code> 직접 조회, 아래 1절 참고). 카테고리 검증과 위험 신호 감지는 LLM 호출 전 규칙 기반으로 처리해, LLM은 "이미 안전하다고 확인된 요청"만 받는다. 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반 — LLM은 문구 생성만 담당한다.</p>
     <div class="badges">
-      <span class="badge">v0.4</span>
-      <span class="badge outline">daily-guide 전면 재설계</span>
+      <span class="badge">v0.5</span>
+      <span class="badge outline">daily-guide LLM 호출 제거 — treatment_guides 직접 조회</span>
       <span class="badge outline">questions consultationLevel</span>
       <span class="badge outline">gpt-4.1-mini 채택</span>
     </div>
@@ -228,17 +228,17 @@
     <section id="principles">
       <h2>공통 원칙</h2>
       <ul class="principle-list">
-        <li><span class="num">1</span><span class="tag">v0.4 변경</span> 근거는 시술·환자 정보 — daily-guide/questions는 시술 정보와 환자 컨텍스트(관리 이력·경과일·알러지·의사 코멘트)를 근거로 LLM이 직접 종합한다. 이전엔 "검수된 관리 가이드 원문만이 유일한 근거"였으나, 원문 자체가 시술별 특성을 반영 못 하는 문제가 확인돼 폐기 — <span class="mono">reference_guides</span>는 이제 폴백 용도로만 쓰인다.</li>
+        <li><span class="num">1</span><span class="tag">v0.5 변경</span> 근거는 시술·환자 정보 + 팀이 직접 작성한 콘텐츠 — questions(챗봇)는 시술 정보와 환자 컨텍스트(관리 이력·경과일·알러지·의사 코멘트)에 더해 <span class="mono">treatment_guides</span>(시술명+경과일 단위로 팀이 직접 작성한 콘텐츠)를 근거로 LLM이 답변을 종합한다. daily-guide는 아예 LLM을 거치지 않고 <span class="mono">treatment_guides</span>를 그대로 반환한다(1절 참고).</li>
         <li><span class="num">2</span>의료적 진단·처방 금지 — 질환명 진단, 회복 완료 판정, 약물 처방, 응급 상태 단독 판단을 생성하지 않는다.</li>
         <li><span class="num">3</span>위험 신호·범위 밖 카테고리는 LLM에 도달하기 전에 규칙 엔진이 먼저 걸러낸다.</li>
-        <li><span class="num">4</span>구조화된 출력 강제 — 두 엔드포인트 모두 고정 JSON 스키마로만 응답받는다(모델의 JSON 모드/함수 호출 사용).</li>
+        <li><span class="num">4</span>구조화된 출력 강제 — LLM을 호출하는 두 엔드포인트(questions/recommendation) 모두 고정 JSON 스키마로만 응답받는다(모델의 함수 호출 사용).</li>
         <li><span class="num">5</span>알러지·의사 코멘트는 항상 컨텍스트에 포함 — <span class="mono">medical_data_access_log</span>에 <span class="mono">accessed_by: 'llm_system'</span>으로 접근 기록.</li>
       </ul>
     </section>
 
     <section id="pipeline">
-      <h2>파이프라인 <span class="tag">두 엔드포인트 공통</span></h2>
-      <p class="desc">규칙 필터 → 컨텍스트 조립 → LLM 호출 → 출력 검증 → 저장/응답, 다섯 단계는 두 엔드포인트가 동일하게 따른다.</p>
+      <h2>파이프라인 <span class="tag">questions/recommendation 공통 — daily-guide는 LLM을 호출하지 않아 별도(1절 참고)</span></h2>
+      <p class="desc">규칙 필터 → 컨텍스트 조립 → LLM 호출 → 출력 검증 → 저장/응답, 다섯 단계는 questions/recommendation이 동일하게 따른다.</p>
       <div class="diagram-toolbar">
         <button type="button" id="zoomOutBtn" aria-label="축소">−</button>
         <span class="zoom-level" id="zoomLevel">100%</span>
@@ -251,12 +251,12 @@
 <pre class="mermaid">
 %%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 55}, "themeVariables": {"fontSize": "16px"}}}%%
 flowchart TD
-  A["① 규칙 기반 사전 필터<br/>카테고리 검증 · 위험 신호 감지"] -->|통과| B["② 컨텍스트 조립<br/>care_records + medical_profiles"]
+  A["① 규칙 기반 사전 필터<br/>카테고리 검증 · 위험 신호 감지"] -->|통과| B["② 컨텍스트 조립<br/>care_records + medical_profiles + treatment_guides"]
   A -.->|차단| X1["즉시 반환<br/>422 / expert_required<br/>(LLM 미호출)"]
   B --> C["③ LLM 호출<br/>system prompt + context + 출력 스키마"]
   C --> D["④ 출력 검증<br/>금지어 필터 · 스키마 검증"]
-  D -->|통과| E["⑤ 저장 / 응답<br/>aftercare_guides upsert 또는 questions insert"]
-  D -.->|실패| X2["재시도 1회 → 계속 실패 시 503"]
+  D -->|통과| E["⑤ 저장 / 응답<br/>questions insert (recommendation은 저장 없음)"]
+  D -.->|실패| X2["재시도 1회 → questions 503 / recommendation 정적 템플릿 폴백"]
 
   classDef block fill:#E3F0EC,stroke:#0F6E5C,color:#16211E;
   classDef stop fill:#F5E9E8,stroke:#A83C3C,color:#16211E;
@@ -268,30 +268,19 @@ flowchart TD
     </section>
 
     <section id="guide">
-      <h2>1. <span class="mono">GET /aftercare/daily-guide</span> <span class="tag">하루 1회 캐시</span></h2>
-      <p class="desc">캐시 미스일 때만 호출된다(<span class="mono">care_record_id</span> + 오늘 날짜 조합이 <span class="mono">aftercare_guides</span>에 없을 때). <span class="mono">elapsed_range</span>(예: "3-7")는 LLM이 정하는 게 아니라 규칙(구간 lookup)으로 먼저 결정하지만, <span class="tag">v0.4</span> 이 구간 정보를 프롬프트에 직접 주입하지는 않는다(daysElapsed만 전달, 캐시/폴백 판단에만 서버 내부적으로 사용).</p>
+      <h2>1. <span class="mono">GET /aftercare/daily-guide</span> <span class="tag">v0.5부터 LLM 미호출</span></h2>
+      <p class="desc"><b>이 절은 프롬프트가 없다는 사실 자체가 내용이다.</b> v0.4까지는 이 엔드포인트가 daily-guide 프롬프트로 LLM을 호출했지만(과거 프롬프트 전문은 아래 참고), v0.5(<span class="mono">023_add_treatment_guides.sql</span>, <span class="mono">024_drop_care_type.sql</span>)부터는: ① <span class="mono">care_records.care_name</span>+요청된 경과일로 <span class="mono">treatment_guides</span> 테이블을 <span class="mono">(care_name, day)</span> 정확히 일치 조회 ② 매칭되면 <span class="mono">aftercare</span>/<span class="mono">precautions</span>/<span class="mono">key_care</span>를 그대로 응답(<span class="mono">generatedBy: "treatment_guide"</span>) ③ 매칭 없으면 LLM 폴백도 근사 매칭도 없이 바로 <span class="mono">404 GUIDE_NOT_AVAILABLE</span>. <span class="mono">treatment_guides</span>는 시술 46종 전체를 팀이 직접 작성해 채운 테이블이라(<span class="mono">seedTreatmentGuides.ts</span>) 404가 나올 일이 거의 없다.</p>
+      <p class="note"><b>왜 없어졌나</b>: v0.4는 "근거를 <span class="mono">reference_guides</span>(검수된 원문)에서 LLM이 직접 종합"으로 바꿔서 <span class="mono">care_type</span> 그룹 하나가 서로 다른 시술(예: <span class="mono">botox</span>의 근육 주입형 <span class="mono">초음파™ 보톡스</span> vs 피부층 주입형 <span class="mono">스킨 보톡스</span>)을 같은 문구로 묶는 문제를 LLM의 판단력으로 완화하려 했다. 그런데 이 역시 근본 해결은 아니었다 — 애초에 주입되는 "사실 근거" 자체가 그룹 단위라 시술 고유 특성을 담지 못했다. 결국 그룹 단위 근거 자체를 버리고 시술명 단위로 팀이 직접 콘텐츠를 쓰는 쪽으로 방향을 바꿨다 — LLM이 종합할 필요 자체가 없어지고, 매 요청 LLM 호출 비용도 사라졌다.</p>
 
       <div class="endpoint-card">
         <div class="endpoint-head">
-          <span class="path">컨텍스트 주입 필드 <span class="tag">v0.4 — reviewedGuide 제거</span></span>
+          <span class="path">v0.4 시점의 프롬프트 <span class="tag">역사적 기록, 더 이상 코드에 없음</span></span>
         </div>
         <div class="endpoint-body">
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>필드</th><th>출처</th><th>용도</th></tr></thead>
-              <tbody>
-                <tr><td class="mono">care_name / care_date / days_elapsed</td><td class="mono">care_records</td><td>언제 무슨 시술을 받았는지</td></tr>
-                <tr><td class="mono">part_of_body / brand</td><td class="mono">care_records</td><td>시술 부위(배열, 중복 선택 가능) 맥락</td></tr>
-                <tr><td class="mono">doctor_comment</td><td class="mono">care_records</td><td>해당 시술 건 의사 코멘트</td></tr>
-                <tr><td class="mono">allergies / chronic_conditions</td><td class="mono">medical_profiles</td><td>특정 성분·행동 회피 근거</td></tr>
-                <tr><td class="mono">doctor_general_comment</td><td class="mono">medical_profiles</td><td>환자 전반 의사 코멘트</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="tag">v0.3까지</span> 여기에 "검수된 가이드 원문"이 함께 들어갔으나 <span class="tag">v0.4</span>부터 제거됐다 — 아래 System Prompt 참고.</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">server/src/services/llm/dailyGuide.prompt.ts</span>는 v0.5에서 삭제됐다. 아래는 v0.4~v0.5 과도기에 실제로 쓰였던 시스템 프롬프트 전문이다 — questions/recommendation 프롬프트를 손볼 때 톤·제약 표현의 참고용으로만 남긴다.</p>
 
           <div>
-            <div class="block-label">System Prompt <span class="tag">v0.4, docs/prompt.docx 반영</span></div>
+            <div class="block-label">System Prompt <span class="tag">v0.4, 삭제됨</span></div>
             <pre class="code-block">당신은 AAC 웰니스 클리닉의 사후관리 안내 도우미입니다.
 아래 "시술 정보"와 "환자 정보"를 바탕으로, 해당 환자의 현재 경과일에 맞는 사후관리 정보를
 안내하세요.
@@ -318,20 +307,8 @@ flowchart TD
 - 각 문장은 짧고 구체적으로 작성하세요.
 
 반드시 도구 호출(tool call)로만 응답하세요. 다른 텍스트를 추가하지 마세요.</pre>
-            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><b>왜 바뀌었나</b>: <span class="tag">v0.3까지</span> LLM은 <span class="mono">reference_guides</span> 원문을 그대로 재서술하는 역할이었다. 실제 시술 카탈로그(<span class="mono">docs/care_procedure_template.xlsx</span>)와 대조해보니 하나의 <span class="mono">care_type</span>이 서로 다른 시술을 묶는 문제가 발견됐다 — 예: <span class="mono">botox</span> care_type이 근육 주입형(<span class="mono">초음파™ 보톡스</span>)과 피부 얕은 층 주입형(<span class="mono">스킨 보톡스</span>)을 동일 문구로 묶어, 근육형 전용 주의사항("표정 짓기", "좌우 비대칭", "3~4개월 지속")이 스킨 보톡스 고객에게도 그대로 노출됐다. <span class="tag">v0.4</span>는 원문 자체를 고치는 대신 LLM이 시술명·환자 정보를 보고 직접 판단하도록 근거 원칙을 바꿔 해결한다.</p>
+            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);">출력 스키마는 <span class="mono">{ aftercare: string[], precautions: string[], keyCare: string }</span>였다 — 이 필드 이름이 그대로 <span class="mono">treatment_guides.aftercare</span>/<span class="mono">precautions</span>/<span class="mono">key_care</span> 컬럼으로 이어져 지금의 daily-guide 응답 구조가 됐다(위 desc 참고).</p>
           </div>
-
-          <div>
-            <div class="block-label">출력 스키마 <span class="tag">v0.4 — 필드명 전면 변경</span></div>
-            <pre class="code-block">{
-  "aftercare": ["string"],
-  "precautions": ["string"],
-  "keyCare": "string"
-}</pre>
-            <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="mono">aftercare</span>/<span class="mono">precautions</span>는 <b>정확히 3개</b> 또는(회복 주요 기간이 지났으면) <b>빈 배열</b> 둘 중 하나만 유효 — 어중간하면 코드 레벨에서 재시도한다(<span class="mono">aftercare.service.ts</span>의 <span class="mono">isValidGuideArrays</span>). <span class="mono">aftercare_guides.aftercare</span>/<span class="mono">precautions</span>/<span class="mono">key_care</span>에 저장(이전 컬럼명 <span class="mono">must_avoid</span>/<span class="mono">basic_care</span>, 마이그레이션 018에서 rename). <span class="mono">nextCheckDate</span>는 <b>LLM 출력이 아니다</b> — 여전히 서버가 <span class="mono">reference_guides.next_check_offset_days</span> 기반으로 결정론적으로 계산.</p>
-          </div>
-
-          <div class="status-row"><span class="status-chip err">503 GUIDE_GENERATION_FAILED → 검수된 가이드(reference_guides) 원문으로 폴백. 이때 keyCare는 서버가 합성한 짧은 안내 문구(LLM 생성 아님)</span></div>
         </div>
       </div>
     </section>
@@ -355,7 +332,7 @@ flowchart TD
             </table>
           </div>
 
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컨텍스트: daily-guide와 동일 필드 + <span class="tag">v0.4에도 유지</span> 검수된 가이드 원문(<span class="mono">reviewedGuide</span> — questions는 daily-guide와 달리 이 필드를 계속 쓴다) + 사용자 질문.</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컨텍스트: <span class="mono">care_name</span>/<span class="mono">days_elapsed</span>/<span class="mono">doctor_comment</span>(<span class="mono">care_records</span>) + <span class="mono">allergies</span>/<span class="mono">chronic_conditions</span>/<span class="mono">doctor_general_comment</span>(<span class="mono">medical_profiles</span>) + <span class="mono">treatment_guides</span>의 콘텐츠(JSON 페이로드 키는 <span class="mono">reviewedGuide</span> 그대로 유지 — <span class="tag">v0.5</span> 소스만 <span class="mono">reference_guides</span>→<span class="mono">treatment_guides</span>로 바뀌었고 필드명은 유지) + 사용자 질문.</p>
 
           <div>
             <div class="block-label">System Prompt <span class="tag">v0.4, docs/prompt.docx 반영 — consultationLevel 신규</span></div>
@@ -461,16 +438,16 @@ consultationLevel 기준:
 
     <section id="versioning">
       <h2>버전 관리 <span class="tag">추후 확장</span></h2>
-      <p class="desc">현재 <span class="mono">generated_by</span> / <span class="mono">answered_by</span>는 <span class="mono">'llm'</span> 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 <span class="mono">prompt_version</span>, <span class="mono">model_name</span> 컬럼을 <span class="mono">aftercare_guides</span>/<span class="mono">questions</span>에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).</p>
+      <p class="desc"><span class="tag">v0.5</span> LLM을 호출하는 지점이 questions 하나로 줄면서(daily-guide는 이제 LLM을 호출하지 않고, recommendation은 애초에 결과를 저장하지 않음), 버전 관리 대상도 <span class="mono">questions.answered_by</span>(<span class="mono">'llm'</span> 고정값) 하나뿐이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 <span class="mono">prompt_version</span>, <span class="mono">model_name</span> 컬럼을 <span class="mono">questions</span>에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).</p>
     </section>
 
     <section id="confirmed">
       <h2>구현 시 확정된 사항 <span class="tag">server/ 참고</span></h2>
       <ul class="open-q">
         <li>LLM 모델: OpenAI API(<span class="mono">OPENAI_MODEL</span> 환경변수, 기본값 <b><span class="mono">gpt-4.1-mini</span></b> <span class="tag">v0.3, 2026-08-18 변경</span>) — 최초 <span class="mono">gpt-4o-mini</span>로 시작 → 크레딧을 더 쓰려고 <span class="mono">gpt-5.4</span>로 변경 → 배포 환경에서 홈/추천 화면이 30초 넘게 타임아웃되는 장애 발생 → 실측 결과 <span class="mono">gpt-5.4</span>가 계정 기준 <b>일일 50 요청</b> 하드 레이트리밋에 걸려 있었고(크레딧 잔액과 무관), OpenAI SDK 기본 재시도(<span class="mono">maxRetries:2</span>, 지수 백오프)가 앱 자체 재시도 루프와 중첩되어 응답이 24초까지 늘어진 것으로 확인 → <span class="mono">gpt-4.1-mini</span>로 교체(같은 계정에서 레이트리밋 없음, 24132ms → 1381ms 개선 확인) + <span class="mono">server/src/config/openai.ts</span>에서 <span class="mono">maxRetries: 0</span>으로 SDK 재시도 자체를 꺼서 구조적으로 방지.</li>
-        <li>검수된 가이드(RAG 소스) 저장 위치: DB 테이블 <span class="mono">public.reference_guides</span>로 확정 (<span class="mono">db-schema.md</span> 참고)</li>
-        <li>출력 검증 실패 시 정책: <b>1회 재시도 → 그래도 실패하면</b> daily-guide는 <span class="mono">reference_guides</span> 원문으로 폴백(200), questions는 <span class="mono">503 ANSWER_GENERATION_FAILED</span></li>
-        <li>구조화 출력 강제 방식: OpenAI function calling(<span class="mono">tool_choice: {type:"function"}</span>) — daily-guide/questions/recommendation 3곳 전부 공통 <span class="mono">callStructuredLlm</span> 함수 재사용</li>
+        <li>사후관리 콘텐츠(RAG 소스) 저장 위치: <span class="tag">v0.5</span> DB 테이블 <span class="mono">public.treatment_guides</span>로 확정 — 시술명+경과일 단위, 팀이 직접 작성(검수 워크플로 없음, 애초에 팀 작성 콘텐츠라 "검수 대기" 상태가 없음). <i>v0.4까지는 <span class="mono">public.reference_guides</span>, <span class="mono">care_type</span> 그룹 단위였다 — 그 테이블은 024에서 삭제됐다.</i> (<span class="mono">db-schema.md</span> 참고)</li>
+        <li>출력 검증 실패 시 정책: <b>1회 재시도 → 그래도 실패하면</b> questions는 <span class="mono">503 ANSWER_GENERATION_FAILED</span>, recommendation은 정적 템플릿 폴백(200). <b>daily-guide는 v0.5부터 애초에 LLM을 호출하지 않으므로 이 정책 자체가 해당 없음</b> — 매칭 실패는 곧바로 <span class="mono">404 GUIDE_NOT_AVAILABLE</span></li>
+        <li>구조화 출력 강제 방식: OpenAI function calling(<span class="mono">tool_choice: {type:"function"}</span>) — questions/recommendation <b>2곳</b>이 공통 <span class="mono">callStructuredLlm</span> 함수 재사용(v0.5부터 daily-guide는 제외)</li>
         <li>GPT-5 계열은 <span class="mono">max_tokens</span> 대신 <span class="mono">max_completion_tokens</span>를 요구하고, 추론 전용 모델(<span class="mono">gpt-5</span>/<span class="mono">gpt-5-mini</span>)은 강제 tool-calling과 궁합이 안 맞아(낮은 토큰 예산에서 숨은 추론에 토큰을 다 씀) 후보에서 제외</li>
         <li><span class="tag">v0.4</span> 세 프롬프트 전부 <span class="mono">docs/prompt.docx</span>(사용자 팀 작성 재설계안)를 코드에 반영 완료. daily-guide는 전면 재설계(공통 원칙 1번 변경 포함), questions는 <span class="mono">consultationLevel</span> 추가, recommendation은 시스템 프롬프트 교체(스키마·컨텍스트 구조는 기존과 동일)</li>
       </ul>
@@ -481,13 +458,13 @@ consultationLevel 기준:
       <ul class="open-q">
         <li>위험 신호 키워드 목록의 구체적 범위 (전문가 검수 필요)</li>
         <li>실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요</li>
-        <li><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종(<span class="mono">energy_lifting</span>/<span class="mono">botox</span>/<span class="mono">filler</span>/<span class="mono">skin_booster</span>/<span class="mono">hair_removal</span>)이 미검수 스텁</b> (2026-08-17 발견) — <span class="mono">reviewed_by</span>/<span class="mono">reviewed_at</span> 컬럼을 코드가 검사하지 않는다. <span class="tag">v0.4</span> daily-guide는 이제 이 원문을 LLM 근거로 안 쓰므로(폴백 용도로만 남음) 영향이 줄었지만, <b>questions.prompt는 여전히 <span class="mono">reviewedGuide</span>로 이 원문을 주입</b>하므로 동일 리스크가 남아있음(<span class="mono">server/README.md</span> TODO 참고)</li>
-        <li><b><span class="mono">treatment_catalog</span>의 <span class="mono">botox</span> care_type이 서로 다른 시술을 묶는 문제</b> <span class="tag" style="background:var(--error-soft,#F5E9E8); color:var(--error,#A83C3C);">2026-08-19 크로스체크로 발견</span> — <span class="mono">초음파™ 보톡스</span>(근육 주입형)와 <span class="mono">스킨 보톡스</span>(피부 얕은 층 주입, 근육 비관여)가 같은 <span class="mono">care_type: "botox"</span>로 매핑돼 같은 <span class="mono">reference_guides</span> 문구(표정 관리·좌우 비대칭·3~4개월 지속 등 전부 근육형 전용)를 공유한다. daily-guide는 v0.4로 완화됐으나 questions.prompt와 폴백 경로는 여전히 이 원문을 그대로 씀 — <span class="mono">botox</span> care_type을 근육형/피부형으로 분리하는 게 필요(아직 미착수)</li>
-        <li>이름 불일치: <span class="mono">treatment_catalog</span>의 <span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>이 엑셀 원본(<span class="mono">튠 콩피에르(Tune Confier)</span>/<span class="mono">레이저 제모</span>)과 다름 — 치명적이진 않지만 관리자 웹 자동완성에 영향 가능</li>
+        <li style="text-decoration:line-through; opacity:0.6;"><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종이 미검수 스텁</b></li>
+        <li><span class="tag" style="background:var(--accent-soft); color:var(--accent-text);">v0.5에서 해소됨</span> 위 미검수 스텁 문제와 아래 <span class="mono">botox</span> 그룹핑 문제 둘 다 — <span class="mono">reference_guides</span> 테이블 자체가 삭제되고 <span class="mono">treatment_guides</span>(시술명 단위, 팀이 직접 작성)로 대체되며 "검수 여부 구분 안 됨"의 전제(검수 워크플로가 있는데 코드가 검사 안 함)와 "그룹 공유로 시술 특성을 못 담는" 구조 둘 다 사라졌다. <span class="mono">초음파™ 보톡스</span>/<span class="mono">스킨 보톡스</span>는 이제 각자 독립된 <span class="mono">treatment_guides</span> 콘텐츠를 갖는다.</li>
+        <li>이름 불일치: <span class="mono">treatment_catalog</span>의 <span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>이 엑셀 원본(<span class="mono">튠 콩피에르(Tune Confier)</span>/<span class="mono">레이저 제모</span>)과 다름 — <span class="mono">treatment_guides</span>는 <span class="mono">care_name</span> 완전 일치로 daily-guide를 매칭하므로, v0.5부터는 이 불일치가 daily-guide 404로 직접 이어질 수 있음(v0.4까지는 care_type 그룹 매칭이라 완충됐음)</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.14 · db-schema v0.9 기준 · 2026-08-19 daily-guide/questions 프롬프트 전면 재설계(docs/prompt.docx, v0.4)</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.16 · db-schema v0.10 기준 · 2026-08-20 daily-guide LLM 호출 제거(v0.5)</footer>
   </main>
 </div>
 

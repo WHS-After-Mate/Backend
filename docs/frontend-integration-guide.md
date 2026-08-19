@@ -40,7 +40,7 @@ cp .env.example .env
 | 변수 | 설명 |
 |---|---|
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` | 백엔드에서 이미 만든 Supabase 프로젝트 값 |
-| `OPENAI_API_KEY` | 사후관리 가이드/Q&A 생성용 OpenAI API 키 — **선택.** 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. 없을 때 `GET /aftercare/daily-guide`는 검수된 가이드 원문으로 자동 폴백되고, `POST /aftercare/questions`만 `500 ANSWER_GENERATION_FAILED`를 응답한다 |
+| `OPENAI_API_KEY` | Q&A 답변/추천 사유 생성용 OpenAI API 키 — **선택.** 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. `GET /aftercare/daily-guide`는 `(v0.16)` OpenAI를 아예 쓰지 않아(DB 직접 조회) 이 키와 무관하게 항상 동작한다. 없을 때 `POST /aftercare/questions`는 `503 ANSWER_GENERATION_FAILED`를 응답하고, 다음 관리 추천의 `reasons`/`detailDescription`은 정적 템플릿 문구로 조용히 폴백한다(추천 자체는 계속 뜸) |
 
 > ⚠️ **DB 마이그레이션과 시드(`npm run seed`)는 실행하지 않는다.** 이미 Supabase에 적용돼 있어서 재실행하면 데모 계정 중복 에러가 난다.
 

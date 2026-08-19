@@ -1,7 +1,11 @@
-# WHS After Mate — API 명세서 (v0.15, MVP)
+# WHS After Mate — API 명세서 (v0.17, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.17 변경 (2026-08-20, 버그 수정): **"가장 최근 관리"가 더 이상 미래 예약을 포함하지 않는다.** `server_admin`이 예약(미래 `careDate`) 등록을 지원하면서(이용권 미차감, `admin-api-spec.md` v0.11 참고) `GET /aftercare/daily-guide`(careRecordId 미지정)·`POST /aftercare/questions`(careRecordId 미지정)·`GET /home/summary`·`GET /recommendations/next-care`(마지막 관리 후 경과일 판단)가 전부 공유하는 "최근 관리 이력" 조회가 `care_date` 내림차순 정렬만 하고 있어서, 아직 받지도 않은 미래 예약이 "가장 최근 관리"로 뽑히는 버그가 있었다. 그 결과 `daysElapsed`가 0으로 계산돼(음수는 항상 0으로 클램프됨) 챗봇이 "오늘이 시술 당일"처럼 잘못 답하는 사례가 실사용 중 발견됐다. 이제 오늘(KST) 이전 날짜의 관리만 "최근 관리" 후보가 된다. 응답 스키마 변경 없음(내부 조회 조건 수정). 자세한 내용은 하단 "구현 시 확정된 사항" 절 참고.
+
+v0.16 변경 (2026-08-19~20): **`GET /aftercare/daily-guide`가 더 이상 LLM을 호출하지 않는다.** 근거가 `care_type` 그룹 단위 검수 가이드(`reference_guides`)에서 시술명(`careName`)+경과일 직접 매칭 콘텐츠(`treatment_guides`, 팀이 직접 작성)로 완전히 바뀌면서, 매칭되는 행을 그대로 반환하는 단순 조회가 됐다 — `generatedBy`는 이제 항상 `"treatment_guide"`(과거 `"llm"`/`"reference_guide"` 값은 더 이상 나오지 않음), `nextCheckDate`는 항상 `null`(과거엔 `reference_guides.next_check_offset_days` 기반 서버 계산값), LLM 생성 실패 시 `reference_guides` 원문으로 폴백하던 정책도 함께 사라져 매칭이 없으면 곧바로 `404 GUIDE_NOT_AVAILABLE`. `POST /aftercare/questions`(챗봇)는 여전히 LLM을 호출하지만 근거 소스만 `treatment_guides`로 교체됐다 — 이제 LLM 호출 지점은 `questions`와 `GET /recommendations/next-care`(추천) 두 곳뿐이다. 자세한 내용은 하단 "GET /aftercare/daily-guide" 절 참고.
 
 v0.15 변경 (2026-08-19): `GET /recommendations/next-care/{recommendationId}` 응답에서 `popularWithSimilarCustomers`(쓰이지 않아 제거) 대신 **`categoryTags`**를 내려준다 — 추천된 시술이 `care_procedure_template.xlsx`에서 O로 표시된 관심목표 칼럼(= `procedures.category_tags`) 그대로. 하위호환 없음.
 
@@ -68,6 +72,8 @@ v0.9 변경: 회원가입 화면을 2페이지로 분리하는 프론트 요청�
 | PATCH | `/profile` | `profile.routes.ts` |
 | POST | `/profile/password` | `profile.routes.ts` *(v0.5)* |
 | PUT | `/profile/interests` | `profile.routes.ts` |
+| GET | `/profile/notifications` | `profile.routes.ts` *(v0.16)* |
+| PATCH | `/profile/notifications` | `profile.routes.ts` *(v0.16)* |
 | POST | `/notifications/device-token` | `notifications.routes.ts` |
 | DELETE | `/notifications/device-token` | `notifications.routes.ts` |
 
@@ -354,11 +360,11 @@ accessToken 재발급.
 **진입 경로**: 홈의 "사후관리 카드" 클릭 시 `careRecordId`가 지정된 채로 AI 사후관리 가이드에 진입한다. 챗봇은 ① 가이드 페이지의 "더 궁금한 점?" ② 홈의 "AI에게 물어보기" 버튼, 두 경로로 진입할 수 있다. My Care 관리 상세 화면의 "AI 사후관리 가이드" 버튼도 동일한 가이드 화면으로 연결된다(4절 참고).
 
 ### GET /aftercare/daily-guide
-경과일에 맞는 일차별 주의사항. 고객당 "관리 건 + 오늘 날짜" 조합 기준 **1일 1회 LLM 호출**로 생성 후 자정까지 캐시한다.
+경과일에 맞는 일차별 주의사항. `(v0.16)` **LLM을 호출하지 않는다** — 시술명(`careName`)+경과일로 `treatment_guides`(팀이 직접 작성한 고정 콘텐츠, DB 테이블)를 직접 조회해 그대로 반환하는 단순 조회형 엔드포인트다.
 
 **Query**:
 - `careRecordId` (optional. 생략 시 최근 관리 기준. 홈/My Care 상세에서 진입 시 전달됨)
-- `elapsedDay` (optional, `v0.5`. AI 사후관리 가이드 화면의 1일차/3일차/5일차/7일차/10일차 탭 선택값. 생략 시 오늘 실제 경과일 기준)
+- `elapsedDay` (optional. AI 사후관리 가이드 화면의 1일차/3일차/5일차/7일차/14일차 탭 선택값 — **이 다섯 값만 콘텐츠가 존재**(`treatment_guides.day`의 DB 제약). 생략 시 오늘 실제 경과일 기준, 그 값이 다섯 값 중 하나가 아니면 아래 404)
 
 **Response 200**
 ```json
@@ -367,37 +373,36 @@ accessToken 재발급.
   "careRecordId": "C-2001",
   "careName": "브라이트닝 필링",
   "daysElapsed": 5,
-  "elapsedRange": "3-7",
+  "elapsedRange": null,
   "isToday": true,
   "aftercare": ["미온수 세안과 저자극 보습제로 피부 수분을 유지하세요.", "외출 시 자외선 차단제를 재도포하세요.", "각질 제거 제품은 3일 후부터 사용 가능합니다."],
   "precautions": ["고강도 유산소 운동을 피하세요.", "레티놀 함유 제품 사용을 피하세요.", "과도한 마찰·온도 변화를 피하세요."],
   "keyCare": "민감한 시기이니 자극을 최소화하고, 3일 후부터 각질 제거 제품을 재개하세요.",
-  "nextCheckDate": "2026-08-01",
-  "generatedAt": "2026-07-30T00:05:00Z",
-  "generatedBy": "llm",
-  "cacheExpiresAt": "2026-07-31T00:00:00Z"
+  "nextCheckDate": null,
+  "generatedAt": "2026-08-19T05:00:04Z",
+  "generatedBy": "treatment_guide",
+  "cacheExpiresAt": null
 }
 ```
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `guideId` | string | |
+| `guideId` | string | `treatment_guides` 행의 id |
 | `careRecordId` | string | |
 | `careName` | string | |
-| `daysElapsed` | number | |
-| `elapsedRange` | string | 경과 구간(예: `"3-7"`) |
-| `isToday` | boolean | `(v0.5)` `elapsedDay`가 실제 오늘 경과일과 같거나 생략된 경우 `true`. 이 경우에만 LLM 개인화 생성+캐시를 사용 |
-| `aftercare` | string[] | `(v0.14)` 오늘 경과일에 맞는 사후관리 방법. 정확히 3개 또는(회복 주요 기간이 지났으면) 빈 배열. 이전 필드명 `basicCare` |
-| `precautions` | string[] | `(v0.14)` 오늘 경과일에 맞는 주의사항. 정확히 3개 또는(회복 주요 기간이 지났으면) 빈 배열. 이전 필드명 `mustAvoid` |
-| `keyCare` | string | `(v0.14)` 신규 — 오늘 가장 중요하게 기억해야 할 내용 한 줄 요약. 회복 주요 기간이 지난 시점이면 "일상 복귀 가능" 취지 안내가 담기고 이때 `aftercare`/`precautions`는 빈 배열 |
-| `nextCheckDate` | string \| null | 여전히 서버가 결정론적으로 계산(`reference_guides.next_check_offset_days` 기반) — LLM이 만드는 값 아님 |
-| `generatedAt` | datetime | |
-| `generatedBy` | string | `"llm"` \| `"reference_guide"`(LLM 실패 폴백) |
-| `cacheExpiresAt` | datetime | 자정(KST) 기준 캐시 만료 시각 |
+| `daysElapsed` | number | `elapsedDay` 쿼리를 그대로 반영(생략 시 실제 경과일) — 위 다섯 값 중 하나 |
+| `elapsedRange` | null | `(v0.16)` 항상 `null` — `reference_guides`의 구간 개념이 사라지고 정확한 일차 매칭으로 바뀌며 의미 없어짐 |
+| `isToday` | boolean | `elapsedDay`가 실제 오늘 경과일과 같거나 생략된 경우 `true` |
+| `aftercare` | string[] | 오늘 경과일에 맞는 사후관리 방법. 정확히 3개 |
+| `precautions` | string[] | 오늘 경과일에 맞는 주의사항. 정확히 3개 |
+| `keyCare` | string | 오늘 가장 중요하게 기억해야 할 내용 한 줄 요약 |
+| `nextCheckDate` | null | `(v0.16)` 항상 `null` — 과거엔 `reference_guides.next_check_offset_days` 기반 서버 계산값이었으나, 그 테이블이 삭제되며 계산 근거 자체가 없어짐 |
+| `generatedAt` | datetime | 매 요청 시각(조회 응답이라 캐시된 과거 생성 시각이 아님) |
+| `generatedBy` | string | `(v0.16)` 항상 `"treatment_guide"` — 과거 값(`"llm"`/`"reference_guide"`)은 더 이상 나오지 않음 |
+| `cacheExpiresAt` | null | `(v0.16)` 항상 `null` — LLM 캐시가 없어져 만료 개념 자체가 사라짐 |
 
-- `(v0.14)` LLM은 더 이상 검수된 가이드(`reference_guides`) 원문을 그대로 재서술하지 않는다 — 시술 정보(관리명·부위·의사 코멘트)와 환자 정보(알러지·기저질환)를 근거로 직접 종합해서 생성하며, 모든 시술에 공통되는 일반론("압박하지 마세요" 등)은 제외하도록 프롬프트에서 명시한다. `reference_guides`는 LLM 호출 실패 시 폴백, 그리고 `elapsedDay`로 비-오늘 탭을 조회할 때(아래)만 쓰인다.
-- `elapsedDay`로 다른 탭(과거/미래 경과일)을 조회하면 개인화 LLM 호출 없이 `reference_guides`(검수된 가이드 원문)를 그대로 반환한다 — `generatedBy: "reference_guide"`. 가상의 경과일에 대해 매번 LLM을 호출하는 비용·안전 부담을 피하기 위함. 이 경로의 `keyCare`는 LLM 생성이 아니라 서버가 합성한 짧은 안내 문구다.
-`404 GUIDE_NOT_AVAILABLE`: 지원하지 않는 관리 유형/경과일 구간
-`503 GUIDE_GENERATION_FAILED`: LLM 생성 실패 시 재시도 안내(폴백: 검수된 기본 가이드 문구로 대체)
+- `(v0.16)` `careName`+`elapsedDay`(또는 실제 경과일)로 정확히 일치하는 `treatment_guides` 행이 없으면(그 시술 이름 표기가 다르거나, 그 시술이 아직 콘텐츠 작성 전이거나, 경과일이 1/3/5/7/14가 아니면) 개인화·LLM 폴백 없이 바로 아래 `404 GUIDE_NOT_AVAILABLE`
+- 오늘 탭이든 다른 탭(`elapsedDay`로 과거/미래 경과일 조회)이든 동작 방식은 완전히 동일하다 — 둘 다 같은 `treatment_guides` 조회이고, 차이는 `isToday` 값뿐(LLM 개인화가 없어지며 "오늘만 개인화, 나머지는 검수 원문"이라는 구분 자체가 사라짐)
+`404 GUIDE_NOT_AVAILABLE`: 그 시술명+경과일 조합의 `treatment_guides` 콘텐츠가 아직 없음
 
 ### GET /aftercare/question-categories
 지원 질문 카테고리 목록 (고정값 조회용). 챗봇 진입 시 최초 호출.
@@ -411,7 +416,7 @@ accessToken 재발급.
 | `categories` | string[] | 챗봇 질문 카테고리 select에 그대로 뿌릴 고정값 6종 |
 
 ### POST /aftercare/questions
-챗봇 질문 등록 및 LLM 답변 조회(동기 응답). 최근 관리·경과일·검수 가이드를 컨텍스트로 답변을 생성한다.
+챗봇 질문 등록 및 LLM 답변 조회(동기 응답). 최근 관리·경과일·`treatment_guides` 콘텐츠(팀 작성)와 환자의 알러지·기저질환·시술기록의 기타사항(`doctorComment`)을 컨텍스트로 답변을 생성한다 — 시술기록 등록 시 입력한 특이사항을 챗봇이 실제로 참고한다는 뜻(`db-schema.md`의 "public.medical_profiles"/"public.care_records" 절 참고).
 
 **Request**
 ```json
@@ -725,6 +730,27 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 |---|---|---|
 | `interestGoals` | string[] | 저장된 값 그대로 반환 |
 
+### GET /profile/notifications `(v0.16)`
+알림 설정 조회 — 사후관리(`care`)/마케팅(`marketing`) 두 종류. `push.service.ts`의 `sendPushToUser`가 발송 시 이 값을 실제로 읽어 분기한다(꺼져 있으면 발송 스킵) — placeholder가 아니라 실제로 동작에 영향을 준다.
+
+**Response 200**
+```json
+{ "careNotification": true, "marketingNotification": true }
+```
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `careNotification` | boolean | 시술 등록/예약, 일차별 마일스톤(1/3/5/7/14일차), 이용권 만료 리마인더 알림 on/off |
+| `marketingNotification` | boolean | 마케팅 알림 on/off |
+
+### PATCH /profile/notifications `(v0.16)`
+보낸 필드만 반영(둘 다 optional, 최소 하나는 필요).
+
+**Request**
+```json
+{ "careNotification": false }
+```
+**Response 200**: 변경 후 전체 설정 (위 GET 응답과 동일 형태)
+
 ### POST /notifications/device-token
 Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 뒤 서버에 등록. 앱 시작 시 또는 토큰 갱신(`onNewToken`) 시 호출.
 
@@ -752,12 +778,12 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | User | id, name, email, phone, role(customer/expert/admin) |
 | CareRecord | id, careName, careDate, partOfBody[], brand, practitioner, basicAftercareGuide, **status, daysElapsed, session{number,total}, membership{id,productName,totalCount}** *(굵은 필드 v0.5, totalCount는 v0.12)* |
 | Membership | id, productName, totalCount, usedCount, remainingCount, expiresAt, lastUsedAt, availableCareNames, **usageHistory[]{sessionNumber,usedAt}** *(v0.5)* |
-| AftercareGuide | id, careType, elapsedRangeStart, elapsedRangeEnd, precautions[], aftercare[], generatedAt, generatedBy, cacheExpiresAt, **isToday** *(v0.5)*, **keyCare** *(v0.14, 필드명도 mustAvoid/basicCare→precautions/aftercare로 변경)* |
+| AftercareGuide | id, careRecordId, careName, daysElapsed, isToday, precautions[], aftercare[], keyCare, generatedAt, generatedBy(`(v0.16)` 항상 `"treatment_guide"`) — `elapsedRange`/`nextCheckDate`/`cacheExpiresAt`는 `(v0.16)` 항상 `null`(LLM 캐시·구간 개념이 `treatment_guides` 직접 매칭으로 교체되며 무의미해짐) |
 | Question | id, careRecordId, category, question, status, answer, answeredBy, expertContactRequired, **consultationLevel** *(v0.14)*, createdAt |
 | Recommendation | id, careName, reasons[], basis[], disclaimer, detailDescription, relatedRecentCares[]{...,**brand** *(v0.12)*}, **categoryTags[]** *(v0.15, 이전 popularWithSimilarCustomers 대체)*, clinicContacts[] *(v0.5)*, **businessId** *(v0.8)* |
 | Procedure | id, businessId, name, categoryTags[], description *(v0.8, `procedures` 테이블 — 46개 실제 시술 카탈로그)* |
 | Business | id, name, brand, talkChannelLabel, talkChannelUrl, phone *(v0.8, `businesses` 테이블 — 사업장 3곳)* |
-| Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)* |
+| Profile | userId, name, email, interestGoals[], **birthDate, phone** *(v0.5)*, **careNotification, marketingNotification** *(v0.16)* |
 
 ## 공통 에러 코드
 
@@ -773,8 +799,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 | `NO_ACTIVE_CUSTOMER_PROFILE` | 연결된 고객 프로필 없음 |
 | `CARE_RECORD_NOT_FOUND` | 존재하지 않는 관리 이력 |
 | `MEMBERSHIP_NOT_FOUND` | 존재하지 않는 이용권 |
-| `GUIDE_NOT_AVAILABLE` | 미지원 관리 유형/경과일 |
-| `GUIDE_GENERATION_FAILED` | LLM 일차별 가이드 생성 실패 |
+| `GUIDE_NOT_AVAILABLE` | 그 시술명+경과일 조합의 `treatment_guides` 콘텐츠 없음 |
 | `ANSWER_GENERATION_FAILED` | LLM Q&A 답변 생성 실패 |
 | `UNSUPPORTED_CATEGORY` | 미지원 질문 카테고리 |
 | `INVALID_OR_EXPIRED_RESET_CODE` | 비밀번호 재설정 인증코드/`resetToken` 무효·만료 *(v0.5 신규, 이메일 링크 대신 숫자 코드 방식으로 전환. v0.6에서 코드 검증(`reset-verify`)과 비밀번호 변경(`reset-confirm`)을 분리하며 `resetToken` 오류에도 동일 코드 재사용)* |
@@ -782,11 +807,12 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 
 ## 미확정 사항 (기획팀 확인 필요)
 - refreshToken 만료 기간 및 재로그인 정책 (현재 Supabase Auth 기본값 사용)
-- FCM 실제 발송 트리거(아침 리마인더 배치 등) 스케줄 — 서버는 발송 함수만 준비된 상태
 
 ## 구현 시 확정된 사항 (server/README.md 참고)
-- LLM(daily-guide) 생성 실패 시: 문서상 503이었으나 실제로는 검수된 가이드(`reference_guides`) 원문으로 자동 폴백해 200 응답 (`generatedBy: "reference_guide"`). LLM 없이도 항상 최소 안전한 답을 준다
+- `(v0.16)` daily-guide는 더 이상 LLM을 호출하지 않는다 — `treatment_guides` 직접 조회로 바뀌며 "생성 실패 시 폴백" 개념 자체가 사라졌다(매칭 없으면 곧바로 `404 GUIDE_NOT_AVAILABLE`). 과거엔 문서상 503이었으나 실제로는 검수된 가이드(`reference_guides`) 원문으로 자동 폴백해 200 응답했었다 — 그 테이블은 삭제됐다
 - 위 표 5절에 Android FCM 디바이스 토큰 등록/해제 엔드포인트 신규 추가 (`POST`/`DELETE /notifications/device-token`)
+- FCM 실제 발송 트리거도 이제 구현됨 — `server/src/services/notificationScheduler.service.ts`가 매일 09:00/19:00 KST 크론으로 일차별 마일스톤·이용권 만료·당일 시술 알림을 발송한다(`FCM_ENABLED=true`일 때만 기동). `GET/PATCH /profile/notifications`로 사용자가 종류별(`care`/`marketing`)로 켜고 끌 수 있다(`db-schema.md`의 "public.notification_log" 절 참고)
+- `(v0.17)` "최근 관리 이력" 조회(`getLatestCareRecord`/`listRecentCareRecords`, `server/src/services/careRecords.service.ts`)가 이제 `care_date <= 오늘(KST)`만 후보로 삼는다 — `server_admin`의 예약(미래 날짜) 등록 기능과 맞물려 미래 예약이 daily-guide/챗봇/홈요약/추천의 "최근 관리"로 잘못 뽑히던 버그 수정(위 v0.17 changelog 참고)
 
 ## v0.5에서 추가된 항목 (와이어프레임 검토 반영, 구현·마이그레이션·시드 전부 완료)
 

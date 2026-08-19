@@ -1,3 +1,24 @@
+## 2026-08-20 (6, 문서 작업 중단 → 오류 3건 수정 + 배포)
+- 사용자가 "문서작업 말고 오류를 고치자"로 전환 → 아래 3건 전부 수정 완료
+  1. migration 025(`emr_care_records.care_type` 삭제) — 사용자가 Supabase SQL Editor에서 직접 적용, 실제 insert 테스트로 재검증 완료
+  2. `server/db/seed/seed.ts` 수정 — 삭제된 `care_type`/`reference_guides`를 여전히 참조하던 코드 전부 제거(`careType` 필드, `REFERENCE_GUIDES` 배열+시딩 블록), `npm run seed` 실제 실행해 4개 데모 계정 정상 재시딩 확인. 부수적으로 `seedTreatmentGuides.ts`가 `package.json`에 스크립트 등록이 안 돼있던 것도 발견해 `seed:treatment-guides`로 추가
+  3. `server_admin` `treatment-catalog` PATCH/DELETE 브랜드 소유권 미검증 — `catalog.service.ts`/`catalog.routes.ts`에 `brand` 체크 추가, derna가 amred 소유 항목 건드리면 404 뜨는지 실제 로그인+API 호출로 검증 완료
+  - 3건 전부 `tsc --noEmit` 통과, 커밋+푸시 완료(`d75a925`)
+- 사용자가 "커밋 및 푸시해주고 가비아 서버 명령어도 올려줘" → 위 커밋만 정확히 stage(문서 변경분은 계속 제외)해서 커밋+푸시, 배포 명령어(`git pull && npm install && npm run build && pm2 restart`) 안내
+- **`docs/image.png`의 정체 확인** — 그동안 "원인불명으로 크기가 계속 바뀜"이라고 기록해온 그 파일이, 사실은 사용자가 가비아 서버 터미널 스크린샷을 붙여넣는 스크래치 용도였음이 밝혀짐(문서 자산 아님, 매번 새 스크린샷으로 덮어써진 것뿐) — 앞으로 "image 봐봐" 요청은 이 파일을 Read로 확인하면 됨
+  - 배포 중 실제 빌드 오류 2건 발견·해결 안내: `server/`에 `node-cron`, `server_admin/`에 `firebase-admin` 둘 다 이번 커밋 범위에서 새로 추가된 의존성인데 서버에 `npm install` 없이 `npm run build`부터 돌려서 `TS2307 Cannot find module` 발생 → `npm install` 먼저 하라고 안내, 재시도로 해결 확인
+- 사용자가 "admin pm2는 whs-admin이야 기억해" → 이전까지 work-log에 "미기록"으로 남아있던 정보라 memory(`deploy_gabia_server.md`, reference 타입)에 저장 — server=`whs-server`, server_admin=`whs-admin`, 배포 절차, image.png 용도까지 함께 기록
+- **문서(`docs/*.md`+`.html`, 두 README, `.work-log`) 갱신 작업은 여전히 커밋 전 상태로 보류 중** — 이전 세션(2026-08-20 (5))에서 "일단 거기까지만" 지시로 중단된 그대로, 이번 세션에서도 재개하지 않음
+
+## 2026-08-20 (5, 문서 전수 감사 + 갱신 — 중단 시점 기록)
+- 사용자가 "관리자 로그인 시 클리닉별 시술 필터링/관리부위 고정목록/챗봇 특이사항 인지/GPT 호출 2곳" 4개 확인사항 요청 → 전부 코드+라이브 테스트로 검증 완료(전부 이미 정상 동작, 코드 변경 없음)
+- 사용자가 "문서도 최신 상태 맞는지 확인해줘" 요청 → fork로 `docs/` 전체(admin-api-spec/api-spec/db-schema/llm-prompt-design/server-code-guide/frontend-integration-guide/api-user-flow/care_recommendation_data_guide) + 3개 README를 실제 코드와 대조하는 읽기전용 감사 진행 → 5개 문서(db-schema, admin-api-spec, api-spec, llm-prompt-design, server-code-guide)가 크게 stale(전날 세션의 care_type 삭제/treatment_guides 도입/FCM/daily-guide LLM 제거가 전혀 반영 안 됨) 확인
+- 사용자가 "그거 다 반영해서 문서 업데이트해줘 아티팩트도 최신화 해주고" 요청 → 감사 결과 기반으로 7개 `.md` 문서(db-schema v0.10, admin-api-spec v0.10, api-spec v0.16, llm-prompt-design v0.5, server-code-guide v0.4, frontend-integration-guide 1줄, 두 README) 전면 수정 완료
+  - 이 과정에서 마이그레이션 025 이전에 발견 못했던 **세 번째 회귀 버그** 발견: `emr_care_records.care_type`가 `not null`인데 `024`가 이 테이블을 놓쳐서, `server_admin`의 `addCareRecord`(카테고리 없이 insert)가 회원가입 전(claim 전) 환자의 시술기록 등록을 전부 실패시키고 있었음 — 실제 insert 테스트로 재현 확인(`23502` not-null 위반) 후 `server/db/migrations/025_drop_emr_care_records_care_type.sql` 작성, **단독 커밋(`137c117`)까지 완료**. 단, DDL 실행 권한이 없어 **Supabase SQL Editor 수동 적용 필요**(아직 미적용)
+  - 부수적으로 `server/db/seed/seed.ts`(`npm run seed`)가 같은 이유(삭제된 `care_type`/`reference_guides`를 여전히 insert)로 **깨져 있음을 발견** — 이미 시드된 환경엔 무해(재실행 안 하면 됨)하지만 새 환경 세팅 시 실패함. **고치지 않고 `server/README.md`에 알려진 이슈로만 기록**(700줄 스크립트 전면 재작성이 필요해 범위 밖 판단)
+  - `.html` 아티팩트 6종(db-schema/admin-api-spec/api-spec/llm-prompt-design/server-code-guide/frontend-integration-guide) 동기화는 fork에 위임 — **첫 시도는 tool_uses:0으로 아무 작업도 안 하고 상태 요약만 반환(실패)**, 재시도 fork(`aa02da2cd407ca277`)가 실제로 6개 파일 전부 수정(diff 85/92/192/2/75/73줄) — **다만 이 fork의 완료 알림(task-notification)을 최종 확인하지 못한 채 세션이 중단됨**
+- 사용자가 "다 끝나면 커밋도 해줘"로 커밋 사전 승인 → 이어서 "일단 거기까지만 하고 work-log로 남겨두자 아직 안 된건"으로 **중단 지시** → 아래 "현재 작업 중"에 정확한 미완료 상태 기록
+
 ## 2026-08-19 (4, 이어서 — 와이파이 끊김 복구)
 - 사용자가 "마이그레이션 24 적용된거 테스트하다가 와이파이 멈춰서 껐다켰어, 저장되어있는지 확인하고 이어서 진행해줘" 요청 — 직전 세션(work-log 미기록 상태로 17:20~23:40 진행됨)이 `scratch-final-verify.ts` 실행 도중 끊긴 것으로 추정
 - work-log(`current.md`)가 17:20 시점(careType 자동조회)에서 멈춰있고, 그 이후 세션에서 만든 미추적 파일 다수(마이그레이션 019~024, `notificationScheduler.service.ts`, `treatmentGuides.service.ts`, `server_admin`의 `firebase.ts`/`push.service.ts`, `server/public/`의 FCM 서비스워커·테스트 페이지 등)가 work-log에 전혀 반영 안 된 채 남아있던 것을 확인 — 이번 세션 범위는 이 미기록 구간의 실제 완료 여부 검증

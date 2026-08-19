@@ -1,64 +1,62 @@
-# WHS After Mate — LLM 프롬프트 설계 (v0.4)
+# WHS After Mate — LLM 프롬프트 설계 (v0.5)
 
-v0.4 변경 (2026-08-19): `docs/prompt.docx`(사용자 팀이 작성한 프롬프트 재설계안)를 세 프롬프트 전부에 반영.
-- **daily-guide 설계 철학 전환** — 기존 원칙 1번("근거는 오직 검수된 가이드와 환자 컨텍스트뿐")을 폐기했다. `reference_guides` 원문에 시술별 특성을 반영 못 하는 일반론이 섞여있는 문제가 다수 확인돼(예: `botox` care_type이 근육 주입형/피부층 주입형이라는 서로 다른 시술을 같은 문구로 묶는 등, 자세한 사례는 아래 "미확정 사항" 참고), 이제는 LLM이 시술·환자 정보를 근거로 직접 종합해서 생성한다. 출력 필드도 `mustAvoid`/`basicCare`/`nextCheckDate` → **`precautions`/`aftercare`/`keyCare`**로 전면 교체(하위호환 없음). `reference_guides`는 LLM 실패 시 폴백 용도로만 남는다.
+v0.5 변경 (2026-08-19~20): **daily-guide가 LLM 호출 지점에서 완전히 빠졌다.** v0.4에서 "근거는 시술·환자 정보"로 원칙을 바꿨던 것이 과도기였다는 게 드러났다 — `care_type` 그룹 단위로는 같은 그룹 안에서도(예: `botox`의 근육형/피부형) 시술마다 실제 사후관리가 다르다는 문제의 근본 원인이 "LLM이 얼마나 잘 종합하느냐"가 아니라 "그룹 단위 근거 자체가 시술 단위 사실과 안 맞는다"는 데 있었다. 그래서 아예 시술명(`care_name`)+경과일 단위로 팀이 직접 콘텐츠를 작성해 DB(`treatment_guides`)에 저장하고, `GET /aftercare/daily-guide`는 그걸 그대로 조회만 하는 구조로 바뀌었다 — **LLM 호출도, "생성 실패 시 폴백"도 없다.** `reference_guides`/`aftercare_guides` 테이블은 삭제됐다. questions는 여전히 LLM을 호출하지만 근거 소스가 `reference_guides`→`treatment_guides`로 바뀌었다. 이제 LLM 호출 지점은 **questions**와 **recommendation** 두 곳뿐이다. 아래 "1. daily-guide" 절, "미확정 사항" 절 참고.
+
+v0.4 변경 (2026-08-19): `docs/prompt.docx`(사용자 팀이 작성한 프롬프트 재설계안)를 세 프롬프트 전부에 반영. *(과도기 변경 — v0.5에서 daily-guide는 결국 LLM 호출 자체가 없어졌다. 아래 내용은 v0.4 시점의 역사적 기록으로 남긴다.)*
+- **daily-guide 설계 철학 전환** — 기존 원칙 1번("근거는 오직 검수된 가이드와 환자 컨텍스트뿐")을 폐기했다. `reference_guides` 원문에 시술별 특성을 반영 못 하는 일반론이 섞여있는 문제가 다수 확인돼(예: `botox` care_type이 근육 주입형/피부층 주입형이라는 서로 다른 시술을 같은 문구로 묶는 등), 이제는 LLM이 시술·환자 정보를 근거로 직접 종합해서 생성한다. 출력 필드도 `mustAvoid`/`basicCare`/`nextCheckDate` → **`precautions`/`aftercare`/`keyCare`**로 전면 교체(하위호환 없음). `reference_guides`는 LLM 실패 시 폴백 용도로만 남는다.
 - **questions에 `consultationLevel` 추가** — `status`(answered/out_of_scope)와 별개 축으로, LLM이 판단한 상담 필요도(`NONE`/`RECOMMENDED`/`URGENT`)를 함께 반환한다. 애매한 증상 질문을 무조건 `out_of_scope`로 막지 않고, 가능한 범위까지 답변한 뒤 상담 필요도로 구분하는 방향.
 - **recommendation few-shot 예시 수정** — 기존 프롬프트의 모범 예시("리프팅·탄력 목표와 직접 연결돼요" 류)가 실제로는 "추천 이유가 뻔하다"는 피드백의 원인이었음이 확인돼, 이 문장들을 "피해야 할 예시"로 재배치하고 시술 `description` 기반의 구체적 효과 서술을 요구하는 규칙/예시로 교체.
 
-기준: `api-spec.md` v0.12, `db-schema.md` v0.9. LLM은 **3곳**에서 호출된다: `GET /aftercare/daily-guide`(일차별 가이드, 하루 1회 캐시), `POST /aftercare/questions`(챗봇 Q&A, 매 요청), `GET /recommendations/next-care`(및 상세) — 다음 관리 추천 사유/설명 생성, v0.2 신규. 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리하며, 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반(§3 참고)이다.
+기준: `api-spec.md` v0.16, `db-schema.md` v0.10. LLM은 **2곳**에서 호출된다: `POST /aftercare/questions`(챗봇 Q&A, 매 요청), `GET /recommendations/next-care`(및 상세) — 다음 관리 추천 사유/설명 생성. **`GET /aftercare/daily-guide`는 v0.5부터 LLM을 호출하지 않는다**(`treatment_guides` 직접 조회, 아래 "1. daily-guide" 절 참고). 그 외 모든 검증(카테고리, 위험 신호)은 **LLM 호출 전에 규칙 기반으로** 처리하며, 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반(§3 참고)이다.
 
 ---
 
 ## 공통 원칙
 
-1. **근거는 시술·환자 정보** `(v0.4 변경)`: daily-guide/questions는 시술 정보(관리명·부위·의사 코멘트)와 환자 컨텍스트(알러지·기저질환)를 근거로 LLM이 직접 종합한다. **이전엔 "검수된 관리 가이드(reference_guides) 원문만이 유일한 근거"였으나, 그 원문 자체가 시술별 특성을 반영 못 하는 문제가 확인돼 폐기했다** — `reference_guides`는 이제 LLM 실패 시 폴백, 그리고 daily-guide의 비-오늘 탭 미리보기 용도로만 쓰인다. 확실하지 않은 내용·수치는 지어내지 않는다는 원칙은 유지.
+1. **근거는 시술·환자 정보 + 팀이 직접 작성한 콘텐츠** `(v0.5 변경)`: questions(챗봇)는 시술 정보(관리명·부위·의사 코멘트)와 환자 컨텍스트(알러지·기저질환)에 더해 `treatment_guides`(시술명+경과일 단위로 팀이 직접 작성한 콘텐츠)를 근거로 LLM이 답변을 종합한다. daily-guide는 `(v0.5)` 아예 LLM을 거치지 않고 `treatment_guides`를 그대로 반환한다(아래 "1. daily-guide" 절). 확실하지 않은 내용·수치는 지어내지 않는다는 원칙은 questions/recommendation에 계속 적용.
 2. **의료적 진단·처방 금지**: 질환명 진단, 회복 완료 판정, 약물 처방, 응급 상태 단독 판단을 생성하지 않는다.
 3. **위험 신호·범위 밖 카테고리는 LLM에 도달하기 전에 걸러진다**: 비용·안전 모두를 위해 규칙 엔진이 먼저 처리하고, LLM은 "안전하다고 확인된 요청"만 받는다.
-4. **구조화된 출력 강제**: 두 엔드포인트 모두 고정된 JSON 스키마로만 응답받는다(모델의 JSON 모드/함수 호출 사용). 자유 텍스트 응답을 파싱하지 않는다.
-5. **알러지·의사 코멘트는 항상 컨텍스트에 포함**: "환자가 알러지 있는 성분을 권하는" 실수를 막기 위해 두 프롬프트 모두 이 필드를 필수로 주입한다. `medical_data_access_log`에 `accessed_by: 'llm_system'`으로 접근 기록을 남긴다.
+4. **구조화된 출력 강제**: LLM을 호출하는 두 엔드포인트(questions/recommendation) 모두 고정된 JSON 스키마로만 응답받는다(모델의 함수 호출 사용). 자유 텍스트 응답을 파싱하지 않는다.
+5. **알러지·의사 코멘트는 항상 컨텍스트에 포함**: "환자가 알러지 있는 성분을 권하는" 실수를 막기 위해 LLM을 호출하는 프롬프트는 이 필드를 필수로 주입한다. `medical_data_access_log`에 `accessed_by: 'llm_system'`으로 접근 기록을 남긴다.
 
 ---
 
-## 파이프라인 (두 엔드포인트 공통 순서)
+## 파이프라인 (questions/recommendation 공통 순서 — daily-guide는 LLM을 호출하지 않아 별도, 아래 "1. daily-guide" 절 참고)
 
 ```
 ① 규칙 기반 사전 필터
-   - daily-guide: care_type/elapsed_range가 지원 범위인가? (404 GUIDE_NOT_AVAILABLE)
-   - questions:   category가 지원 6종인가? (422 UNSUPPORTED_CATEGORY)
-                  질문에 위험 신호 키워드가 있는가? (status: expert_required, LLM 미호출)
+   - questions: category가 지원 6종인가? (422 UNSUPPORTED_CATEGORY)
+                질문에 위험 신호 키워드가 있는가? (status: expert_required, LLM 미호출)
 ② 컨텍스트 조립
    - care_records (+ doctor_comment), medical_profiles (allergies, chronic_conditions, doctor_general_comment)
-   - `(v0.4)` 검수된 관리 가이드 원문은 더 이상 조립하지 않음 — LLM 실패 폴백/비-오늘 탭 미리보기 때만 별도 조회
+   - questions는 여기에 treatment_guides(시술명+경과일 매칭 콘텐츠)도 함께 조립
 ③ LLM 호출 (시스템 프롬프트 + 컨텍스트 + 구조화 출력 스키마)
 ④ 출력 검증
    - 금지어(진단/처방 관련 문구) 필터링
-   - 스키마 검증 실패 시 1회 재시도, 계속 실패하면 503
+   - 스키마 검증 실패 시 1회 재시도, 계속 실패하면 503(questions) 또는 정적 템플릿 폴백(recommendation)
 ⑤ 저장 / 응답
-   - daily-guide → aftercare_guides에 upsert(unique 제약으로 중복 방지)
-   - questions   → questions 테이블에 insert
+   - questions → questions 테이블에 insert
 ```
 
 ---
 
-## 1. `GET /aftercare/daily-guide` — 일차별 사후관리 가이드 생성
+## 1. `GET /aftercare/daily-guide` — LLM을 호출하지 않는 단순 조회 `(v0.5부터)`
 
-### 호출 시점
-- 캐시 미스일 때만 (해당 `care_record_id` + 오늘 날짜 조합의 행이 `aftercare_guides`에 없을 때)
-- `elapsed_range`(예: "3-7")는 LLM이 정하는 게 아니라 **규칙(구간 lookup)으로 먼저 결정** — 다만 `(v0.4)` 이 구간 정보 자체를 LLM 프롬프트에 직접 주입하진 않는다(daysElapsed만 전달). elapsed_range는 캐시 조회/폴백 경로 판단에만 서버 내부적으로 쓰인다.
+**이 절은 프롬프트가 없다는 사실 자체가 내용이다.** v0.4까지는 이 엔드포인트가 daily-guide 프롬프트로 LLM을 호출했지만(과거 프롬프트 전문은 아래 "왜 없어졌나" 참고), v0.5(`server/db/migrations/023_add_treatment_guides.sql`, `024_drop_care_type.sql`)부터는 다음과 같이 동작한다:
 
-### 컨텍스트 주입 필드 `(v0.4 변경 — reviewedGuide 제거)`
+1. `care_records.care_name` + 요청된 경과일(`elapsedDay`, 생략 시 실제 경과일)로 `treatment_guides` 테이블을 `(care_name, day)` 정확히 일치 조회
+2. 매칭되는 행이 있으면 `aftercare`/`precautions`/`key_care`를 그대로 응답에 담아 반환(`generatedBy: "treatment_guide"`)
+3. 매칭되는 행이 없으면 — LLM 폴백도, 근사 매칭도 없이 — 바로 `404 GUIDE_NOT_AVAILABLE`
 
-| 필드 | 출처 | 용도 |
-|---|---|---|
-| `care_name`, `care_date`, `days_elapsed` | `care_records` | "언제 무슨 시술을 받았는지" |
-| `part_of_body`, `brand` | `care_records` | 시술 부위(배열, 중복 선택 가능) 맥락 |
-| `doctor_comment` | `care_records.doctor_comment` | 해당 시술 건에 대한 의사 코멘트 |
-| `allergies`, `chronic_conditions` | `medical_profiles` | 특정 성분/행동 회피 근거 |
-| `doctor_general_comment` | `medical_profiles` | 환자 전반에 대한 의사 코멘트 |
+`treatment_guides`는 시술 46종 전체를 팀이 직접 작성해 채운 테이블이라(`server/db/seed/seedTreatmentGuides.ts`), day가 1/3/5/7/14 다섯 값이고 `careName` 표기가 정확히 일치하는 한 404가 나올 일이 거의 없다. 자세한 테이블 스키마는 `db-schema.md`의 "public.treatment_guides" 절 참고, API 계약(필드/에러)은 `api-spec.md`의 "GET /aftercare/daily-guide" 절 참고.
 
-`(v0.3까지)` 여기에 "검수된 가이드 원문"이 함께 들어갔으나 `(v0.4)`부터 제거됐다 — 아래 "시스템 프롬프트" 참고.
+### 왜 없어졌나
 
-### 시스템 프롬프트 `(v0.4, docs/prompt.docx 반영)`
+v0.4는 "근거를 `reference_guides`(검수된 원문)에서 LLM이 직접 종합"으로 바꿔서, `care_type` 그룹 하나가 서로 다른 시술(예: `botox`의 근육 주입형 `초음파™ 보톡스` vs 피부층 주입형 `스킨 보톡스`)을 같은 문구로 묶는 문제를 LLM의 판단력으로 완화하려 했다. 그런데 이 역시 근본 해결은 아니었다 — LLM이 아무리 잘 종합해도, 애초에 주입되는 "사실 근거" 자체가 `care_type` 그룹 단위라 시술 고유의 특성을 담지 못하는 건 여전했다. 결국 그룹 단위 근거 자체를 버리고 시술명 단위로 팀이 직접 콘텐츠를 쓰는 쪽으로 방향을 바꿨다 — 이러면 LLM이 종합할 필요 자체가 없어진다(이미 시술 단위로 정확한 콘텐츠니까). 부수 효과로 매 요청 LLM 호출 비용도 없어졌다.
+
+### v0.4 시점의 프롬프트 (역사적 기록, 더 이상 코드에 없음)
+
+`server/src/services/llm/dailyGuide.prompt.ts`는 v0.5에서 삭제됐다. 아래는 v0.4~v0.5 과도기에 실제로 쓰였던 시스템 프롬프트 전문이다 — questions/recommendation 프롬프트를 손볼 때 톤·제약 표현의 참고용으로만 남긴다.
 
 ```
 당신은 AAC 웰니스 클리닉의 사후관리 안내 도우미입니다.
@@ -89,24 +87,6 @@ v0.4 변경 (2026-08-19): `docs/prompt.docx`(사용자 팀이 작성한 프롬�
 반드시 도구 호출(tool call)로만 응답하세요. 다른 텍스트를 추가하지 마세요.
 ```
 
-**왜 바뀌었나**: `(v0.3까지)` LLM은 `reference_guides`(검수된 원문)를 그대로 재서술하는 역할이었다. 그런데 이 원문 자체를 실제 시술 카탈로그(`docs/care_procedure_template.xlsx`)와 대조해보니, 하나의 `care_type`이 서로 다른 시술을 묶고 있는 문제가 발견됐다 — 예를 들어 `botox` care_type은 근육에 주입하는 정통 보톡스(`초음파™ 보톡스`)와 근육이 아닌 피부 얕은 층에 주입하는 더모톡신류(`스킨 보톡스`)를 동일 문구로 묶는데, 정통 보톡스 전용 주의사항("표정 짓기", "좌우 비대칭", "3~4개월 지속")이 스킨 보톡스 고객에게도 그대로 노출되는 부작용이 있었다. `(v0.4)`는 이 구조적 문제를 원문 그 자체를 고치는 대신, LLM이 시술명·환자 정보를 보고 직접 판단하도록 근거 원칙을 바꿔서 해결한다.
-
-### 출력 스키마 (구조화 출력) `(v0.4, 필드명 전면 변경)`
-
-```json
-{
-  "aftercare": ["string"],
-  "precautions": ["string"],
-  "keyCare": "string"
-}
-```
-- `aftercare`/`precautions`는 **정확히 3개** 또는(회복 주요 기간이 지났으면) **빈 배열** 둘 중 하나만 유효 — 1~2개처럼 어중간하면 코드 레벨에서 스키마 위반으로 보고 재시도한다(`aftercare.service.ts`의 `isValidGuideArrays`).
-- 이 값들이 `aftercare_guides.aftercare`, `precautions`, `key_care`에 저장되고, `generated_by='llm'`, `generated_at=now()`가 함께 기록된다. 이전 컬럼명은 `must_avoid`/`basic_care`였다(마이그레이션 018에서 rename).
-- `nextCheckDate`는 **LLM 출력이 아니다** — 여전히 서버가 `reference_guides.next_check_offset_days` 기반으로 결정론적으로 계산한다(변경 없음).
-
-### 실패 처리
-`503 GUIDE_GENERATION_FAILED` — LLM 생성 실패 시 검수된 가이드(`reference_guides`) 원문으로 폴백(`aftercare`←`basic_care`, `precautions`←`must_avoid`). 이때 `keyCare`는 LLM이 만드는 게 아니라 서버가 합성한 짧은 안내 문구다(`fallbackKeyCare`). LLM 없이도 최소 안전한 답을 보장한다.
-
 ---
 
 ## 2. `POST /aftercare/questions` — 챗봇 Q&A 답변 생성
@@ -122,7 +102,7 @@ v0.4 변경 (2026-08-19): `docs/prompt.docx`(사용자 팀이 작성한 프롬�
 | 질문에 위험 신호 키워드 포함 (예: 통증 증가, 출혈, 시야 이상, 고열, 호흡곤란) | `status: expert_required`, LLM 미호출, 전문가 문의 문구 즉시 반환 |
 
 ### 컨텍스트 주입 필드
-daily-guide와 동일 (`care_name`, `days_elapsed`, `doctor_comment`, `allergies`, `chronic_conditions`, `doctor_general_comment`) + `(v0.4에도 유지)` 검수된 가이드 원문(`reviewedGuide` — questions는 daily-guide와 달리 이 필드를 계속 쓴다, 아래 참고) + 사용자 질문(`question`, `category`)
+`care_name`, `days_elapsed`, `doctor_comment`(`care_records`), `allergies`/`chronic_conditions`/`doctor_general_comment`(`medical_profiles`) + **`treatment_guides`의 콘텐츠**(JSON 페이로드 키는 `reviewedGuide` 그대로 유지 — `db-schema.md`의 "public.treatment_guides" 절 참고. `(v0.5)` 소스만 `reference_guides`→`treatment_guides`로 바뀌었고 필드명은 유지) + 사용자 질문(`question`, `category`)
 
 ### 시스템 프롬프트 `(v0.4, docs/prompt.docx 반영 — consultationLevel 신규)`
 
@@ -247,21 +227,21 @@ daily-guide/questions는 "무엇을 답할지" 자체를 LLM이 정하지만, �
 
 ## 프롬프트 버전 관리 (추후 확장)
 
-현재는 `generated_by` / `answered_by`가 `'llm'` 고정값이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 `prompt_version`, `model_name` 컬럼을 `aftercare_guides`/`questions`에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).
+`(v0.5)` LLM을 호출하는 지점이 questions 하나로 줄면서(daily-guide는 이제 LLM을 호출하지 않고, recommendation은 애초에 결과를 저장하지 않음), 버전 관리 대상도 `questions.answered_by`(`'llm'` 고정값) 하나뿐이다. 프롬프트나 모델을 바꿔가며 실험하게 되면 `prompt_version`, `model_name` 컬럼을 `questions`에 추가해 어떤 버전이 어떤 답을 냈는지 추적할 수 있게 확장한다 (지금은 MVP 범위 밖).
 
 ## 구현 시 확정된 사항 (server/ 참고)
 - LLM 모델: OpenAI API (`OPENAI_MODEL` 환경변수로 지정, 기본값 **`gpt-4.1-mini`** `(v0.3, 2026-08-18 변경)`)
   - 최초엔 `gpt-4o-mini`로 시작했다가, 해커톤 크레딧을 더 활용하고자 "미니가 아닌" 모델(`gpt-5.4`)로 바꿨으나, 실제 배포 환경에서 홈/추천 화면 로딩이 30초를 넘겨 타임아웃되는 장애가 발생 — 원인을 실측한 결과 `gpt-5.4`가 계정 기준 **일일 50 요청**의 하드 레이트리밋에 걸려 있었고(크레딧 잔액과 무관한 모델별 제한), 여기에 OpenAI SDK의 기본 재시도(지수 백오프, `maxRetries:2`)가 애플리케이션 자체의 재시도 루프와 중첩되어 응답이 24초까지 늘어지는 걸로 확인됐다. `gpt-4.1-mini`는 같은 계정에서 레이트리밋에 걸리지 않아 최종 채택 — 벤치마크로 24132ms → 1381ms 개선 확인.
   - `server/src/config/openai.ts`에서 `new OpenAI({ apiKey, maxRetries: 0 })`로 SDK 자체 재시도를 꺼서, 위 "SDK 재시도 + 앱 재시도 중첩" 문제를 구조적으로 방지(앱 레벨 1회 재시도만 남김).
-- 검수된 가이드(RAG 소스) 저장 위치: DB 테이블 `public.reference_guides`로 확정 (`docs/db-schema.md` 참고)
-- 출력 검증 실패 시 정책: **1회 재시도 → 그래도 실패하면** daily-guide는 `reference_guides` 원문으로 폴백(200), questions는 `503 ANSWER_GENERATION_FAILED` — `server/src/services/aftercare.service.ts`
-- 구조화 출력 강제 방식: OpenAI function calling(`tool_choice: {type:"function"}`)로 구현 (`server/src/services/llm/client.ts`) — daily-guide/questions/recommendation 3곳 전부 이 공통 `callStructuredLlm` 함수를 재사용
+- 사후관리 콘텐츠(RAG 소스) 저장 위치: `(v0.5)` DB 테이블 `public.treatment_guides`로 확정 — 시술명(`care_name`)+경과일(`day`) 단위, 팀이 직접 작성(검수 워크플로 없음, 애초에 팀 작성 콘텐츠라 "검수 대기" 상태가 없음). *(v0.4까지는 `public.reference_guides`, `care_type` 그룹 단위였다 — 그 테이블은 `024`에서 삭제됐다.)* `docs/db-schema.md` 참고
+- 출력 검증 실패 시 정책: **1회 재시도 → 그래도 실패하면** questions는 `503 ANSWER_GENERATION_FAILED`, recommendation은 정적 템플릿 폴백(200) — `server/src/services/aftercare.service.ts`/`recommendations.service.ts`. **daily-guide는 `(v0.5)` 애초에 LLM을 호출하지 않으므로 이 정책 자체가 해당 없음** — 매칭 실패는 곧바로 `404 GUIDE_NOT_AVAILABLE`
+- 구조화 출력 강제 방식: OpenAI function calling(`tool_choice: {type:"function"}`)로 구현 (`server/src/services/llm/client.ts`) — questions/recommendation **2곳**이 이 공통 `callStructuredLlm` 함수를 재사용(`(v0.5)` daily-guide는 더 이상 LLM을 호출하지 않아 제외됨)
 - GPT-5 계열은 `max_tokens` 대신 `max_completion_tokens`를 요구하고, 추론 전용 모델(`gpt-5`/`gpt-5-mini`)은 강제 tool-calling과 궁합이 안 맞아(낮은 토큰 예산에서 답변 대신 숨은 추론에 토큰을 다 씀) 후보에서 제외했다.
 - `(v0.4)` 세 프롬프트 전부 `docs/prompt.docx`(사용자 팀 작성 재설계안)를 코드에 반영 완료. daily-guide는 전면 재설계(공통 원칙 1번 변경 포함), questions는 `consultationLevel` 추가, recommendation은 시스템 프롬프트 교체(스키마·컨텍스트 구조는 기존과 동일).
 
 ## 미확정 사항
 - 위험 신호 키워드 목록의 구체적 범위 — `server/src/lib/riskKeywords.ts`에 초안만 작성, 전문가(의료진) 검수 필요
 - 실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요
-- **`reference_guides`의 care_type 7종 중 5종(`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`)이 미검수 스텁** *(2026-08-17 발견)* — `reviewed_by`/`reviewed_at` 컬럼을 어느 서비스 코드도 검사하지 않는다. `(v0.4)` daily-guide는 이제 이 원문을 LLM 근거로 안 쓰므로(폴백 용도로만 남음) 영향이 줄었지만, **questions.prompt는 여전히 `reviewedGuide`로 이 원문을 주입**하므로 동일한 리스크가 남아있다 — 전문가 검수 후 문구를 교체하거나, 최소한 `reviewed_by` 체크를 추가해 미검수 care_type은 questions에서 제외해야 함(`server/README.md` TODO 절 참고)
-- **`treatment_catalog`의 `botox` care_type이 서로 다른 시술을 묶는 문제** *(2026-08-19 엑셀 `시술` 시트와 `reference_guides` 크로스체크 중 발견)* — `초음파™ 보톡스`(근육 주입형, 정통 보톡스)와 `스킨 보톡스`(피부 얕은 층 주입, 근육 비관여)가 같은 `care_type: "botox"`로 매핑돼 같은 `reference_guides` 문구(표정 관리, 좌우 비대칭, 3~4개월 지속 등 전부 근육형 전용 주의사항)를 공유한다. daily-guide는 `(v0.4)`로 완화됐으나(LLM이 시술명 보고 직접 판단), **questions.prompt와 daily-guide의 폴백 경로는 여전히 이 원문을 그대로 쓰므로 근본 해결은 아니다** — `botox` care_type을 근육형/피부형으로 분리하거나 `treatment_catalog`에 새 careType을 추가하는 게 필요(아직 미착수)
-- 이름 불일치: `treatment_catalog`의 `튠 콩피에르®`/`레이저 제모 솔루션`이 실제 엑셀 원본(`튠 콩피에르(Tune Confier)`/`레이저 제모`)과 다르게 등록돼 있음 — 치명적이진 않지만 관리자 웹 자동완성에 영향 가능
+- ~~`reference_guides`의 care_type 7종 중 5종이 미검수 스텁인 문제~~ — **v0.5에서 해소됨.** `reference_guides` 테이블 자체가 삭제되고 `treatment_guides`(시술명 단위, 팀이 직접 작성)로 대체되며 "검수 여부가 구분 안 되는" 문제의 전제(검수 워크플로가 있는데 코드가 검사 안 함)가 사라졌다 — 애초에 전부 팀 작성 콘텐츠라 검수 대기 상태 자체가 없음
+- ~~`treatment_catalog`의 `botox` care_type이 서로 다른 시술을 묶는 문제~~ — **v0.5에서 해소됨.** `care_type` 그룹 단위 매칭 자체가 없어지고 시술명(`care_name`) 단위 직접 매칭으로 바뀌면서, `초음파™ 보톡스`(근육 주입형)와 `스킨 보톡스`(피부층 주입형)가 각각 자기 시술명으로 독립된 `treatment_guides` 콘텐츠를 갖는다 — 애초에 이 문제의 원인이었던 "그룹 공유" 구조 자체가 없어짐
+- 이름 불일치: `treatment_catalog`의 `튠 콩피에르®`/`레이저 제모 솔루션`이 실제 엑셀 원본(`튠 콩피에르(Tune Confier)`/`레이저 제모`)과 다르게 등록돼 있음 — `treatment_guides`는 `care_name` 완전 일치로 daily-guide를 매칭하므로, 이 불일치가 남아있으면 해당 시술기록의 daily-guide가 `404 GUIDE_NOT_AVAILABLE`로 실패할 수 있음(v0.4까지는 `care_type` 그룹 매칭이라 완충됐지만 v0.5부터는 직접 영향)

@@ -240,7 +240,7 @@ npm install</pre>
           <thead><tr><th>변수</th><th>설명</th></tr></thead>
           <tbody>
             <tr><td class="mono">SUPABASE_URL<br/>SUPABASE_SERVICE_ROLE_KEY<br/>SUPABASE_ANON_KEY</td><td>백엔드에서 이미 만든 Supabase 프로젝트 값 — <strong>같은 프로젝트 키를 써야</strong> 데모 계정 4개가 동일하게 보임</td></tr>
-            <tr><td class="mono">OPENAI_API_KEY</td><td>사후관리 가이드/Q&amp;A 생성용 OpenAI API 키 — <strong>선택.</strong> 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. 없을 때 <span class="mono">GET /aftercare/daily-guide</span>는 검수된 가이드 원문으로 자동 폴백되고, <span class="mono">POST /aftercare/questions</span>만 <span class="mono">500 ANSWER_GENERATION_FAILED</span>를 응답한다</td></tr>
+            <tr><td class="mono">OPENAI_API_KEY</td><td>Q&amp;A 답변/추천 사유 생성용 OpenAI API 키 — <strong>선택.</strong> 없어도 서버는 정상 기동하고 회원가입/로그인/관리 이력 등 나머지 API는 그대로 동작한다. <span class="mono">GET /aftercare/daily-guide</span>는 <strong>(v0.16)</strong> OpenAI를 아예 쓰지 않아(DB 직접 조회) 이 키와 무관하게 항상 동작한다. 없을 때 <span class="mono">POST /aftercare/questions</span>는 <span class="mono">503 ANSWER_GENERATION_FAILED</span>를 응답하고, 다음 관리 추천의 <span class="mono">reasons</span>/<span class="mono">detailDescription</span>은 정적 템플릿 문구로 조용히 폴백한다(추천 자체는 계속 뜸)</td></tr>
           </tbody>
         </table>
       </div>

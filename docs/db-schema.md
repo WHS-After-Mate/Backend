@@ -1,6 +1,10 @@
-# WHS After Mate — DB 스키마 (v0.9)
+# WHS After Mate — DB 스키마 (v0.11)
 
-기준: `api-spec.md` v0.15, `admin-api-spec.md` v0.9. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+기준: `api-spec.md` v0.16, `admin-api-spec.md` v0.11. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
+
+v0.11 변경 (2026-08-20): `care_records`/`emr_care_records`에 `session_consumed boolean` 컬럼 추가(`026`) — 시술기록 등록 시 `careDate`가 오늘(KST)일 때만 이용권을 차감하도록 바뀌면서(미래 예약/과거 소급 등록은 연결만 하고 미차감), 개별 기록이 실제로 차감했는지 구분해야 `DELETE /care-records/{id}`가 `used_count`를 잘못 되돌리지 않을 수 있다. 자세한 내용은 하단 "예약 등록 시 이용권 미차감 지원 (026)" 절과 `admin-api-spec.md` v0.11 참고.
+
+v0.10 변경: **`care_type` 개념을 완전히 제거**했다(`019`~`025`). `daily-guide`/`questions` 둘 다 `care_type` 그룹 단위 검수 가이드(`reference_guides`)로 근거를 삼던 것에서, **시술명(`care_name`)+경과일 직접 매칭 콘텐츠 테이블 `public.treatment_guides`**(`023`, 팀이 직접 작성, day는 1/3/5/7/14 고정)로 완전히 교체됐다 — `care_records`/`treatment_catalog`/`emr_care_records`의 `care_type` 컬럼과 `reference_guides`/`aftercare_guides` 테이블이 전부 삭제됐다(`024`, `025`). **`GET /aftercare/daily-guide`는 이제 LLM을 아예 호출하지 않는다** — `treatment_guides`를 직접 조회해 즉시 반환하고, 매칭이 없으면 LLM 폴백 없이 바로 404. LLM 호출 지점은 이제 `questions`(챗봇, 근거를 `treatment_guides`로 교체)와 `recommendations`(다음 관리 추천) 두 곳뿐이다. 그 밖에 `treatment_catalog`에 `brand` 컬럼 추가(`021`, 클리닉별 시술 카탈로그 격리)와 FCM 푸시 알림 인프라(`019` 알림 설정 컬럼, `020` 발송 로그 테이블)도 이번 배치에 함께 들어갔다. 자세한 내용은 하단 "care_type 제거 + treatment_guides 도입 (019~025)" 절 참고.
 
 v0.9 변경: 앱 연동 중 "이용권이 어느 클리닉 것인지 구분해야 한다"는 요청으로 `memberships`/`emr_memberships`에 `brand` 컬럼 추가(`016_add_membership_brand.sql`) — `care_records`/`emr_care_records`는 처음부터 갖고 있던 필드다. 순수 표시용 메타데이터로, 이용권 차감/자동 이어쓰기 매칭 로직은 여전히 브랜드와 무관하게 동작한다(정책 변경 아님). 기존 행은 `membership_id`로 연결된 시술기록의 `brand`로 백필됨. 자세한 내용은 하단 "public.memberships"/"public.emr_memberships" 절 참고.
 
@@ -51,6 +55,8 @@ create table public.profiles (
   birth_date date,
   phone text unique,
   interest_goals text[] not null default '{}',
+  care_notification boolean not null default true,
+  marketing_notification boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -61,10 +67,11 @@ create table public.profiles (
 | `user_id` | PK, `auth.users(id)` 참조, 계정 삭제 시 CASCADE |
 | `birth_date` | *(v0.3 신규)* 내 정보 화면의 생년월일. `GET /profile` 응답 `birthDate` |
 | `interest_goals` | 관심 목표 — 추천 API(`basis: goal`)의 입력값 |
+| `care_notification` / `marketing_notification` | *(v0.10 신규, 마이그레이션 019)* 사후관리 알림(시술 등록/예약, 일차별 마일스톤, 이용권 만료 리마인더) vs 마케팅 알림 on/off. `GET/PATCH /profile/notifications`로 조회/변경 |
 
 → `GET/PATCH /profile`, `PUT /profile/interests` 모두 이 한 테이블로 처리.
 → `phone`은 기존부터 있던 컬럼(가입 시 입력한 연락처)이며, `GET /profile` 응답에 `phone` 필드로 노출하는 것 자체는 v0.5에서 새로 추가된 것이지 컬럼 자체는 신규가 아니다. `phone_verified_at` 컬럼은 전화인증 기능 제거와 함께 삭제됐다(`004_remove_phone_verification.sql`).
-→ `push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert` 컬럼은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 `GET/PATCH /notifications/settings` 엔드포인트와 함께 삭제됐다(`005_remove_notification_settings.sql`).
+→ *(v0.5~v0.9 구간)* `push_enabled`/`aftercare_reminder`/`membership_expiry_alert`/`marketing_alert` 컬럼은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 `GET/PATCH /notifications/settings` 엔드포인트와 함께 삭제됐었다(`005_remove_notification_settings.sql`). **v0.10(019)에서 알림 설정이 재도입됐다** — 이번엔 `push.service.ts`의 `sendPushToUser`가 종류별로 이 값을 실제로 읽어 분기하므로(꺼져 있으면 발송 스킵) placeholder가 아니다. 예전 4컬럼 대신 사후관리(`care`)/마케팅(`marketing`) 2가지로 단순화됐다.
 
 ### ~~public.phone_verifications~~ — 제거됨
 
@@ -77,7 +84,6 @@ create table public.care_records (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   care_name text not null,
-  care_type text,
   care_date date not null,
   part_of_body text[] not null default '{}',
   brand text,
@@ -91,7 +97,8 @@ create table public.care_records (
   external_record_id text,
   source_system text not null default 'aac_emr',
   synced_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  session_consumed boolean not null default true
 );
 
 create index idx_care_records_user_date
@@ -102,12 +109,13 @@ create unique index idx_care_records_external_id
   where external_record_id is not null;
 ```
 
-- `care_type`: `reference_guides.care_type`과 매칭하는 내부 정규화 키(예: `peeling`, `laser_toning`). `care_name`은 사용자에게 보여주는 표시용 문자열이라 매칭 키로 쓰기 부적절해 별도 컬럼으로 분리. API 응답에는 노출하지 않음 (서버 구현 시 추가)
+- `care_type` 컬럼은 v0.10(`024`)에서 삭제됐다. `daily-guide`/`questions`의 근거는 이제 `care_type` 그룹 단위가 아니라 `treatment_guides`에서 `care_name`(이 표에 남아있는 시술명 그대로)+경과일로 직접 매칭한다(아래 "public.treatment_guides" 절 참고)
 - `part_of_body` *(v0.6, 마이그레이션 012)*: 텍스트 단일값에서 배열로 변경 — 한 시술이 여러 부위에 동시에 이뤄질 수 있어(예: "이마+미간") 중복 선택 가능하게 함. `emr_care_records`도 동일하게 배열
 - `store` 컬럼은 v0.6(009)에서 제거됐다 — 클리닉당 지점이 하나뿐이라 `brand`와 항상 1:1이었던 순수 중복 컬럼
 - `status` *(v0.3, 마이그레이션 003)*: `GET /care-records`/`{id}` 응답의 `status`. 기본값 `completed`(EMR 동기화 데이터는 이미 끝난 시술 위주)
-- `session_number` / `total_sessions` *(v0.3, 마이그레이션 003)*: 관리 상세의 "관리 회차: 2/3회차". nullable — 회차 개념이 없는 단건 시술은 비워둠
-- `membership_id` *(v0.3, 마이그레이션 003)*: 이 시술이 차감한 이용권 FK. `on delete set null`로 이용권이 삭제돼도 시술 기록 자체는 보존. **마이그레이션 순서 주의**: `public.memberships`가 먼저 생성되어 있어야 하므로, 실제 적용 시 이 테이블 정의를 `memberships` 다음으로 옮기거나 `ALTER TABLE ... ADD COLUMN membership_id ...`를 memberships 생성 후 별도 스텝으로 분리해야 한다(문서 내 테이블 순서는 설명 편의상 EMR 연동 그룹을 앞에 둔 것)
+- `session_number` / `total_sessions` *(v0.3, 마이그레이션 003)*: 관리 상세의 "관리 회차: 2/3회차". nullable — 회차 개념이 없는 단건 시술은 비워둠. `(v0.11)` `session_number`는 저장 시점에 고정되지 않고 `server_admin`이 이용권 상태가 바뀔 때마다(차감/차감취소/새 예약추가) 다시 계산해 덮어쓴다 — "몇 회차"인지는 항상 최신 상태를 반영한다(아래 `session_consumed` 참고)
+- `membership_id` *(v0.3, 마이그레이션 003)*: 이 시술이 연결된 이용권 FK. `on delete set null`로 이용권이 삭제돼도 시술 기록 자체는 보존. **마이그레이션 순서 주의**: `public.memberships`가 먼저 생성되어 있어야 하므로, 실제 적용 시 이 테이블 정의를 `memberships` 다음으로 옮기거나 `ALTER TABLE ... ADD COLUMN membership_id ...`를 memberships 생성 후 별도 스텝으로 분리해야 한다(문서 내 테이블 순서는 설명 편의상 EMR 연동 그룹을 앞에 둔 것)
+- `session_consumed` *(v0.11, 마이그레이션 026)*: 이 시술기록이 등록 당시 실제로 이용권 1회를 차감했는지. `server_admin`의 `POST .../care-records`는 `careDate`가 등록 시점 기준 오늘(KST)일 때만 차감하고(`true`), 미래 예약이나 과거 소급 등록은 이용권을 연결만 하고 차감하지 않는다(`false`) — 아래 "예약 등록 시 이용권 미차감 지원 (026)" 절 참고. 기본값 `true`는 이 기능 도입 이전 기존 행(전부 등록 즉시 차감이었음)을 위한 백필값
 - `doctor_comment`: 해당 시술 건에 대한 의사의 코멘트 (EMR 원본). 환자에게 노출할지는 프론트 정책에 따라 다르지만, LLM 컨텍스트에는 항상 포함
 - `external_record_id` / `source_system` / `synced_at`: EMR 원본 레코드 추적용. MVP에선 시드 데이터라 비워두거나 더미값 사용, 실연동 시 이 필드로 중복 동기화 방지
 
@@ -208,29 +216,32 @@ create index idx_membership_usages_membership
 - `care_record_id`: 어떤 시술 건이 이 회차를 소모했는지 역참조(선택). `care_records.membership_id`와 함께 있으면 양방향 조회 가능하지만, 회차 자체는 이 테이블이 유일한 사실 근거
 - `unique (membership_id, session_number)`: 같은 이용권에서 회차 번호 중복 방지
 
-### public.aftercare_guides — LLM 일차별 가이드 캐시
+### ~~public.aftercare_guides~~ — 제거됨 (v0.10, 마이그레이션 024)
+
+LLM이 생성한 일차별 가이드를 하루 1회로 캐시하던 테이블. `GET /aftercare/daily-guide`가 더 이상 LLM을 호출하지 않고 `treatment_guides`를 직접 조회해 즉시 응답하므로(아래 절 참고) 캐시할 대상 자체가 없어져 테이블째 삭제했다.
+
+### public.treatment_guides — 시술명+경과일 직접 매칭 사후관리 콘텐츠 *(v0.10 신설 023)*
 
 ```sql
-create table public.aftercare_guides (
+create table public.treatment_guides (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  care_record_id uuid not null references public.care_records(id) on delete cascade,
-  days_elapsed int not null,
-  elapsed_range text,
-  must_avoid text[] not null default '{}',
-  basic_care text[] not null default '{}',
-  next_check_date date,
-  generated_at timestamptz not null default now(),
-  generated_by text not null default 'llm',
-  generated_date date generated always as
-    ((generated_at at time zone 'Asia/Seoul')::date) stored,
-  cache_expires_at timestamptz not null,
-  unique (care_record_id, generated_date)
+  care_name text not null,
+  day int not null check (day in (1, 3, 5, 7, 14)),
+  key_care text not null,
+  aftercare text[] not null,
+  precautions text[] not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (care_name, day)
 );
 ```
 
-- `unique (care_record_id, generated_date)`: **"하루 1회 LLM 생성"** 규칙을 애플리케이션 코드가 아니라 DB 제약으로 강제 — 동시 요청이 겹쳐도 같은 날 중복 생성이 DB 단에서 거부됨
-- `generated_date`는 `generated_at`에서 파생된 GENERATED 컬럼 (한국 시간 기준 자정 캐시 만료와 맞추기 위함)
+- `care_type` 그룹 단위(예: `botox`)로 검수 문구를 공유하던 `reference_guides`를 대체 — 같은 그룹으로 묶여도 시술마다(장비·성분이 달라) 실제 사후관리 내용이 다르다는 문제가 있어, 시술명(`care_name`) 단위로 팀이 직접 콘텐츠를 작성해 저장한다
+- `day`는 1/3/5/7/14 다섯 값만 존재 — 앱의 daily-guide 화면이 이 다섯 일차 탭만 쓰기 때문(그 외 날짜는 화면 자체가 없음)
+- `brand`로 나누지 않고 `care_name`만으로 키를 잡는다 — 같은 시술명(예: "슈링크 유니버스")이 여러 클리닉에 있어도 실제 시술 내용/사후관리는 동일하므로 콘텐츠를 중복 작성하지 않는다
+- `GET /aftercare/daily-guide`(`aftercare.service.ts`의 `getOrGenerateDailyGuide`)가 `care_records.care_name`+요청된 경과일로 이 테이블을 직접 조회해 그대로 반환한다 — **LLM 호출이 전혀 없다.** 매칭되는 행이 없으면(그 시술/일차 콘텐츠가 아직 없음) LLM 폴백 없이 바로 `404 GUIDE_NOT_AVAILABLE`
+- `POST /aftercare/questions`(챗봇 Q&A)도 이 테이블을 `reviewedGuide` 근거로 LLM 프롬프트에 주입한다 — 이쪽은 여전히 LLM을 호출하지만(자유 질문에 답해야 하므로), 근거 소스만 `reference_guides`에서 이 테이블로 바뀌었다
+- 팀이 시술 46종 전체를 직접 작성해 커버하므로(`server/db/seed/seedTreatmentGuides.ts`), `reference_guides`에 있던 "미검수 스텁 문구가 검수된 문구와 구분 없이 노출된다"는 문제 자체가 구조적으로 사라졌다(검수 여부 컬럼이 없다 — 애초에 전부 팀 작성 콘텐츠라 검수 대상이 아님)
 
 ### public.questions
 
@@ -245,6 +256,8 @@ create table public.questions (
   answer text,
   answered_by text default 'llm',
   expert_contact_required boolean not null default false,
+  consultation_level text not null default 'NONE'
+    check (consultation_level in ('NONE', 'RECOMMENDED', 'URGENT')),
   created_at timestamptz not null default now()
 );
 
@@ -254,30 +267,11 @@ create index idx_questions_user_created
 
 - `care_record_id`는 nullable — 관리 이력이 삭제돼도 질문 이력 자체는 남긴다(`on delete set null`)
 - `status` CHECK 제약으로 `POST /aftercare/questions`의 세 가지 상태값만 허용
+- `consultation_level` *(마이그레이션 017)*: `status`와 별개 축 — "답변은 했지만 실제 상태 확인이 필요한 정도"를 LLM이 함께 판단(`NONE`/`RECOMMENDED`/`URGENT`). 위험 신호 키워드에 안 걸린 애매한 증상 질문(예: "며칠째 붓기가 안 빠지는데 괜찮은 걸까요?")을 무조건 답변 또는 무조건 범위 밖 처리하던 이분법을 보완한다. `status`가 `answered`일 때만 LLM이 실제로 채우고, `out_of_scope`/`expert_required`는 기본값 `NONE` 그대로 저장됨
 
-### public.reference_guides — 검수된 관리 가이드 (RAG 소스, 서버 구현 시 신규)
+### ~~public.reference_guides~~ — 제거됨 (v0.10, 마이그레이션 024)
 
-```sql
-create table public.reference_guides (
-  id uuid primary key default gen_random_uuid(),
-  care_type text not null,
-  elapsed_range_start int not null,
-  elapsed_range_end int not null,
-  elapsed_range_label text not null,
-  must_avoid text[] not null default '{}',
-  basic_care text[] not null default '{}',
-  next_check_offset_days int,
-  reviewed_by text,
-  reviewed_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (care_type, elapsed_range_start, elapsed_range_end)
-);
-```
-
-- `llm-prompt-design.md`의 "미확정 사항"이었던 "검수 가이드 저장 형식/위치"를 DB 테이블로 확정. daily-guide/questions 두 LLM 호출 지점 모두 이 테이블을 `care_type`+`days_elapsed` 구간으로 조회해 유일한 사실 근거로 주입
-- 정적 파일이 아닌 테이블로 택한 이유: 관리 유형×경과구간 조합이 적어(수십 건 이내) 운영 중 검수자가 직접 값을 수정하기 쉬움
-- **`reviewed_by`/`reviewed_at`가 코드에서 검사되지 않음** *(설계와 실제 구현의 괴리, 2026-08-17 발견)* — 컬럼은 있지만 daily-guide/questions 어느 서비스 코드도 이 값을 조회 조건에 넣지 않는다. 그 결과 이 테이블에 row만 있으면 검수 여부와 무관하게 LLM의 "검수된 사실 근거"로 그대로 쓰인다. v0.5에서 `treatment_catalog` 등록을 위해 추가한 5개 신규 care_type(`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`)은 실제로는 미검수 스텁 문구인데도 기존 검수 문구(`peeling`/`laser_toning`)와 구분 없이 동일하게 노출된다 — 프로덕션 전 반드시 처리 필요(`server/README.md` TODO 절)
+`care_type` 그룹+경과구간 단위로 검수 문구를 저장하던 테이블. 위 "public.treatment_guides" 절에서 설명한 대로 시술명 직접 매칭 콘텐츠로 완전히 대체되며 테이블째 삭제했다 — "`reviewed_by`/`reviewed_at`가 코드에서 검사되지 않아 미검수 스텁이 검수 문구와 구분 없이 노출된다"는 이 테이블의 알려진 결함도 함께 해소됐다.
 
 ### public.businesses — 실제 사업장 정보 *(v0.8 신설 015)*
 
@@ -312,7 +306,7 @@ create table public.procedures (
 
 - 사업장별 실제 시술 46종(2026-08-17 xlsx 기준) — `category_tags`는 고정 concernTag 10종(`server/src/lib/concernTags.ts`) 중 이 시술이 다루는 고민 영역
 - **`recommendations.service.ts`가 이 테이블 전체를 추천 후보 풀로 쓴다** — 고객이 이용권을 보유했는지와 무관하게, `interest_goals`/최근 시술의 `category_tags`가 겹치는 시술을 추천한다(v0.7까지는 고객이 보유한 이용권의 `availableCareNames` 안에서만 후보를 골랐음 — 아래 "실제 사업장/시술 카탈로그 추가 (015)" 절 참고)
-- `treatment_catalog`(013, 관리자 웹의 시술기록 등록 자동완성용)와는 목적이 다른 별도 테이블이다 — 이쪽은 concernTag 기반 고객 추천용, `treatment_catalog`는 `care_type`/부위 기반 EMR 입력 보조용. 두 테이블이 실제로는 겹치는 시술을 담고 있을 수 있지만 아직 통합하지 않았다
+- `treatment_catalog`(013, 관리자 웹의 시술기록 등록 자동완성용)와는 목적이 다른 별도 테이블이다 — 이쪽은 concernTag 기반 고객 추천용, `treatment_catalog`는 브랜드+관리 부위 기반 EMR 입력 보조용. 두 테이블이 실제로는 겹치는 시술을 담고 있을 수 있지만 아직 통합하지 않았다
 
 ### public.device_tokens — Android FCM 푸시 토큰 (서버 구현 시 신규)
 
@@ -327,7 +321,24 @@ create table public.device_tokens (
 );
 ```
 
-- Android 클라이언트가 발급받은 FCM 토큰을 `POST /notifications/device-token`으로 등록. 알림 실제 발송(아침 리마인더 등)은 MVP 범위 밖이라 발송 함수만 준비
+- Android 클라이언트가 발급받은 FCM 토큰을 `POST /notifications/device-token`으로 등록. **v0.10(019/020)부터 실제 발송까지 구현됨** — `server/src/services/notificationScheduler.service.ts`가 매일 09:00 KST(일차별 마일스톤 1/3/5/7/14일, 이용권 만료 30일/7일 전)와 19:00 KST(당일 시술 등록 안내)에 크론으로 대상을 조회해 `push.service.ts`의 `sendPushToUser`로 발송한다(`server.ts`가 `FCM_ENABLED=true`일 때만 스케줄러를 기동). `server_admin`도 별도로 자체 FCM 설정(`server_admin/src/config/firebase.ts`)을 갖고 있어, 시술 예약 등록 즉시(`addCareRecord`) 알림을 보낸다 — 두 서비스가 프로세스가 분리돼 있어 FCM 설정도 각자 보관
+
+### public.notification_log — 알림 발송 로그 *(v0.10 신설 020)*
+
+```sql
+create table public.notification_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null,
+  ref_id uuid not null,
+  ref_key text not null,
+  sent_at timestamptz not null default now(),
+  unique (type, ref_id, ref_key)
+);
+```
+
+- 3종 알림이 이 테이블을 공유한다: `care_registered`(`server_admin`의 `addCareRecord`가 시술 등록 즉시 발송, `ref_key: 'registered'`), `day_milestone`(`server`의 일일 09시 크론, `ref_key: '1'/'3'/'5'/'7'/'14'`), `membership_expiry`(`server`의 일일 09시 크론, `ref_key: '30'/'7'`)
+- `unique (type, ref_id, ref_key)`로 같은 알림이 중복 발송되는 것을 DB 제약으로 막는다 — `notificationScheduler.service.ts`는 "보내고 나서 기록"이 아니라 이 테이블에 먼저 insert를 시도해 성공한 경우에만 실제로 보내는 순서(claim-then-send)라, 크론이 겹쳐 돌아도 중복 발송되지 않는다
 
 ### public.emr_patients — 가상 EMR 환자 프로필 (계정 미연결 상태로 시작) *(v0.4 신설 006, v0.6 컬럼 개편 009/010)*
 
@@ -355,14 +366,13 @@ create index idx_emr_patients_phone on public.emr_patients (phone);
 - `brand` *(v0.6, 마이그레이션 009)*: 환자를 등록한 클리닉(`admin_accounts.brand`와 매칭). 환자 등록(`POST /patients`) 시점에 로그인한 관리자의 brand를 그대로 기록 — 클리닉별 데이터 격리(다른 클리닉 환자는 조회 자체가 404)의 근거
 - `claimed_user_id`: 회원가입으로 이 환자 기록을 실제 계정에 연결(claim)한 시점의 `auth.users.id`. `null`이면 아직 미가입 상태이며, 값이 있으면 중복 가입 방지 겸 이관 완료 표시로 쓰인다. claim 이후에도 `server_admin`에서 이 환자에게 새 시술기록을 추가할 수 있으며, 이때는 스테이징이 아니라 실제 `care_records`/`memberships`에 곧바로 기록된다
 
-### public.emr_care_records — 계정 연결 전 시술 이력 *(v0.4 신설 006, v0.6 컬럼 개편 009/011/012)*
+### public.emr_care_records — 계정 연결 전 시술 이력 *(v0.4 신설 006, v0.6 컬럼 개편 009/011/012, v0.10 컬럼 삭제 025, v0.11 컬럼 추가 026)*
 
 ```sql
 create table public.emr_care_records (
   id uuid primary key default gen_random_uuid(),
   patient_id uuid not null references public.emr_patients(id) on delete cascade,
   care_name text not null,
-  care_type text not null,
   care_date date not null,
   part_of_body text[] not null default '{}',
   brand text,
@@ -372,17 +382,19 @@ create table public.emr_care_records (
   session_number int,
   total_sessions int,
   membership_id uuid references public.emr_memberships(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  session_consumed boolean not null default true
 );
 
 create index idx_emr_care_records_patient on public.emr_care_records (patient_id, care_date desc);
 create index idx_emr_care_records_membership on public.emr_care_records (membership_id);
 ```
 
-- 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문. `care_type`은 `reference_guides`와 매칭되는 값(현재 7종 — `peeling`/`laser_toning`/`energy_lifting`/`botox`/`filler`/`skin_booster`/`hair_removal`, `(v0.5)`)만 실제 일차별 가이드가 생성되고, 그 외 값은 클레임 후 `404 GUIDE_NOT_AVAILABLE`로 안전하게 폴백된다. **주의**: 7종 중 `peeling`/`laser_toning`만 전문가 검수 문구고 나머지 5종은 미검수 스텁이다 — `reviewed_by`/`reviewed_at` 컬럼(아래 `reference_guides` 정의 참고)이 있지만 코드에서 실제로 검사되지 않아 검수 여부와 무관하게 전부 같은 방식으로 LLM에 근거로 주입된다(`server/README.md` TODO 절 참고)
+- 컬럼 구성은 `public.care_records`와 거의 동일 — claim 시 그대로 복사되기 때문(`auth.service.ts`의 `migrateEmrDataToApp`). `care_type` 컬럼은 v0.10(`025`)에서 삭제됐다 — daily-guide는 이제 `care_name`+경과일로 `treatment_guides`를 직접 매칭하고, 매칭이 없으면 그대로 `404 GUIDE_NOT_AVAILABLE`로 폴백된다(위 "public.treatment_guides" 절 참고). **`024`가 `care_records`/`treatment_catalog`의 `care_type`은 지웠지만 이 테이블은 놓쳤던 것을 뒤늦게 발견해 `025`로 별도 정리했다** — 그 전까지는 `server_admin`의 `addCareRecord`가 `care_type`을 전혀 채우지 않는데 컬럼은 `not null`로 남아있어, 회원가입 전(claim 전) 환자에게 시술기록을 등록하는 모든 요청이 NOT NULL 제약 위반으로 실패하는 상태였다
 - `store` 컬럼은 v0.6(009)에서 제거됐다(순수 중복 컬럼, `care_records`와 동일한 이유)
 - `part_of_body` *(v0.6, 마이그레이션 012)*: 단일 텍스트에서 배열로 변경. 값은 `server_admin`이 정해진 목록(`GET /body-parts`) 안에서만 검증
-- `membership_id` *(v0.6, 마이그레이션 011)*: 이 시술기록이 어떤 이용권을 소비했는지 연결. 시술기록을 삭제할 때 그 이용권 차감을 자동으로 되돌리기 위해 추가(`server_admin/patients.service.ts`)
+- `membership_id` *(v0.6, 마이그레이션 011)*: 이 시술기록이 어떤 이용권과 연결됐는지. 시술기록을 삭제할 때 그 이용권 차감을 자동으로 되돌리기 위해 추가(`server_admin/patients.service.ts`) — `(v0.11)` 차감을 안 한 예약이었다면 되돌릴 것도 없으므로 그대로 둔다(아래 `session_consumed` 참고)
+- `session_consumed` *(v0.11, 마이그레이션 026)*: `public.care_records`와 동일한 의미 — `careDate`가 등록 시점 기준 오늘(KST)이었는지에 따라 이 시술기록이 실제로 이용권을 차감했는지 기록. 아래 "예약 등록 시 이용권 미차감 지원 (026)" 절 참고
 
 ### public.emr_memberships — 계정 연결 전 이용권 *(v0.4 신설 006, v0.6 컬럼 추가 007, v0.9 컬럼 추가 016)*
 
@@ -408,25 +420,27 @@ create index idx_emr_memberships_patient on public.emr_memberships (patient_id);
 - `expires_at`은 `public.memberships`와 동일하게 v0.7부터 `server_admin`이 생성 시점(첫 시술일+1년)에 채운다
 - `brand` *(v0.9, 마이그레이션 016)*: 위 `public.memberships.brand`와 동일한 의미 — claim 전 스테이징 버전. 생성 시 `server_admin`이 로그인 클리닉의 `brand`를 채우며, claim 시 그대로 `memberships.brand`로 복사된다
 
-### public.treatment_catalog — 치료-부위 카탈로그 *(v0.7 신설 013)*
+### public.treatment_catalog — 치료-부위 카탈로그 *(v0.7 신설 013, v0.10 brand 추가+care_type 삭제 021/022/024)*
 
 ```sql
 create table public.treatment_catalog (
   id uuid primary key default gen_random_uuid(),
-  care_name text not null unique,
-  care_type text not null,
+  care_name text not null,
   body_parts text[] not null default '{}',
+  brand text,
+  description text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (brand, care_name)
 );
 ```
 
-- 치료명(`care_name`)을 고르면 기본 `care_type`/관리 부위(`body_parts`) 후보를 자동 제안하기 위한 참조 테이블 — `admin-web` 프로토타입(`docs/WHS_After_Mate_Admin_revised.html`)의 치료 카탈로그 구조를 반영
-- 클리닉(브랜드)별로 나누지 않고 **전체 클리닉 공통**으로 관리(brand 컬럼 없음) — 로그인만 되어 있으면 어느 클리닉 관리자든 CRUD 가능
-- `care_type`은 등록/수정 시 `reference_guides`에 실제로 존재하는 값인지 서버가 재검증(`GET /care-types`와 동일 로직)
+- 치료명(`care_name`)을 고르면 관리 부위(`body_parts`) 후보를 자동 제안하기 위한 참조 테이블 — `admin-web` 프로토타입의 치료 카탈로그 구조를 반영
+- `brand` *(v0.10, 마이그레이션 021)*: **클리닉 공통에서 클리닉별로 전환됐다.** 처음엔(v0.7) "치료 카탈로그는 클리닉마다 다를 이유가 없다"고 판단해 브랜드 구분 없이 전체 공통으로 뒀지만, 실제 엑셀 원본(`docs/care_procedure_template.xlsx`)엔 엠레드/더나/윔 클리닉별로 서로 다른(때로는 겹치는 이름의) 시술 목록이 있었다. `GET /treatment-catalog`(`server_admin`)는 이제 로그인한 관리자의 `brand`(JWT)로 항상 필터링해 자기 클리닉 시술만 보여준다. unique 제약도 `care_name` 단독에서 `(brand, care_name)` 복합으로 바뀌어, 같은 이름의 시술이 서로 다른 클리닉에 각각 존재할 수 있다
+- `care_type` 컬럼은 v0.10(`022`에서 nullable화 → `024`에서 완전 삭제)에서 제거됐다. 엑셀 원본 45개 시술 전체를 재시딩하는 과정에서 다수(특히 WIM 클리닉의 웰니스 회복 기기 7종)가 당시 존재하던 7개 `care_type` 어디에도 맞지 않는다는 게 확인됐고, 결국 daily-guide/questions가 `treatment_guides`(시술명 직접 매칭)로 완전히 넘어가며 `care_type` 개념 자체가 불필요해졌다
+- `description` *(v0.10 이전부터 존재)*: 시술 설명 — `POST/PATCH /treatment-catalog` 요청 바디의 `description`
 - **참조 관계 없음** — 이미 저장된 시술기록/이용권은 카탈로그를 FK로 참조하지 않고 등록 시점 값을 그대로 복사해 쓴다. 카탈로그 항목을 수정/삭제해도 과거 시술기록엔 영향 없음
-- `body_parts`(관리 부위 후보)는 여전히 프론트 자동완성 제안용일 뿐 `POST .../care-records`의 `partOfBody`를 강제하지 않지만, `care_type`은 *(2026-08-19, 스키마 변경 없음)* 더 이상 클라이언트가 보내지 않고 `care_records`/`emr_care_records` 저장 시 `careName`으로 이 테이블을 조회해 자동으로 채운다 — 매칭되는 `care_name`이 없으면 `care_type`은 `null`로 저장된다(`admin-api-spec.md` v0.9 참고)
-- `remaining_count` *(v0.6, 마이그레이션 007)*: `public.memberships`와 동일한 패턴의 GENERATED 컬럼. 시술기록 추가 화면에서 "이 이용권 몇 회 남았는지" 토글 목록을 보여줄 때 프론트/서버가 직접 계산하지 않아도 됨
+- `body_parts`(관리 부위 후보)는 프론트 자동완성 제안용일 뿐 `POST .../care-records`의 `partOfBody`를 강제하지 않는다 — `partOfBody`는 이 카탈로그와 무관하게 고정 전체 목록(`GET /body-parts`)에서 항상 다중 선택 가능
 
 ### public.admin_accounts — 클리닉별 관리자 로그인 계정 *(v0.6, 마이그레이션 008/009)*
 
@@ -445,6 +459,21 @@ create table public.admin_accounts (
 - 로그인한 계정의 `brand`가 이후 환자 등록·시술기록 추가 시 자동으로 채워지고, 조회도 로그인한 계정의 `brand`로만 격리된다(다른 클리닉 환자/기록은 404로 통일 — 존재 자체를 숨김). `/patients/*` 전체 라우트가 `requireAdminAuth` 미들웨어로 토큰을 요구한다(로그인 없이 항상 열려있던 이전 결정을 뒤집음)
 - `store` 컬럼은 v0.6(009)에서 제거됐다(`brand`와 순수 중복)
 
+### public.clinic_doctors — 클리닉별 담당 의료진 목록 *(신설 014)*
+
+```sql
+create table public.clinic_doctors (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null,
+  name text not null,
+  created_at timestamptz not null default now(),
+  unique (brand, name)
+);
+```
+
+- `GET /clinic-info`(`server_admin`)가 로그인한 관리자의 `brand`로만 조회해 관리 등록 화면의 담당의(`practitioner`) select 후보로 노출한다 — `care_records.practitioner`는 여전히 자유 텍스트라 여기 없는 이름도 입력 가능(강제 아님, 후보 제안일 뿐)
+- 카카오톡 상담 링크/전화번호는 별도 `clinics` 테이블을 새로 만들지 않고 `public.businesses`(015)를 그대로 재사용한다 — 같은 목적의 데이터를 중복 관리하지 않기 위함
+
 ### ~~public.signup_verification_codes~~ — 제거됨 (v0.4 신설 006 → v0.6 삭제 010)
 
 가입 시 환자번호와 함께 대조하던 24시간 유효 인증코드를 저장하던 테이블. v0.6(010)에서 회원가입 신원확인 방식이 "인증코드 발급·대조"에서 "환자번호+이름+생년월일 일치 대조"로 단순화되며 더 이상 쓰이지 않게 되어 테이블 자체를 삭제했다.
@@ -459,7 +488,8 @@ create table public.admin_accounts (
 | **refresh token 테이블 없음** | Supabase Auth가 내부 관리. `POST /auth/refresh`·`/logout`은 Supabase SDK 호출로 대체 |
 | **알림 설정은 profiles 컬럼** | 사용자당 1행이라 별도 테이블 정규화 이득 없음. 항목이 늘어나면 그때 분리 |
 | **캘린더는 집계 쿼리** | `care_records`를 월 단위로 `GROUP BY`. 별도 마커 테이블 유지 비용 없음 |
-| **하루 1회 LLM 생성은 DB 제약으로** | `aftercare_guides`의 UNIQUE로 애플리케이션 로직 실수를 DB가 방어 |
+| ~~**하루 1회 LLM 생성은 DB 제약으로**~~ *(v0.10에서 무의미해짐)* | `aftercare_guides`의 UNIQUE로 애플리케이션 로직 실수를 DB가 방어하던 결정이었으나, daily-guide가 더 이상 LLM을 호출하지 않아(`treatment_guides` 직접 조회) 테이블째 삭제되며 이 결정 자체가 사라짐 |
+| **알림 중복 발송은 DB 제약으로** *(v0.10)* | `notification_log`의 `unique (type, ref_id, ref_key)`로 크론이 겹쳐 돌아도 중복 발송을 DB가 방어 — 위 "하루 1회 LLM 생성" 결정과 같은 패턴을 알림 발송에 재사용 |
 | **전화 인증은 미구현으로 제거** | 국내 SMS 업체 연동 비용이 MVP 범위 밖이라 판단, `phone_verifications` 테이블·`phoneVerifiedToken` 흐름 전부 삭제(`004_remove_phone_verification.sql`) |
 | **알러지·의사코멘트는 별도 테이블(`medical_profiles`)로 분리** | `profiles`(앱 계정 데이터)와 성격이 달라 접근 권한·감사 로그를 다르게 관리하기 위함. EMR 동기화 대상이라는 점도 명확히 구분 |
 | **의료정보 접근은 감사 로그(`medical_data_access_log`) 필수** | 알러지·의사 코멘트가 민감정보라 "누가/언제/왜" 봤는지 남겨야 함. LLM이 컨텍스트로 읽을 때도 기록 |
@@ -582,7 +612,7 @@ create table public.admin_accounts (
 - concernTag 고정 10종은 `server/src/lib/concernTags.ts`에 상수로 관리(DB 테이블 아님) — 앱의 관심목표 칩과 동일한 값이어야 매칭됨
 - `treatment_catalog`(013)와는 별개 테이블이다 — `treatment_catalog`는 `care_type`/부위 기반으로 관리자 웹의 시술기록 등록 자동완성에 쓰이고, `procedures`는 `category_tags`(concernTag) 기반으로 고객 추천에 쓰인다. 실제로는 두 카탈로그에 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다
 - 실계정으로 라이브 검증 완료 — 자세한 API 계약 변경은 `docs/api-spec.md` v0.8 참고
-- 참고: 같은 날 별도로 진행하던 `treatment_catalog.description` 컬럼 + `clinics`/`clinic_doctors` 테이블 작업(`014_add_treatment_description_clinic_info_doctors.sql`)은 이 변경과 무관하며 **보류 상태**(마이그레이션 미적용)
+- 참고: 같은 날 별도로 진행하던 `treatment_catalog.description` 컬럼 + `clinic_doctors` 테이블 작업(`014_add_treatment_description_clinic_info_doctors.sql`)은 이 변경과 무관하다 — **이 문서엔 오랫동안 "보류 상태(마이그레이션 미적용)"로 잘못 기록돼 있었지만, 실제로는 적용 완료 상태이며 `GET /clinic-info`로 이미 쓰이고 있다** (아래 "public.clinic_doctors" 절 참고, 발견 시점: db-schema.md v0.10 갱신 중)
 
 ## 이용권에 브랜드 컬럼 추가 (016)
 
@@ -593,3 +623,43 @@ create table public.admin_accounts (
 - **정책 변경 아님**: `brand`는 순수 표시용 메타데이터다. 이용권 차감/자동 이어쓰기 매칭(`findContinuableMembership`)은 지금과 동일하게 `product_name`+`total_count`만으로 판단하며 `brand`를 조건에 넣지 않는다 — "이용권은 클리닉별로 격리되지 않는다"는 기존 정책은 이번 변경으로 바뀌지 않았다(계속 알려진 제한사항으로 남음)
 - 관리자 웹(`server_admin`)의 `GET /patients/{patientId}`는 `memberships`/`emr_memberships`를 `SELECT *`로 그대로 반환하므로, 코드 변경 없이 이 컬럼이 응답에 자동으로 포함된다
 - 마이그레이션 자체는 이 세션에서 코드까지 완료했지만, DDL 실행 권한(Postgres 직접 연결)이 없어 **Supabase SQL Editor에 수동 적용 필요** — 적용 전까지는 `brand` 컬럼이 없어 관련 INSERT가 실패한다
+
+## 질문 상담 필요도 컬럼 추가 (017)
+
+`server/db/migrations/017_add_question_consultation_level.sql` — 위 "public.questions" 절 참고. `status`(답변했는지 여부)와 별개로 "실제 상태 확인이 필요한 정도"(`NONE`/`RECOMMENDED`/`URGENT`)를 LLM이 함께 판단해 저장한다.
+
+## daily-guide 콘텐츠 구조 재설계 (018)
+
+`server/db/migrations/018_daily_guide_docx_redesign.sql` — `docs/prompt.docx` 재설계에 맞춰 (당시) `aftercare_guides`의 `must_avoid`/`basic_care` 컬럼을 `precautions`/`aftercare`로 rename하고 `key_care`(오늘 가장 중요한 한 줄 요약) 컬럼을 추가했다. 이 컬럼 이름(`aftercare`/`precautions`/`key_care`)이 그대로 아래 `treatment_guides`(023)에 이어져, 지금의 daily-guide 응답 구조가 됐다. **`aftercare_guides` 테이블 자체는 024에서 삭제**됐으므로 이 마이그레이션이 만든 컬럼은 더 이상 존재하지 않는다 — 이름 변경 이력만 참고용으로 남긴다.
+
+## care_type 제거 + treatment_guides 도입 (019~025)
+
+daily-guide/questions 두 LLM 호출 지점 모두 `care_type` 그룹 단위 검수 가이드(`reference_guides`)를 근거로 쓰던 구조를, 시술마다 실제 사후관리 내용이 다르다는 문제(장비·성분 차이) 때문에 시술명(`care_name`) 직접 매칭 콘텐츠(`treatment_guides`)로 전면 교체한 작업. FCM 푸시 알림 인프라 구축과 같은 세션에서 함께 진행됐다.
+
+| 마이그레이션 | 변경 |
+|---|---|
+| `019_add_notification_settings.sql` | `profiles`에 `care_notification`/`marketing_notification` 컬럼 추가 — 005에서 걷어냈던 알림 설정을 실제로 동작하는 형태로 재도입 |
+| `020_add_notification_log.sql` | `public.notification_log` 신규 — 알림 종류별 중복 발송 방지(unique 제약)+감사 기록 |
+| `021_add_treatment_catalog_brand.sql` | `treatment_catalog`에 `brand` 컬럼 추가, unique 제약을 `care_name` 단독에서 `(brand, care_name)` 복합으로 교체 — 클리닉별 시술 카탈로그 격리 |
+| `022_treatment_catalog_care_type_nullable.sql` | `treatment_catalog.care_type`을 nullable로 완화 — 엑셀 45개 시술 전체 재시딩 중 다수가 기존 7개 `care_type` 어디에도 안 맞는다는 게 확인돼, 억지로 끼워맞추는 대신 매칭되는 것만 채우고 나머지는 null 허용 |
+| `023_add_treatment_guides.sql` | `public.treatment_guides` 신규(위 절 참고) — `care_type` 그룹 매칭을 시술명+경과일(1/3/5/7/14) 직접 매칭으로 교체 |
+| `024_drop_care_type.sql` | `care_records`/`treatment_catalog`의 `care_type` 컬럼과 `reference_guides`/`aftercare_guides` 테이블을 전부 삭제 — 애플리케이션 코드에서 참조가 완전히 제거된 걸 확인한 뒤 실행 |
+| `025_drop_emr_care_records_care_type.sql` | `emr_care_records.care_type` 삭제 — 024가 놓쳤던 것을 문서 정합성 점검 중 발견. 이 컬럼이 `not null`로 남아있는데 `server_admin`의 `addCareRecord`가 값을 전혀 안 채우고 있어, 회원가입 전(claim 전) 환자에게 시술기록을 등록하는 모든 요청이 실패하는 상태였다 |
+
+**결과적으로 daily-guide는 더 이상 LLM을 호출하지 않는다** — `treatment_guides`를 시술명+경과일로 직접 조회해 즉시 응답하고, 매칭이 없으면 LLM 폴백 없이 바로 `404 GUIDE_NOT_AVAILABLE`. LLM 호출 지점은 이제 `questions`(챗봇, 근거만 `reference_guides`→`treatment_guides`로 교체)와 `recommendations`(다음 관리 추천) 두 곳뿐이다.
+
+이 배치의 마이그레이션들은 전부 Supabase 프로젝트에 적용 완료됐다(직접 조회로 확인) — `025`도 이후 세션에서 적용 완료.
+
+## 예약 등록 시 이용권 미차감 지원 (026)
+
+`server/db/migrations/026_add_care_record_session_consumed.sql` — 실사용 중 발견된 문제: 시술기록을 등록하는 순간(`careDate`가 미래든 과거든 상관없이) 항상 이용권 1회를 즉시 차감하고 있었다. 그 결과 같은 패키지로 여러 미래 예약을 잡으면(예: 오늘 다음주 보톡스 3회권 예약 + 내일 다다음주 3회권 예약) 아직 시술을 하나도 안 받았는데 이용권이 먼저 소진되는 문제가 있었다.
+
+`care_records`/`emr_care_records`에 `session_consumed boolean`(기본값 `true`, 이 기능 도입 이전 기존 행 백필용) 컬럼을 추가하고, `server_admin`의 `addCareRecord()`를 다음과 같이 바꿨다:
+
+- `careDate`가 등록 시점 기준 오늘(KST)이면 → 기존과 동일하게 이용권 즉시 차감(`session_consumed: true`)
+- 그 외(미래 예약이든 과거 소급 등록이든) → 이용권을 연결만 하고 `used_count`는 그대로 둔다(`session_consumed: false`). 새 이용권을 만드는 경우도 `used_count: 0`, `last_used_at: null`로 시작
+- 같은 `product_name`+`total_count`로 여러 번 미래 예약을 잡아도 `findContinuableMembership`이 계속 같은(아직 `used_count < total_count`인) 이용권을 찾아내므로, 미소비 예약들은 전부 이용권 하나를 공유한다
+- `DELETE /care-records/{id}`도 `session_consumed`를 확인해서, 차감 안 했던 예약을 지울 땐 `used_count`를 되돌리지 않는다(되돌리면 다른 기록의 진짜 차감분을 훼손하게 됨)
+- **부수 효과 — `session_number` 재계산**: 같은 이용권에 걸린 미소비 예약들의 회차 번호가 등록 시점에 고정되지 않고, 이용권 상태가 바뀔 때마다(차감/차감취소/새 예약추가) 관리날짜 순으로 다시 매겨진다(`resyncUnconsumedSessionNumbers`). 이전엔 저장된 값이 그대로 굳어있어서, 미래 예약을 먼저 잡아두고 그 전에 실제 시술을 하나 더 받아도 예약의 회차 번호가 그대로 남아있는 버그가 있었다(예: 3회권 중 미래 예약을 1회차로 저장해뒀는데, 그 전에 실제 시술로 1회차를 소비해도 예약은 계속 1회차로 보임 — 2회차로 안 바뀜)
+
+자세한 API 계약은 `docs/admin-api-spec.md` v0.11 참고.

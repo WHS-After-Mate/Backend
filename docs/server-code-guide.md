@@ -1,4 +1,4 @@
-# WHS After Mate — 서버 코드 설명서 (v0.3)
+# WHS After Mate — 서버 코드 설명서 (v0.5)
 
 `api-spec.md`가 "각 엔드포인트를 호출하면 무엇을 주고받는가"를 정의한 계약서라면,
 이 문서는 **그 계약을 `server/src` 코드가 실제로 어떻게 구현하는가**를 설명한다.
@@ -6,7 +6,7 @@
 
 이 문서는 고객용 백엔드 `server/`만 다룬다. 관리자용 백엔드 `server_admin/`(환자 등록, 시술기록/이용권 입력, 가입 인증코드 발급 — 포트 4100)은 `server/`와 동일한 3단 컨벤션(routes/services/validators)으로 별도 구축돼 있으며, 상세는 `server_admin/README.md` 참고.
 
-대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점) + v0.5 신규 항목 9건(2026-08-05, 9절 "v0.5 신규 항목" 참고) + v0.6 회원가입 재설계(환자번호+인증코드 → 환자번호+이름+생년월일 대조, 2026-08-13~08-16, 3절·9-2절 참고) + 비밀번호 재설정 숫자코드화·`interestGoals`(2026-08-16, 9-2절 참고)
+대상 커밋: `16c2f5f` (2026-08-02, 백엔드 1차 구현 + Supabase/Anthropic 연동 + 엔드투엔드 테스트 완료 시점) + v0.5 신규 항목 9건(2026-08-05, 9절 "v0.5 신규 항목" 참고) + v0.6 회원가입 재설계(환자번호+인증코드 → 환자번호+이름+생년월일 대조, 2026-08-13~08-16, 3절·9-2절 참고) + 비밀번호 재설정 숫자코드화·`interestGoals`(2026-08-16, 9-2절 참고) + **v0.4(이 문서) 갱신 시점 기준 코드**: LLM 제공자는 Anthropic Claude가 아니라 **OpenAI**로 전환됐고(v0.13, `llm-prompt-design.md` 참고), daily-guide는 LLM을 호출하지 않는 `treatment_guides` 직접 조회로 바뀌었다(v0.5, 5절 참고) — 아래 5절은 이 최신 상태를 반영해 전면 재작성했다.
 
 ---
 
@@ -19,10 +19,10 @@ src/
   routes/        → URL·HTTP 메서드 ↔ 서비스 함수 연결, req/res만 다룸 (비즈니스 로직 없음)
   validators/    → zod 스키마 — 요청 바디/쿼리 검증 (routes에서만 호출)
   services/      → 도메인 로직 + DB(Supabase) 접근. **DB 접근은 반드시 이 레이어를 통해서만 한다**
-    services/llm/ → Claude 프롬프트 정의 + 구조화 출력 호출 클라이언트
+    services/llm/ → OpenAI 프롬프트 정의 + 구조화 출력 호출 클라이언트(questions/recommendation 2곳만 — daily-guide는 LLM을 호출하지 않음, 5절 참고)
   middleware/    → 인증(requireAuth), 공통 에러 핸들러
   lib/           → 상태 없는 순수 유틸(에러 정의, 위험신호 키워드, sanitize 등)
-  config/        → 외부 서비스 클라이언트 초기화(Supabase, Anthropic, Firebase) + 환경변수 스키마
+  config/        → 외부 서비스 클라이언트 초기화(Supabase, OpenAI, Firebase) + 환경변수 스키마
 ```
 
 핵심 규칙: **routes는 얇게, services는 두껍게.** 라우트 핸들러는 "요청 파싱 → 서비스 호출 →
@@ -98,11 +98,12 @@ app.ts
 ## 4. 홈 / 추천 (`services/home.service.ts`, `services/recommendations.service.ts`)
 
 - **`getHomeSummary`**: 홈 진입 1회 호출을 위해 4가지를 병렬로 모은다 — 최근 관리
-  (`careRecords.service.getLatestCareRecord`), 오늘자 캐시된 사후관리 가이드
-  (`aftercare_guides`를 직접 조회, LLM을 다시 호출하지 않음), 이용권 요약
+  (`careRecords.service.getLatestCareRecord`), 오늘자 사후관리 가이드 카드
+  (`(v0.5)` `treatment_guides`를 시술명+오늘 경과일로 직접 조회 — daily-guide(5-1절)와 동일한
+  소스, LLM 호출 없음), 이용권 요약
   (`memberships.service.countMemberships` + `getNearestExpiringMembership`), 다음 관리 추천
   (`recommendations.service.computeNextCareRecommendation`). LLM 호출은 여기서 발생하지 않는다 —
-  `daily-guide`가 이미 생성해 둔 캐시를 재사용하거나, 없으면 `aftercareCard: null`을 반환한다.
+  매칭이 없으면 `aftercareCard: null`을 반환한다.
 - **`computeNextCareRecommendation`**: 이름과 달리 **규칙 기반, LLM 미사용**. 최근 관리 후
   경과일이 `MIN_INTERVAL_DAYS(21일)` 이상인지, 보유 이용권 중 잔여 횟수가 있는 관리명인지,
   관심 목표(`profiles.interest_goals`)와 이름이 매칭되는지를 순서대로 확인해 `reasons`/`basis`
@@ -113,33 +114,30 @@ app.ts
 
 ---
 
-## 5. 사후관리 안내 및 Q&A — LLM 파이프라인 (`services/aftercare.service.ts`)
+## 5. 사후관리 안내·Q&A·추천 — LLM 파이프라인 (`services/aftercare.service.ts`, `services/recommendations.service.ts`)
 
-가장 복잡한 레이어. `docs/llm-prompt-design.md`에서 정의한 원칙(구조화 출력 강제, 검수 가이드를
-근거로만 사용, 의료적 진단 금지)을 실제로 구현한 코드다. 두 호출 지점의 흐름을 나눠서 본다.
+`docs/llm-prompt-design.md`에서 정의한 원칙(구조화 출력 강제, 의료적 진단 금지, 위험 신호 사전 차단)을
+실제로 구현한 코드다. **LLM 호출 지점은 questions와 recommendation 두 곳뿐이다** — daily-guide는
+`(v0.5)` LLM을 아예 호출하지 않는 단순 DB 조회로 바뀌었다. LLM 제공자는 `(v0.13)` OpenAI다
+(`config/openai.ts`, `OPENAI_MODEL` 환경변수, 기본값 `gpt-4.1-mini`).
 
-### 5-1. `GET /aftercare/daily-guide` → `getOrGenerateDailyGuide`
+### 5-1. `GET /aftercare/daily-guide` → `getOrGenerateDailyGuide` — LLM을 호출하지 않는다
 
 ```
 1. careRecordId 지정 없으면 최근 관리 이력 사용 (getLatestCareRecord)
-2. 오늘(KST) 이미 생성된 캐시가 있으면 그대로 반환 — LLM 재호출 없음 (getCachedGuide)
-3. daysElapsedSince()로 경과일 계산 (KST 자정 기준 날짜 차이)
-4. findReferenceGuide(care_type, daysElapsed)로 "검수된 가이드" 구간을 lookup
-   → 못 찾으면 404 GUIDE_NOT_AVAILABLE (LLM을 아예 호출하지 않음)
-5. getMedicalProfileForLlmContext()로 알러지/기저질환 조회 + medical_data_access_log에 접근 기록
-6. generateViaLlm(): callStructuredLlm으로 Claude 호출 (최대 2회 재시도)
-   → 응답이 violatesOutputPolicy()(진단/처방 표현 금지어)에 걸리면 그 결과를 버리고 재시도
-   → 통과하면 sanitizeLlmTextArray()로 XML 태그 흔적 제거 후 반환
-7. LLM 결과가 끝내 없으면(2회 모두 실패) → 검수 가이드 원문(referenceGuide.must_avoid 등)을
-   그대로 사용 → generatedBy: "reference_guide" (503 대신 200으로 안전하게 폴백)
-8. 결과를 aftercare_guides에 insert해 캐시화 (unique(care_record_id, generated_date))
-   → 동시 요청으로 insert 충돌 나면 방금 다른 요청이 만든 캐시를 재조회해서 반환(레이스 처리)
+2. daysElapsedSince()로 경과일 계산(elapsedDay 쿼리가 있으면 그 값 사용)
+3. findTreatmentGuide(care_name, day) — services/treatmentGuides.service.ts — 로
+   treatment_guides 테이블을 (care_name, day) 정확히 일치 조회
+   → 못 찾으면 404 GUIDE_NOT_AVAILABLE (여기서 끝, LLM 호출도 캐시도 없음)
+4. 찾은 행의 aftercare/precautions/key_care를 그대로 응답에 담아 반환
+   (generatedBy: "treatment_guide", nextCheckDate/elapsedRange/cacheExpiresAt는 항상 null)
 ```
 
-핵심은 3번과 4번이다 — **경과 구간(`elapsedRange`) 판정과 근거 텍스트 선정은 LLM이 아니라
-`reference_guides` 테이블 lookup이 먼저 결정**하고, LLM은 그 안에서 문장을 다듬고 환자
-개인 정보(알러지 등)를 반영해 강조하는 역할만 한다. LLM이 완전히 실패해도 4번에서 이미 찾아둔
-검수 원문이 있으므로 최소한의 안전한 응답은 항상 보장된다.
+`(v0.5 이전)` 여기엔 LLM 호출(`generateViaLlm`)과 하루 1회 캐시(`aftercare_guides`)가 있었다.
+`docs/llm-prompt-design.md`의 "1. daily-guide" 절에 그 시절 프롬프트 전문과 왜 없어졌는지가
+남아있다 — 요약하면 "`care_type` 그룹 단위 근거로는 시술별 특성을 못 담는다"는 문제를 LLM의
+판단력으로 완화하려던 v0.4 시도가 근본 해결이 아니었고, 결국 시술명 단위로 팀이 콘텐츠를 직접
+쓰는 쪽(`treatment_guides`)으로 바뀌며 LLM이 종합할 필요 자체가 없어졌다.
 
 ### 5-2. `POST /aftercare/questions` → `submitQuestion`
 
@@ -147,13 +145,15 @@ app.ts
 1. isSupportedCategory() 체크 — 미지원 카테고리는 422 (LLM 호출 전 차단)
 2. containsRiskKeyword(question) 체크 — lib/riskKeywords.ts의 키워드(통증/출혈/호흡곤란 등)에
    매칭되면 LLM을 아예 호출하지 않고 즉시 status: "expert_required"로 저장·응답
-3. 위험 신호가 아니면 getMedicalProfileForLlmContext() + findReferenceGuide()로 컨텍스트 조립
-4. callStructuredLlm으로 Claude 호출 (최대 2회 재시도, violatesOutputPolicy 통과해야 함)
+3. 위험 신호가 아니면 getMedicalProfileForLlmContext() + findTreatmentGuide()로 컨텍스트 조립
+   (treatment_guides 매칭 실패 시 treatmentGuide: null로 그냥 진행 — daily-guide와 달리
+   여기선 404로 막지 않는다, 자유 질문이라 근거가 없어도 일반론 수준으로는 답할 수 있어서)
+4. callStructuredLlm으로 OpenAI 호출 (최대 2회 재시도, violatesOutputPolicy 통과해야 함)
    → LLM이 스스로 status: "out_of_scope"를 반환할 수도 있음(근거 부족 판단은 LLM 몫)
+   → consultationLevel(NONE/RECOMMENDED/URGENT)도 이 호출에서 함께 판단됨(v0.4)
 5. 결과를 questions 테이블에 저장 후 status에 따라 응답 형태 분기
    (answered / out_of_scope / expert_required)
-6. 2회 재시도 후에도 실패하면 503 ANSWER_GENERATION_FAILED (daily-guide와 달리 폴백 문구를
-   만들기 어려워 문서(api-spec.md)대로 에러 유지)
+6. 2회 재시도 후에도 실패하면 503 ANSWER_GENERATION_FAILED
 ```
 
 `containsRiskKeyword`(2단계, 규칙 기반)와 `status: "out_of_scope"`(4단계, LLM 판단)는
@@ -161,34 +161,49 @@ app.ts
 정규식 수준으로 즉시 차단하고, 후자는 LLM이 컨텍스트를 보고 "이 앱 범위 밖의 질문"이라고
 스스로 판단한 경우다.
 
-### 5-3. 공통 부품
+### 5-3. `GET /recommendations/next-care`(및 상세) → `generateRecommendationCopy`
 
-- **`services/llm/client.ts` (`callStructuredLlm`)**: Claude Messages API를
-  `tool_choice: { type: "tool", name }`로 호출해 **자유 텍스트가 아니라 지정한 JSON 스키마로만
-  응답하도록 강제**한다. 응답의 `tool_use` 블록을 찾아 `input`을 그대로 반환 — 텍스트 파싱/정규식
-  추출이 전혀 없다.
-- **`services/llm/dailyGuide.prompt.ts` / `questions.prompt.ts`**: 시스템 프롬프트 원문,
+어떤 시술을 추천할지(후보 선정)는 여전히 규칙 기반(`scoreProcedures` — 관심목표/최근 시술의
+`category_tags` 매칭 점수)이고, LLM은 이미 정해진 1개 시술에 대해 "왜 추천하는지" 자연어
+`reasons`(정확히 3개, 각 30자 이내)/`detailDescription`(30~40자)만 생성한다.
+
+```
+1. computeNextCareRecommendation()이 규칙 기반으로 추천 시술 1개를 확정
+2. generateRecommendationCopy(): callStructuredLlm으로 OpenAI 호출 (최대 2회 재시도)
+   → reasons.length !== 3이거나 detailDescription이 없으면 재시도
+3. 통과하면 sanitizeLlmTextArray/sanitizeLlmText 후 truncate()로 길이 강제(30/40자 초과분 자름)
+4. 2회 모두 실패하거나 OPENAI_API_KEY 미설정이면 → 정적 템플릿 문구로 조용히 폴백(200,
+   에러 없음) — daily-guide/questions와 달리 "추천 자체가 안 뜨는" 상황을 만들지 않는다
+```
+
+결과는 DB에 저장하지 않는다 — 매 요청마다 다시 계산(캐싱 없음).
+
+### 5-4. 공통 부품
+
+- **`services/llm/client.ts` (`callStructuredLlm`)**: OpenAI `chat.completions.create`를
+  `tools`+`tool_choice: { type: "function", function: { name } }`로 호출해 **자유 텍스트가 아니라
+  지정한 JSON 스키마로만 응답하도록 강제**한다. 응답의 `tool_calls[0].function.arguments`를
+  `JSON.parse`해 그대로 반환 — 텍스트 파싱/정규식 추출이 전혀 없다. questions/recommendation
+  **2곳**이 이 함수를 공유한다.
+- **`services/llm/questions.prompt.ts` / `recommendation.prompt.ts`**: 시스템 프롬프트 원문,
   도구 이름, JSON 스키마, 그리고 컨텍스트 객체를 LLM 입력 문자열로 조립하는 함수
-  (`buildDailyGuideUserMessage` / `buildQuestionUserMessage`)를 각각 정의한다. 두 프롬프트 모두
-  "검수된 가이드에 없는 내용을 지어내지 마라", "진단/처방 금지"를 명시하고, 알러지/기저질환이
-  있으면 반드시 반영하라고 지시한다.
+  (`buildQuestionUserMessage` / `buildRecommendationUserMessage`)를 각각 정의한다.
+  `(v0.5 이전엔 여기에 dailyGuide.prompt.ts도 있었으나 삭제됨.)`
+- **`services/treatmentGuides.service.ts` (`findTreatmentGuide`)**: `(v0.5 신설)` `care_name`+
+  `day`로 `treatment_guides`를 조회하는 단순 lookup. daily-guide(5-1)는 이 결과를 그대로
+  응답으로 쓰고, questions(5-2)는 이 결과를 LLM 컨텍스트(`reviewedGuide`)로 주입한다.
+  `(v0.5 이전엔 `services/referenceGuides.service.ts`가 `care_type`+`daysElapsed` 기준으로
+  이 역할을 했으나, 그 테이블·서비스 모두 삭제됐다.)`
 - **`lib/riskKeywords.ts`**: `RISK_KEYWORDS`(입력 사전 차단용)와
   `FORBIDDEN_OUTPUT_PATTERNS`(LLM 출력 검증용, `violatesOutputPolicy`)를 분리해서 관리한다.
   전자는 사용자 질문을, 후자는 LLM이 생성한 문장을 검사한다는 방향이 다르다.
   **둘 다 전문가(의료진) 검수 전 초안**이라는 점이 코드 주석과 README에 명시돼 있다.
-- **`lib/sanitizeLlmText.ts`**: Claude가 tool-use 입력 필드 안에 `</answer>`, `</invoke>` 같은
-  XML 태그 흔적을 남기는 버그를 발견해(엔드투엔드 테스트 중) 추가한 후처리 — 사용자에게 노출되는
-  모든 LLM 생성 텍스트는 응답 직전 반드시 이 함수를 거친다.
+- **`lib/sanitizeLlmText.ts`**: LLM이 tool-use 입력 필드 안에 `</answer>`, `</invoke>` 같은
+  XML 태그 흔적을 남기는 버그를 발견해(엔드투엔드 테스트 중, 당시 Claude 사용 시절) 추가한
+  후처리 — 사용자에게 노출되는 모든 LLM 생성 텍스트는 응답 직전 반드시 이 함수를 거친다.
 - **`services/medicalProfile.service.ts`**: 알러지/기저질환처럼 민감한 정보는 이 함수를 통해서만
   조회하도록 강제하고, 조회할 때마다 `medical_data_access_log`에 "누가/언제/어떤 요청 컨텍스트로
   이 필드를 봤는지" 감사 로그를 남긴다 — 의료 인접 도메인이라는 특성을 반영한 설계.
-- **`services/referenceGuides.service.ts`**: `care_type` + `daysElapsed`로 검수 가이드 구간을
-  찾는 단순 lookup. `(v0.5)` 현재 시드 데이터는 7종(`peeling`/`laser_toning`/`energy_lifting`/
-  `botox`/`filler`/`skin_booster`/`hair_removal`)이라 이 7종 밖의 관리 유형만 404
-  `GUIDE_NOT_AVAILABLE`이 발생한다. **주의**: 7종 중 `peeling`/`laser_toning`만 전문가 검수
-  문구고 나머지 5종은 `treatment_catalog` 등록을 위해 추가한 미검수 스텁이다 — `reviewed_by`
-  컬럼이 있지만 이 서비스가 검사하지 않아 검수 여부와 무관하게 동일하게 조회된다(`server/README.md`
-  TODO 절 참고).
 
 ---
 
@@ -200,9 +215,15 @@ app.ts
   그대로 Supabase 쿼리 빌더에 조건부로 얹는다 — API 문서에서 말한 "캘린더 날짜 클릭 = 목록 API를
   `dateFrom=dateTo`로 재호출"이 실제로 별도 엔드포인트 없이 동일 함수로 처리된다.
 - **`daysElapsedSince`**: KST 자정 기준으로 날짜만 비교해 경과일을 계산한다(시:분:초 오차로
-  하루가 밀리거나 당겨지지 않도록 두 날짜 모두 `setHours(0,0,0,0)`으로 맞춘 뒤 뺀다). 이 함수가
+  하루가 밀리거나 당겨지지 않도록 두 날짜 모두 `setHours(0,0,0,0)`으로 맞춘 뒤 뺀다). 미래
+  `care_date`가 들어와도 음수를 내지 않고 `Math.max(0, ...)`로 항상 0 이상으로 클램프한다. 이 함수가
   `aftercare.service.ts`(daily-guide/questions)와 `recommendations.service.ts`(추천 조건)
   모두에서 재사용되는 공통 시간 계산 기준점이다.
+- **`getLatestCareRecord`/`listRecentCareRecords`** `(v0.4 갱신 시점 수정)`: `care_date <= 오늘(KST)`
+  조건이 있다 — `server_admin`이 예약(미래 `care_date`) 등록을 지원하면서, 이 조건이 없으면
+  아직 받지도 않은 미래 예약이 "가장 최근 관리"로 뽑혀 `daysElapsedSince`가 0으로 클램프된 값을
+  daily-guide/챗봇에 "오늘이 시술 당일"처럼 잘못 전달하는 버그가 실사용 중 발견됐다(`kstToday()`
+  헬퍼로 KST 기준 오늘 날짜 문자열을 계산해 `.lte("care_date", ...)`로 거른다).
 - **`memberships.service.ts`**: 단순 CRUD 성격의 조회 3종(`listMemberships`,
   `getMembershipById`, `getNearestExpiringMembership`) + 홈 요약용 카운트(`countMemberships`).
 
@@ -216,10 +237,16 @@ app.ts
 - **FCM 디바이스 토큰** (`registerDeviceToken`/`unregisterDeviceToken`): `api-spec.md`에 없던
   Android 전용 확장 엔드포인트의 구현체. `upsert(..., { onConflict: "fcm_token" })`을 써서 같은
   토큰이 다른 계정으로 재등록되는 경우(기기 공유 로그아웃/로그인)에도 항상 최신 `user_id`로 덮어쓴다.
-- **`services/push.service.ts` (`sendPushToUser`)**: 실제 푸시를 쏘는 함수는 준비돼 있지만,
-  이 함수를 정기적으로 호출하는 스케줄러/배치(아침 리마인더 등)는 아직 없다 — **배선만 된 상태**.
+- **`services/push.service.ts` (`sendPushToUser`)**: `(v0.4 갱신 시점)` 이제 **실제로 정기 호출된다**
+  — `services/notificationScheduler.service.ts`가 `node-cron`으로 매일 09:00 KST(일차별
+  마일스톤 1/3/5/7/14일, 이용권 만료 30일/7일 전)와 19:00 KST(당일 시술 등록 안내)에 대상을
+  조회해 이 함수를 호출한다(`server.ts`가 `FCM_ENABLED=true`일 때만 `startNotificationScheduler()`
+  기동). `notification_log` 테이블에 먼저 insert를 시도해 성공한 경우에만 실제 발송하는 순서라
+  (claim-then-send), 크론이 겹쳐 돌아도 중복 발송되지 않는다. `sendPushToUser`는 발송 전
+  `profiles.care_notification`/`marketing_notification`(`GET/PATCH /profile/notifications`로
+  사용자가 켜고 끔)을 확인해 꺼져 있으면 스킵한다.
   `config/firebase.ts`는 `FCM_ENABLED=false`면 Firebase Admin SDK 초기화 자체를 건너뛰어, 서비스
-  계정 JSON이 없는 해커톤 초기 단계에도 서버가 정상 기동하도록 만들어져 있다.
+  계정 JSON이 없는 환경에도 서버가 정상 기동하도록 만들어져 있다.
 
 ---
 
@@ -241,11 +268,12 @@ app.ts
 
 | 항목 | 문서(api-spec.md) | 실제 코드 |
 |---|---|---|
-| daily-guide LLM 실패 | `503 GUIDE_GENERATION_FAILED` | `aftercare.service.ts:getOrGenerateDailyGuide` — 검수 가이드로 자동 폴백, 200 응답 |
+| daily-guide LLM 실패 | *(v0.16 기준 해당 없음)* | `(v0.5)` LLM을 아예 호출하지 않으므로 "생성 실패"라는 상태 자체가 없음 — `treatment_guides` 매칭 실패는 곧바로 `404 GUIDE_NOT_AVAILABLE` |
 | questions LLM 실패 | `503 ANSWER_GENERATION_FAILED` | 동일하게 503 유지 (`submitQuestion` 마지막 `if (!llmOutput) throw ...`) |
-| 검수 가이드 저장 위치 | 미확정 | `reference_guides` 테이블 (`referenceGuides.service.ts`) |
-| FCM 디바이스 토큰 | 문서에 없음 | `notifications.routes.ts`의 `POST/DELETE /device-token` 신규 |
-| `care_records.care_type` | 문서에 없음 | 검수 가이드 매칭용 내부 키, Android 응답 DTO에는 노출 안 함(`toCareRecordSummary` 참고) |
+| 사후관리 콘텐츠(RAG) 저장 위치 | `db-schema.md`에 확정 | `(v0.5)` `treatment_guides` 테이블(`care_name`+`day` 단위, 팀 작성) — `treatmentGuides.service.ts` |
+| FCM 디바이스 토큰 | 문서화됨(`api-spec.md`) | `notifications.routes.ts`의 `POST/DELETE /device-token` |
+| 알림 설정/발송 | `(v0.16)` 문서화됨 | `GET/PATCH /profile/notifications` + `notificationScheduler.service.ts`(크론) + `notification_log`(중복 방지) |
+| `care_records.care_type` | 문서에 없었음 | `(v0.5)` 컬럼 자체가 삭제됨(`024`) — daily-guide/questions 매칭 키가 `care_name`+경과일로 전환되며 더 이상 필요 없어짐 |
 
 ### v0.5 신규 항목 — 구현·마이그레이션·시드 전부 완료
 
@@ -285,7 +313,9 @@ app.ts
 
 - 새 엔드포인트를 추가한다면: `routes/*.routes.ts`(얇은 매핑) → `validators/*.ts`(zod 스키마) →
   `services/*.ts`(실제 로직)의 3단 구조를 그대로 따르는 것이 기존 코드와 일관된다.
-- LLM 호출 지점은 코드 전체에서 `services/aftercare.service.ts` 딱 2곳(`generateViaLlm` 내부,
-  `submitQuestion` 내부)뿐이다 — 다른 곳에서 Claude를 호출하는 코드는 없다.
+- LLM 호출 지점은 코드 전체에서 딱 2곳이다 — `services/aftercare.service.ts`의 `submitQuestion`
+  내부(questions)와 `services/recommendations.service.ts`의 `generateRecommendationCopy` 내부
+  (recommendation). daily-guide는 `(v0.5)` LLM을 호출하지 않는다(5-1절 참고). 다른 곳에서
+  LLM을 호출하는 코드는 없다.
 - `lib/riskKeywords.ts`의 두 목록은 전문가 검수 전 초안이므로, 실제 서비스 오픈 전 반드시
   의료진 검토가 필요하다(`.work-log/current.md`의 "다음 할 일" 항목).

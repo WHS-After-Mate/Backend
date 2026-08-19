@@ -220,9 +220,10 @@
   <header class="masthead">
     <div class="eyebrow"><span class="dot"></span> WHS After Mate · Backend Reference</div>
     <h1>DB 스키마</h1>
-    <p class="subtitle"><code>api-spec.md</code> v0.11, <code>admin-api-spec.md</code> v0.6 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.7</span> 표시는 치료-부위 카탈로그·이용권 만료(마이그레이션 013)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.8</span> 표시는 실제 사업장/시술 카탈로그(마이그레이션 015)로 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.9</span> 표시는 이용권 brand 컬럼(마이그레이션 016)으로 추가된 항목.</p>
+    <p class="subtitle"><code>api-spec.md</code> v0.17, <code>admin-api-spec.md</code> v0.11 기준. <b>Postgres(Supabase)</b> 사용 — 인증(계정·비밀번호·토큰)은 Supabase Auth(<span class="mono">auth.users</span>)에 위임하고, 앱 데이터는 <span class="mono">public</span> 스키마에 별도 테이블로 구성한다. <span class="done-badge" style="padding:1px 6px;">v0.3</span> 표시는 최종 와이어프레임 검토로 추가돼 마이그레이션 003으로 실제 Supabase에 적용·시드 완료된 컬럼/테이블, <span class="done-badge" style="padding:1px 6px;">v0.4</span> 표시는 환자번호+인증코드 기반 회원가입(가상 EMR 스테이징, 마이그레이션 006)으로 신규 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.6</span> 표시는 클리닉 관리자 로그인·데이터 격리·인증코드 절차 단순화(마이그레이션 007~012)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.7</span> 표시는 치료-부위 카탈로그·이용권 만료(마이그레이션 013)로 바뀐 항목, <span class="done-badge" style="padding:1px 6px;">v0.8</span> 표시는 실제 사업장/시술 카탈로그(마이그레이션 015)로 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.9</span> 표시는 이용권 brand 컬럼(마이그레이션 016)으로 추가된 항목, <span class="done-badge" style="padding:1px 6px;">v0.10</span> 표시는 <span class="mono">care_type</span> 완전 제거+<span class="mono">treatment_guides</span> 도입+FCM 푸시(마이그레이션 019~025)로 바뀐 항목.</p>
     <div class="badges">
-      <span class="badge">v0.9</span>
+      <span class="badge">v0.11</span>
+      <span class="badge outline">예약 시 이용권 미차감(session_consumed, 026)</span>
       <span class="badge outline">PostgreSQL · Supabase</span>
       <span class="badge outline">클리닉 EMR 동기화 구조</span>
       <span class="badge outline">환자번호+이름+생년월일 기반 회원가입(v0.6)</span>
@@ -230,6 +231,8 @@
       <span class="badge outline">치료-부위 카탈로그(v0.7)</span>
       <span class="badge outline">실제 사업장/시술 카탈로그 46종(v0.8)</span>
       <span class="badge outline">이용권 brand 컬럼(v0.9)</span>
+      <span class="badge outline">care_type 제거·treatment_guides(v0.10)</span>
+      <span class="badge outline">FCM 푸시 알림(v0.10)</span>
     </div>
   </header>
 
@@ -245,6 +248,9 @@
     <a href="#v06later">클리닉 로그인·격리 확장(007~012)</a>
     <a href="#v07">치료-부위 카탈로그(013)</a>
     <a href="#v08">실제 사업장/시술 카탈로그(015)</a>
+    <a href="#v09">이용권 brand 컬럼(016)</a>
+    <a href="#v010care">care_type 제거+treatment_guides(019~025)</a>
+    <a href="#migration-026">예약 시 이용권 미차감(026)</a>
   </nav>
 
   <main>
@@ -270,7 +276,7 @@ erDiagram
   AUTH_USERS ||--o{ MEMBERSHIPS : "1:N"
   AUTH_USERS ||--o{ QUESTIONS : "1:N"
   AUTH_USERS ||--o{ MEDICAL_DATA_ACCESS_LOG : "1:N"
-  CARE_RECORDS ||--o{ AFTERCARE_GUIDES : "1:N"
+  AUTH_USERS ||--o{ NOTIFICATION_LOG : "1:N (v0.10)"
   CARE_RECORDS ||--o{ QUESTIONS : "0:N"
   MEMBERSHIPS ||--o{ CARE_RECORDS : "0:N (v0.3, membership_id)"
   MEMBERSHIPS ||--o{ MEMBERSHIP_USAGES : "1:N (v0.3)"
@@ -308,6 +314,8 @@ erDiagram
     date birth_date "v0.3"
     text phone
     text_array interest_goals
+    bool care_notification "v0.10"
+    bool marketing_notification "v0.10"
   }
   CARE_RECORDS {
     uuid id PK
@@ -344,17 +352,13 @@ erDiagram
     int session_number
     date used_at
   }
-  AFTERCARE_GUIDES {
+  TREATMENT_GUIDES {
     uuid id PK
-    uuid user_id FK
-    uuid care_record_id FK
-    int days_elapsed
-    text elapsed_range
-    text_array must_avoid
-    text_array basic_care
-    timestamptz generated_at
-    date generated_date
-    timestamptz cache_expires_at
+    text care_name "v0.10, matches by string not FK"
+    int day "v0.10, check in 1/3/5/7/14"
+    text key_care "v0.10"
+    text_array aftercare "v0.10"
+    text_array precautions "v0.10"
   }
   QUESTIONS {
     uuid id PK
@@ -365,6 +369,15 @@ erDiagram
     text status
     text answer
     bool expert_contact_required
+    text consultation_level "v0.10, 017"
+  }
+  NOTIFICATION_LOG {
+    uuid id PK
+    uuid user_id FK
+    text type "v0.10"
+    uuid ref_id "v0.10"
+    text ref_key "v0.10"
+    timestamptz sent_at "v0.10"
   }
   EMR_PATIENTS {
     uuid id PK
@@ -381,7 +394,6 @@ erDiagram
     uuid id PK
     uuid patient_id FK
     text care_name
-    text care_type
     date care_date
     text_array part_of_body "v0.6 배열화"
     uuid membership_id FK "v0.6"
@@ -405,9 +417,15 @@ erDiagram
   }
   TREATMENT_CATALOG {
     uuid id PK
-    text care_name "unique, v0.7"
-    text care_type "v0.7"
+    text care_name "v0.7, unique with brand"
     text_array body_parts "v0.7"
+    text brand "v0.10, 021"
+    text description
+  }
+  CLINIC_DOCTORS {
+    uuid id PK
+    text brand "unique with name"
+    text name
   }
   BUSINESSES {
     text id PK
@@ -466,12 +484,13 @@ erDiagram
                 <tr><td class="mono">birth_date</td><td class="mono">date</td><td>—</td><td><span class="done-badge">v0.3</span> 내 정보 화면 생년월일 (<span class="mono">GET /profile</span> 응답 <span class="mono">birthDate</span>)</td></tr>
                 <tr><td class="mono">phone</td><td class="mono">text</td><td>unique</td><td>연락처 (가입 시 emr_patients 원본에서 가져옴, 인증 없음)</td></tr>
                 <tr><td class="mono">interest_goals</td><td class="mono">text[]</td><td>default '{}'</td><td>관심 목표 (추천 API 입력값)</td></tr>
+                <tr><td class="mono">care_notification / marketing_notification</td><td class="mono">boolean</td><td>not null, default true</td><td><span class="done-badge">v0.10·019</span> 사후관리(예약·마일스톤·이용권 만료) / 마케팅 알림 on·off. <span class="mono">GET/PATCH /profile/notifications</span></td></tr>
                 <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
           <p style="margin:0; font-size:12.5px; color:var(--text-muted);">→ <span class="mono">GET/PATCH /profile</span>, <span class="mono">PUT /profile/interests</span> 모두 이 한 테이블로 처리.
-          <span class="mono">push_enabled</span>/<span class="mono">aftercare_reminder</span>/<span class="mono">membership_expiry_alert</span>/<span class="mono">marketing_alert</span> 컬럼은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 <span class="mono">GET/PATCH /notifications/settings</span> 엔드포인트와 함께 <span class="mono">005_remove_notification_settings.sql</span>로 삭제됐다.</p>
+          <span class="mono">push_enabled</span>/<span class="mono">aftercare_reminder</span>/<span class="mono">membership_expiry_alert</span>/<span class="mono">marketing_alert</span> 컬럼(v0.5~v0.9 구간)은 실제로 읽어 분기하는 발송 로직이 없는 placeholder였던 <span class="mono">GET/PATCH /notifications/settings</span> 엔드포인트와 함께 <span class="mono">005_remove_notification_settings.sql</span>로 삭제됐었다. <b>v0.10(019)에서 재도입</b> — 이번엔 <span class="mono">push.service.ts</span>의 <span class="mono">sendPushToUser</span>가 실제로 이 값을 읽어 분기한다(placeholder 아님).</p>
         </div>
       </div>
 
@@ -502,14 +521,15 @@ erDiagram
                 <tr><td class="mono">part_of_body</td><td class="mono">text[]</td><td>not null, default '{}'</td><td><span class="done-badge">v0.6</span> 관리 부위(중복 선택). 이전엔 단일 <span class="mono">text</span>였으나 012에서 배열로 변경</td></tr>
                 <tr><td class="mono">brand / practitioner</td><td class="mono">text</td><td>—</td><td>브랜드 · 담당자. <span class="mono">store</span> 컬럼은 v0.6(009)에서 제거(브랜드와 순수 중복)</td></tr>
                 <tr><td class="mono">status</td><td class="mono">text</td><td>not null, default 'completed'</td><td><span class="done-badge">v0.3</span> 이력 화면의 상태 칩</td></tr>
-                <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td><span class="done-badge">v0.3</span> 관리 상세 "관리 회차: N/M회차"</td></tr>
-                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.3</span> 이 시술이 차감한 이용권. memberships 생성 후 FK 추가 필요(순서 주의)</td></tr>
+                <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td><span class="done-badge">v0.3</span> 관리 상세 "관리 회차: N/M회차". <span class="done-badge">v0.11</span> <span class="mono">session_number</span>는 저장 시점에 고정되지 않고 이용권 상태가 바뀔 때마다(차감/차감취소/새 예약추가) <span class="mono">server_admin</span>이 다시 계산해 덮어씀</td></tr>
+                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.3</span> 이 시술이 연결된 이용권. memberships 생성 후 FK 추가 필요(순서 주의)</td></tr>
                 <tr><td class="mono">basic_aftercare_guide</td><td class="mono">text[]</td><td>default '{}'</td><td>기본 사후관리 안내</td></tr>
                 <tr><td class="mono">doctor_comment</td><td class="mono">text</td><td>—</td><td>해당 시술 건에 대한 의사 코멘트 (EMR 원본), LLM 컨텍스트에 포함</td></tr>
                 <tr><td class="mono">external_record_id</td><td class="mono">text</td><td>unique (nullable 허용)</td><td>클리닉 EMR 원본 레코드 ID</td></tr>
                 <tr><td class="mono">source_system</td><td class="mono">text</td><td>default 'aac_emr'</td><td>어느 EMR에서 왔는지</td></tr>
                 <tr><td class="mono">synced_at</td><td class="mono">timestamptz</td><td>—</td><td>마지막 동기화 시각</td></tr>
                 <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, care_date desc)</td></tr>
+                <tr><td class="mono">session_consumed</td><td class="mono">boolean</td><td>not null, default true</td><td><span class="done-badge">v0.11·026</span> 등록 당시 실제로 이용권 1회를 차감했는지 — <span class="mono">careDate</span>가 등록 시점 기준 오늘(KST)일 때만 차감, 미래 예약/과거 소급 등록은 연결만 하고 미차감. 기본값 <span class="mono">true</span>는 이 기능 이전 기존 행 백필용</td></tr>
               </tbody>
             </table>
           </div>
@@ -613,8 +633,19 @@ erDiagram
 
       <div class="table-card">
         <div class="table-head">
-          <span class="name">public.aftercare_guides</span>
-          <span class="owner">LLM 캐시</span>
+          <span class="name" style="text-decoration:line-through;">public.aftercare_guides</span>
+          <span class="owner">제거됨 (v0.10, 024)</span>
+        </div>
+        <div class="table-body">
+          <p style="margin:0; font-size:13px; color:var(--text-muted);">LLM이 생성한 일차별 가이드를 하루 1회로 캐시하던 테이블. <span class="mono">GET /aftercare/daily-guide</span>가 더 이상 LLM을 호출하지 않고 아래 <span class="mono">treatment_guides</span>를 직접 조회해 즉시 응답하므로 캐시할 대상 자체가 없어져 테이블째 삭제했다.</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.treatment_guides</span>
+          <span class="owner">시술명+경과일 직접 매칭 사후관리 콘텐츠</span>
+          <span class="done-badge">v0.10 신설(023)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -622,17 +653,15 @@ erDiagram
               <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
-                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span></td><td>—</td></tr>
-                <tr><td class="mono">care_record_id</td><td class="mono">uuid</td><td><span class="fk">FK→care_records(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
-                <tr><td class="mono">days_elapsed / elapsed_range</td><td class="mono">int / text</td><td>—</td><td>경과일 · 구간</td></tr>
-                <tr><td class="mono">must_avoid / basic_care</td><td class="mono">text[]</td><td>default '{}'</td><td>LLM 생성 내용</td></tr>
-                <tr><td class="mono">generated_at</td><td class="mono">timestamptz</td><td>not null, default now()</td><td>LLM 생성 시각</td></tr>
-                <tr><td class="mono">generated_date</td><td class="mono">date</td><td><span class="constraint">GENERATED</span> (generated_at at Asia/Seoul)::date</td><td>캐시 키의 일부</td></tr>
-                <tr><td class="mono">cache_expires_at</td><td class="mono">timestamptz</td><td>not null</td><td>자정 만료</td></tr>
-                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (care_record_id, generated_date)</td><td>"1일 1회 LLM 생성" 규칙을 DB 제약으로 강제</td></tr>
+                <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null</td><td>시술명 — <span class="mono">care_records.care_name</span>과 완전 일치로 매칭</td></tr>
+                <tr><td class="mono">day</td><td class="mono">int</td><td><span class="constraint">CHECK</span> in (1,3,5,7,14)</td><td>경과일 — 앱의 daily-guide 탭이 이 다섯 값만 사용</td></tr>
+                <tr><td class="mono">key_care</td><td class="mono">text</td><td>not null</td><td>오늘 가장 중요한 한 줄 요약</td></tr>
+                <tr><td class="mono">aftercare / precautions</td><td class="mono">text[]</td><td>not null</td><td>사후관리 방법 · 주의사항(각 정확히 3개)</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (care_name, day)</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">care_type</span> 그룹 단위(예: <span class="mono">botox</span>)로 검수 문구를 공유하던 <span class="mono">reference_guides</span>를 대체 — 같은 그룹이어도 시술마다(장비·성분이 달라) 실제 사후관리가 다르다는 문제가 있어 시술명 단위로 팀이 직접 콘텐츠를 작성했다. <span class="mono">GET /aftercare/daily-guide</span>가 이 테이블을 직접 조회해 그대로 반환한다 — <b>LLM 호출이 전혀 없다.</b> 매칭 없으면 LLM 폴백 없이 바로 <span class="mono">404 GUIDE_NOT_AVAILABLE</span>. <span class="mono">POST /aftercare/questions</span>(챗봇)는 이 테이블을 <span class="mono">reviewedGuide</span> 근거로 LLM에 주입한다(이쪽은 여전히 LLM 호출). 팀이 시술 46종 전체를 직접 작성해 커버하므로(<span class="mono">seedTreatmentGuides.ts</span>), <span class="mono">reference_guides</span>의 "미검수 스텁이 검수 문구와 구분 없이 노출" 문제가 구조적으로 사라졌다.</p>
         </div>
       </div>
 
@@ -652,6 +681,7 @@ erDiagram
                 <tr><td class="mono">question / answer</td><td class="mono">text</td><td>—</td><td>—</td></tr>
                 <tr><td class="mono">status</td><td class="mono">text</td><td><span class="constraint">CHECK</span> in (answered, out_of_scope, expert_required)</td><td>—</td></tr>
                 <tr><td class="mono">expert_contact_required</td><td class="mono">boolean</td><td>default false</td><td>—</td></tr>
+                <tr><td class="mono">consultation_level</td><td class="mono">text</td><td>not null, default 'NONE', <span class="constraint">CHECK</span> in (NONE,RECOMMENDED,URGENT)</td><td><span class="done-badge">017</span> <span class="mono">status</span>와 별개 축 — 실제 상태 확인이 필요한 정도를 LLM이 판단. <span class="mono">status: answered</span>일 때만 LLM이 채움</td></tr>
                 <tr><td class="mono">created_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, created_at desc)</td></tr>
               </tbody>
             </table>
@@ -688,7 +718,7 @@ erDiagram
         <div class="table-head">
           <span class="name">public.emr_care_records</span>
           <span class="owner">가상 EMR · 계정 미연결</span>
-          <span class="done-badge">v0.4 신설 · v0.6 컬럼 개편(009/011/012)</span>
+          <span class="done-badge">v0.4 신설 · v0.6 컬럼 개편(009/011/012) · v0.10 컬럼 삭제(025)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -697,16 +727,17 @@ erDiagram
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
                 <tr><td class="mono">patient_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_patients(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
-                <tr><td class="mono">care_name / care_type / care_date</td><td class="mono">text / text / date</td><td>not null</td><td><span class="mono">care_type</span>은 <span class="mono">reference_guides</span> 매칭 키 (현재 7종 지원, <span class="done-badge">v0.5</span> — 5종은 미검수 스텁, <span class="mono">server/README.md</span> TODO 참고)</td></tr>
+                <tr><td class="mono">care_name / care_date</td><td class="mono">text / date</td><td>not null</td><td>—</td></tr>
                 <tr><td class="mono">part_of_body</td><td class="mono">text[]</td><td>not null, default '{}'</td><td><span class="done-badge">v0.6·012</span> 단일 텍스트에서 배열로 변경. <span class="mono">GET /body-parts</span> 목록 안에서만 검증</td></tr>
                 <tr><td class="mono">brand / practitioner</td><td class="mono">text</td><td>—</td><td><span class="mono">store</span>는 v0.6(009)에서 제거</td></tr>
                 <tr><td class="mono">basic_aftercare_guide / doctor_comment</td><td class="mono">text[] / text</td><td>—</td><td>claim 시 그대로 <span class="mono">care_records</span>로 복사</td></tr>
                 <tr><td class="mono">session_number / total_sessions</td><td class="mono">int</td><td>nullable</td><td>—</td></tr>
-                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.6·011</span> 이 기록이 소비한 이용권. 삭제 시 이용권 차감을 자동으로 되돌리기 위해 연결</td></tr>
+                <tr><td class="mono">membership_id</td><td class="mono">uuid</td><td><span class="fk">FK→emr_memberships(id)</span> <span class="constraint">SET NULL</span></td><td><span class="done-badge">v0.6·011</span> 이 기록이 연결된 이용권. <span class="done-badge">v0.11</span> 차감 안 한 예약이면 되돌릴 것도 없으므로 삭제 시 그대로 둠(아래 <span class="mono">session_consumed</span> 참고)</td></tr>
+                <tr><td class="mono">session_consumed</td><td class="mono">boolean</td><td>not null, default true</td><td><span class="done-badge">v0.11·026</span> <span class="mono">public.care_records</span>와 동일한 의미</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컬럼 구성은 <span class="mono">public.care_records</span>와 거의 동일 — claim 시 그대로 복사되기 때문</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">컬럼 구성은 <span class="mono">public.care_records</span>와 거의 동일 — claim 시 그대로 복사되기 때문. <span class="mono">care_type</span> 컬럼은 <b>v0.10(025)에서 삭제</b>됐다 — daily-guide는 이제 <span class="mono">care_name</span>+경과일로 <span class="mono">treatment_guides</span>를 직접 매칭한다. <span class="mono">024</span>가 <span class="mono">care_records</span>/<span class="mono">treatment_catalog</span>의 <span class="mono">care_type</span>은 지웠지만 이 테이블은 놓쳤던 것을 뒤늦게 발견해 <span class="mono">025</span>로 정리했다 — 그 전까지는 이 컬럼이 <span class="mono">not null</span>인데 <span class="mono">server_admin</span>의 <span class="mono">addCareRecord</span>가 값을 안 채워, claim 전 환자에게 시술기록을 등록하는 모든 요청이 실패하는 상태였다.</p>
         </div>
       </div>
 
@@ -741,8 +772,9 @@ erDiagram
       <div class="table-card">
         <div class="table-head">
           <span class="name">public.treatment_catalog</span>
-          <span class="owner">치료-부위 카탈로그 · 클리닉 공통</span>
+          <span class="owner">치료-부위 카탈로그 · 클리닉별 분리</span>
           <span class="done-badge">v0.7 신설(013)</span>
+          <span class="done-badge">v0.10 brand 추가+care_type 삭제(021/022/024)</span>
         </div>
         <div class="table-body">
           <div class="table-wrap">
@@ -750,15 +782,17 @@ erDiagram
               <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
               <tbody>
                 <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
-                <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null, <span class="constraint">UNIQUE</span></td><td>치료명 — 전체 카탈로그에서 유일</td></tr>
-                <tr><td class="mono">care_type</td><td class="mono">text</td><td>not null</td><td><span class="mono">reference_guides</span>에 실제 존재하는 값인지 서버가 재검증</td></tr>
+                <tr><td class="mono">care_name</td><td class="mono">text</td><td>not null</td><td>치료명</td></tr>
                 <tr><td class="mono">body_parts</td><td class="mono">text[]</td><td>not null, default '{}'</td><td>이 치료에서 고를 만한 관리 부위 후보(<span class="mono">GET /body-parts</span> 목록 중)</td></tr>
+                <tr><td class="mono">brand</td><td class="mono">text</td><td>nullable</td><td><span class="done-badge">v0.10·021</span> 이 시술을 등록한 클리닉. <span class="mono">GET /treatment-catalog</span>가 로그인한 관리자의 brand로 필터링</td></tr>
+                <tr><td class="mono">description</td><td class="mono">text</td><td>nullable</td><td>시술 설명</td></tr>
                 <tr><td class="mono">created_at / updated_at</td><td class="mono">timestamptz</td><td>default now()</td><td>—</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (brand, care_name)</td><td><span class="done-badge">v0.10</span> <span class="mono">care_name</span> 단독 unique에서 교체 — 같은 이름 시술이 다른 클리닉에 각각 존재 가능</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">FK 없음 — 어떤 테이블도 이 테이블을 참조하지 않는다. 시술기록/이용권은 카탈로그 값을 등록 시점에 그대로 복사해 쓸 뿐이라, 카탈로그를 수정/삭제해도 과거 기록엔 영향이 없다. 브랜드 컬럼 없음(전체 클리닉 공통).</p>
-          <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="done-badge">2026-08-19, 스키마 변경 없음</span> <span class="mono">body_parts</span>는 여전히 프론트 자동완성 제안용일 뿐 <span class="mono">partOfBody</span>를 강제하지 않지만, <span class="mono">care_type</span>은 더 이상 클라이언트가 보내지 않고 <span class="mono">care_records</span>/<span class="mono">emr_care_records</span> 저장 시 <span class="mono">careName</span>으로 이 테이블을 조회해 자동으로 채운다 — 매칭되는 <span class="mono">care_name</span>이 없으면 <span class="mono">care_type</span>은 <span class="mono">null</span>로 저장된다(<span class="mono">admin-api-spec.md</span> v0.9 참고).</p>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);">FK 없음 — 어떤 테이블도 이 테이블을 참조하지 않는다. 시술기록/이용권은 카탈로그 값을 등록 시점에 그대로 복사해 쓸 뿐이라, 카탈로그를 수정/삭제해도 과거 기록엔 영향이 없다. <b>v0.10 이전엔 브랜드 컬럼 없이 전체 클리닉 공통이었다</b> — 실제 엑셀 원본에 클리닉별로 다른 시술 목록이 있는 게 확인돼 브랜드로 분리됐다.</p>
+          <p style="margin:6px 0 0; font-size:12.5px; color:var(--text-muted);"><span class="done-badge">v0.10</span> <span class="mono">care_type</span> 컬럼은 완전히 삭제됐다(022에서 nullable화 → 024에서 삭제) — 엑셀 45개 시술 재시딩 중 다수(WIM 클리닉 웰니스 회복 기기 7종 등)가 기존 7개 <span class="mono">care_type</span> 어디에도 안 맞는다는 게 확인됐고, daily-guide/questions가 <span class="mono">treatment_guides</span>(시술명 직접 매칭)로 완전히 넘어가며 <span class="mono">care_type</span> 개념 자체가 불필요해졌다. <span class="mono">body_parts</span>는 여전히 프론트 자동완성 제안용일 뿐 <span class="mono">partOfBody</span>를 강제하지 않는다 — <span class="mono">partOfBody</span>는 이 카탈로그와 무관하게 고정 전체 목록에서 항상 다중 선택 가능.</p>
         </div>
       </div>
 
@@ -833,6 +867,51 @@ erDiagram
 
       <div class="table-card">
         <div class="table-head">
+          <span class="name">public.clinic_doctors</span>
+          <span class="owner">클리닉별 담당 의료진 목록</span>
+          <span class="done-badge">신설(014)</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">brand / name</td><td class="mono">text</td><td>not null</td><td>—</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (brand, name)</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">GET /clinic-info</span>(<span class="mono">server_admin</span>)가 로그인한 관리자의 <span class="mono">brand</span>로만 조회해 담당의(<span class="mono">practitioner</span>) select 후보로 노출한다 — <span class="mono">care_records.practitioner</span>는 여전히 자유 텍스트라 여기 없는 이름도 입력 가능. 카카오톡/전화번호는 별도 <span class="mono">clinics</span> 테이블을 새로 만들지 않고 <span class="mono">public.businesses</span>(015)를 재사용한다.</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <span class="name">public.notification_log</span>
+          <span class="owner">알림 발송 로그</span>
+          <span class="done-badge">v0.10 신설(020)</span>
+        </div>
+        <div class="table-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">id</td><td class="mono">uuid</td><td><span class="pk">PK</span></td><td>—</td></tr>
+                <tr><td class="mono">user_id</td><td class="mono">uuid</td><td><span class="fk">FK→auth.users(id)</span> <span class="constraint">CASCADE</span></td><td>—</td></tr>
+                <tr><td class="mono">type</td><td class="mono">text</td><td>not null</td><td><span class="mono">care_registered</span> / <span class="mono">day_milestone</span> / <span class="mono">membership_expiry</span></td></tr>
+                <tr><td class="mono">ref_id / ref_key</td><td class="mono">uuid / text</td><td>not null</td><td>알림 대상 식별 — 예: <span class="mono">ref_key: '1'/'3'/'5'/'7'/'14'</span>(일차별), <span class="mono">'30'/'7'</span>(만료), <span class="mono">'registered'</span>(등록)</td></tr>
+                <tr><td class="mono">sent_at</td><td class="mono">timestamptz</td><td>default now()</td><td>index: (user_id, sent_at desc)</td></tr>
+                <tr><td class="mono">—</td><td class="mono">—</td><td><span class="constraint">UNIQUE</span> (type, ref_id, ref_key)</td><td>같은 알림 중복 발송을 DB 제약으로 방지</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:var(--text-muted);"><span class="mono">care_registered</span>(<span class="mono">server_admin</span>의 <span class="mono">addCareRecord</span>가 즉시 발송), <span class="mono">day_milestone</span>/<span class="mono">membership_expiry</span>(<span class="mono">server</span>의 일일 09시 크론)가 이 테이블을 공유한다. <span class="mono">notificationScheduler.service.ts</span>는 "보내고 나서 기록"이 아니라 먼저 insert를 시도해 성공한 경우에만 실제로 보내는 순서(claim-then-send)라 중복 발송을 막는다.</p>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
           <span class="name">~~public.signup_verification_codes~~</span>
           <span class="owner">제거됨</span>
           <span class="done-badge" style="border-style:dashed;">v0.4 신설 006 → v0.6 삭제 010</span>
@@ -855,16 +934,20 @@ erDiagram
           <p>Supabase Auth가 내부적으로 관리. <span class="mono">POST /auth/refresh</span>·<span class="mono">/logout</span>은 Supabase SDK 호출로 대체.</p>
         </div>
         <div class="decision-card">
-          <h3>알림 설정은 미구현으로 제거</h3>
-          <p>실제로 읽어 분기하는 발송 로직이 없는 placeholder였음(발송 스케줄러 미구현). <span class="mono">GET/PATCH /notifications/settings</span> 엔드포인트와 4개 컬럼 전부 삭제(<span class="mono">005_remove_notification_settings.sql</span>).</p>
+          <h3>알림 설정은 profiles 컬럼</h3>
+          <p>사용자당 1행이라 별도 테이블 정규화 이득 없음. v0.5~v0.9 구간엔 placeholder였다가(005에서 제거) <b>v0.10(019)에서 실제로 동작하는 형태로 재도입</b> — <span class="mono">care_notification</span>/<span class="mono">marketing_notification</span> 2컬럼, <span class="mono">GET/PATCH /profile/notifications</span>.</p>
         </div>
         <div class="decision-card">
           <h3>캘린더는 집계 쿼리</h3>
           <p><span class="mono">care_records</span>를 월 단위로 <span class="mono">GROUP BY care_date</span>. 별도 마커 테이블 유지 비용 없음.</p>
         </div>
         <div class="decision-card">
-          <h3>1일 1회 LLM 생성은 DB 제약으로</h3>
-          <p><span class="mono">aftercare_guides</span>의 <span class="mono">(care_record_id, generated_date)</span> UNIQUE로 중복 생성을 애플리케이션 로직이 아니라 DB가 막는다.</p>
+          <h3 style="text-decoration:line-through;">1일 1회 LLM 생성은 DB 제약으로</h3>
+          <p><span class="done-badge" style="border-style:dashed;">v0.10에서 무의미해짐</span> <span class="mono">aftercare_guides</span>의 UNIQUE로 방어하던 결정이었으나, daily-guide가 더 이상 LLM을 호출하지 않아(<span class="mono">treatment_guides</span> 직접 조회) 테이블째 삭제되며 이 결정 자체가 사라짐.</p>
+        </div>
+        <div class="decision-card">
+          <h3>알림 중복 발송은 DB 제약으로</h3>
+          <p><span class="done-badge">v0.10</span> <span class="mono">notification_log</span>의 <span class="mono">(type, ref_id, ref_key)</span> UNIQUE로 크론이 겹쳐 돌아도 중복 발송을 DB가 방어 — 위 "1일 1회 LLM 생성" 결정과 같은 패턴을 알림 발송에 재사용.</p>
         </div>
         <div class="decision-card">
           <h3>전화 인증은 미구현으로 제거</h3>
@@ -1005,13 +1088,56 @@ erDiagram
         <li>실데이터는 <span class="mono">server/db/seed/seedCareCatalog.ts</span>(<span class="mono">npm run seed:care-catalog</span>)로 반영 — 사업장 3곳(카카오톡/전화번호 포함) + 시술 46종(엠레드 19/더나 20/윔 7)</li>
         <li><b>기존</b>: 추천 후보 = 고객이 보유한 이용권(<span class="mono">memberships.availableCareNames</span>) 안에서만 선택. <b>변경 후</b>: 추천 후보 = <span class="mono">procedures</span> 테이블 전체(이용권 보유 여부 무관), 고객의 <span class="mono">profiles.interest_goals</span>와 시술의 <span class="mono">category_tags</span>가 겹치는 것 우선 추천</li>
         <li>concernTag 고정 10종은 <span class="mono">server/src/lib/concernTags.ts</span>에 상수로 관리(DB 테이블 아님) — 앱의 관심목표 칩과 동일한 값이어야 매칭됨</li>
-        <li><span class="mono">treatment_catalog</span>(013)와는 별개 테이블 — <span class="mono">treatment_catalog</span>는 <span class="mono">care_type</span>/부위 기반 관리자 웹 시술기록 등록 자동완성용, <span class="mono">procedures</span>는 <span class="mono">category_tags</span>(concernTag) 기반 고객 추천용. 실제로 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다</li>
+        <li><span class="mono">treatment_catalog</span>(013)와는 별개 테이블 — <span class="mono">treatment_catalog</span>는 브랜드+부위 기반 관리자 웹 시술기록 등록 자동완성용, <span class="mono">procedures</span>는 <span class="mono">category_tags</span>(concernTag) 기반 고객 추천용. 실제로 겹치는 시술이 있을 수 있지만(예: "울쎄라피 프라임") 아직 통합하지 않았다</li>
         <li>실계정으로 라이브 검증 완료 — 자세한 API 계약 변경은 <span class="mono">docs/api-spec.md</span> v0.8 참고</li>
       </ul>
-      <p class="note">참고: 같은 날 별도로 진행하던 <span class="mono">treatment_catalog.description</span> 컬럼 + <span class="mono">clinics</span>/<span class="mono">clinic_doctors</span> 테이블 작업(<span class="mono">014_add_treatment_description_clinic_info_doctors.sql</span>)은 이 변경과 무관하며 <b>보류 상태</b>(마이그레이션 미적용).</p>
+      <p class="note">참고: 같은 날 별도로 진행하던 <span class="mono">treatment_catalog.description</span> 컬럼 + <span class="mono">clinic_doctors</span> 테이블 작업(<span class="mono">014_add_treatment_description_clinic_info_doctors.sql</span>)은 이 변경과 무관하다 — <b>이 문서엔 오랫동안 "보류 상태(마이그레이션 미적용)"로 잘못 기록돼 있었지만, 실제로는 적용 완료 상태이며 <span class="mono">GET /clinic-info</span>로 이미 쓰이고 있다</b>(위 "public.clinic_doctors" 절 참고).</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.15 기준 · admin-api-spec v0.9 기준 · db-schema v0.9 · 2026-08-19</footer>
+    <section id="v09">
+      <h2>이용권에 브랜드 컬럼 추가 <span class="tag">016</span></h2>
+      <p class="desc"><span class="mono">server/db/migrations/016_add_membership_brand.sql</span> — "이 이용권이 어느 클리닉 것인지 구분해야 한다"는 요청(<span class="mono">GET /memberships</span> 응답에 <span class="mono">brand</span> 필요)으로 <span class="mono">public.memberships</span>/<span class="mono">public.emr_memberships</span>에 <span class="mono">brand text</span> 컬럼을 추가했다(위 두 테이블 정의 참고).</p>
+      <ul style="margin:0; padding-left:20px; font-size:14px; color:var(--text-muted); display:flex; flex-direction:column; gap:8px; max-width:74ch;">
+        <li><b>기존 행 백필</b>: <span class="mono">membership_id</span>로 연결된 <span class="mono">care_records</span>/<span class="mono">emr_care_records</span> 중 가장 먼저 만들어진 기록의 <span class="mono">brand</span>를 그대로 가져온다</li>
+        <li><b>정책 변경 아님</b>: <span class="mono">brand</span>는 순수 표시용 메타데이터다. 이용권 차감/자동 이어쓰기 매칭(<span class="mono">findContinuableMembership</span>)은 <span class="mono">product_name</span>+<span class="mono">total_count</span>만으로 판단하며 <span class="mono">brand</span>를 조건에 넣지 않는다 — "이용권은 클리닉별로 격리되지 않는다"는 기존 정책은 그대로 유지</li>
+      </ul>
+    </section>
+
+    <section id="v010care">
+      <h2>care_type 제거 + treatment_guides 도입 <span class="tag">019~025</span></h2>
+      <p class="desc">daily-guide/questions 두 LLM 호출 지점 모두 <span class="mono">care_type</span> 그룹 단위 검수 가이드(<span class="mono">reference_guides</span>)를 근거로 쓰던 구조를, 시술마다 실제 사후관리 내용이 다르다는 문제(장비·성분 차이) 때문에 시술명(<span class="mono">care_name</span>) 직접 매칭 콘텐츠(<span class="mono">treatment_guides</span>)로 전면 교체한 작업. FCM 푸시 알림 인프라 구축과 같은 세션에서 함께 진행됐다.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>마이그레이션</th><th>변경</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">019_add_notification_settings.sql</td><td><span class="mono">profiles</span>에 <span class="mono">care_notification</span>/<span class="mono">marketing_notification</span> 컬럼 추가 — 알림 설정을 실제로 동작하는 형태로 재도입</td></tr>
+            <tr><td class="mono">020_add_notification_log.sql</td><td><span class="mono">public.notification_log</span> 신규 — 알림 종류별 중복 발송 방지+감사 기록</td></tr>
+            <tr><td class="mono">021_add_treatment_catalog_brand.sql</td><td><span class="mono">treatment_catalog</span>에 <span class="mono">brand</span> 컬럼 추가, unique 제약을 <span class="mono">(brand, care_name)</span> 복합으로 교체 — 클리닉별 시술 카탈로그 격리</td></tr>
+            <tr><td class="mono">022_treatment_catalog_care_type_nullable.sql</td><td><span class="mono">treatment_catalog.care_type</span>을 nullable로 완화</td></tr>
+            <tr><td class="mono">023_add_treatment_guides.sql</td><td><span class="mono">public.treatment_guides</span> 신규 — <span class="mono">care_type</span> 그룹 매칭을 시술명+경과일(1/3/5/7/14) 직접 매칭으로 교체</td></tr>
+            <tr><td class="mono">024_drop_care_type.sql</td><td><span class="mono">care_records</span>/<span class="mono">treatment_catalog</span>의 <span class="mono">care_type</span> 컬럼과 <span class="mono">reference_guides</span>/<span class="mono">aftercare_guides</span> 테이블을 전부 삭제</td></tr>
+            <tr><td class="mono">025_drop_emr_care_records_care_type.sql</td><td><span class="mono">emr_care_records.care_type</span> 삭제 — 024가 놓쳤던 것을 문서 정합성 점검 중 발견</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note"><b>결과적으로 daily-guide는 더 이상 LLM을 호출하지 않는다</b> — <span class="mono">treatment_guides</span>를 시술명+경과일로 직접 조회해 즉시 응답하고, 매칭이 없으면 바로 <span class="mono">404 GUIDE_NOT_AVAILABLE</span>. LLM 호출 지점은 이제 <span class="mono">questions</span>(챗봇)와 <span class="mono">recommendations</span>(다음 관리 추천) 두 곳뿐이다. 이 배치의 마이그레이션은 전부 적용 완료됐다(<span class="mono">025</span>도 이후 세션에서 적용 완료).</p>
+    </section>
+
+    <section id="migration-026">
+      <h2>예약 등록 시 이용권 미차감 지원 (026)</h2>
+      <p class="desc"><span class="mono">server/db/migrations/026_add_care_record_session_consumed.sql</span> — 실사용 중 발견된 문제: 시술기록을 등록하는 순간(<span class="mono">careDate</span>가 미래든 과거든) 항상 이용권 1회를 즉시 차감하고 있었다. 같은 패키지로 여러 미래 예약을 잡으면(예: 오늘 다음주 보톡스 3회권 예약 + 내일 다다음주 3회권 예약) 아직 시술을 하나도 안 받았는데 이용권이 먼저 소진되는 문제가 있었다.</p>
+      <p class="note" style="margin-top:0;"><span class="mono">care_records</span>/<span class="mono">emr_care_records</span>에 <span class="mono">session_consumed boolean</span>(기본값 <span class="mono">true</span>, 기존 행 백필용) 컬럼을 추가하고 <span class="mono">server_admin</span>의 <span class="mono">addCareRecord()</span>를 다음과 같이 바꿨다:</p>
+      <ul style="margin:8px 0 0; padding-left:20px; font-size:13.5px; color:var(--text-muted); display:flex; flex-direction:column; gap:6px;">
+        <li><span class="mono">careDate</span>가 등록 시점 기준 오늘(KST)이면 → 기존과 동일하게 이용권 즉시 차감(<span class="mono">session_consumed: true</span>)</li>
+        <li>그 외(미래 예약이든 과거 소급 등록이든) → 이용권을 연결만 하고 <span class="mono">used_count</span>는 그대로 둔다(<span class="mono">session_consumed: false</span>). 새 이용권을 만드는 경우도 <span class="mono">used_count: 0</span>, <span class="mono">last_used_at: null</span>로 시작</li>
+        <li>같은 <span class="mono">product_name</span>+<span class="mono">total_count</span>로 여러 번 미래 예약을 잡아도 계속 같은(아직 <span class="mono">used_count &lt; total_count</span>인) 이용권을 찾아내므로, 미소비 예약들은 전부 이용권 하나를 공유한다</li>
+        <li><span class="mono">DELETE /care-records/{id}</span>도 <span class="mono">session_consumed</span>를 확인해서, 차감 안 했던 예약을 지울 땐 <span class="mono">used_count</span>를 되돌리지 않는다</li>
+        <li><b>부수 효과 — <span class="mono">session_number</span> 재계산</b>: 같은 이용권에 걸린 미소비 예약들의 회차 번호가 등록 시점에 고정되지 않고, 이용권 상태가 바뀔 때마다(차감/차감취소/새 예약추가) 관리날짜 순으로 다시 매겨진다(<span class="mono">resyncUnconsumedSessionNumbers</span>). 이전엔 저장된 값이 그대로 굳어있어서, 미래 예약을 먼저 잡아두고 그 전에 실제 시술을 하나 더 받아도 예약의 회차 번호가 그대로 남아있는 버그가 있었다</li>
+      </ul>
+      <p class="note">자세한 API 계약은 <span class="mono">admin-api-spec.html</span> v0.11 참고.</p>
+    </section>
+
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.17 기준 · admin-api-spec v0.11 기준 · db-schema v0.11 · 2026-08-20</footer>
   </main>
 </div>
 
