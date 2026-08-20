@@ -1,5 +1,5 @@
 # After School 현재 상태
-최종 업데이트: 2026-08-20 (9, git pull 반영 브리핑 + 관심목표 기반 추천 + 회원 탈퇴 API 신규)
+최종 업데이트: 2026-08-20 (9, git pull 반영 브리핑 + 관심목표 기반 추천 + 회원 탈퇴 API 신규, 커밋+푸시 완료)
 
 ## 프로젝트 개요
 WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문, 다음 관리 추천 MVP(3주 해커톤). 앱 클라이언트는 Android Studio(네이티브, **프론트엔드는 사용자 담당 아님**), 고객용 백엔드(`server/`)는 Node.js + Express + TypeScript, DB/인증은 Supabase, **LLM은 OpenAI API**(`gpt-4.1-mini`), 푸시는 FCM. 관리자용 웹(`admin-web`, 별도 저장소, **임시/프로토타입 취급**)과 그 백엔드(`server_admin/`, 이 리포 포함)가 클리닉별 로그인 기반 가상 EMR 입력 도구. **가비아 클라우드에 실제 배포됨**(`1.201.116.115`, 2026-08-18~8/28 한시 운영) — 두 프론트팀(Android/admin-web)이 이 서버를 baseUrl로 쓰고 있음.
@@ -17,13 +17,13 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
   - `server/src/services/auth.service.ts`의 `migrateEmrDataToApp()`이 이관 시 `care_records.external_record_id`/`memberships.external_record_id`에 원본 emr 행 id를 채우도록 수정(기존엔 `care_records` 쪽도 안 채우고 있었음)
   - 실 DB 임시 테스트 계정으로 라이브 검증(가입 전 원본 1건 + 가입 후 이어쓴 기록 1건 + 완전 신규 이용권/시술기록 세트로 실제 탈퇴 실행): 이관분은 중복 없이 원본이 갱신됨(used_count 등), 신규분은 새 emr 행으로 정확히 되돌아옴, 재가입(re-claim) 정상 동작까지 확인
 - **문서 동기화 + 아티팩트 재배포** — `docs/api-spec.md`(v0.18→v0.19)/`.html`: `DELETE /profile` 절 신규, 매칭 알고리즘에 이력 없어도 동작하는 조건 추가, 관련 changelog. `docs/db-schema.md`(v0.11→v0.12)/`.html`: `memberships.external_record_id` 컬럼 문서화, 마이그레이션 027 절 신규. `server/README.md`: v0.19 두 항목 changelog 추가. 두 아티팩트(API 명세서 `5cf6ed55...`, DB 스키마 `f152ff3e...`) WebFetch로 현재 게시본 확인 후 재배포 완료
+- **커밋+푸시 완료** (`75b37c8`) — 관례대로 `docs/image.png`/미추적 파일 2개는 제외하고 스테이징, "Add member withdrawal API and fix goal-only recommendations" 메시지로 커밋 후 origin/main에 푸시 완료
 
 ## 현재 작업 중
-- 위 전체(추천 수정 + 회원 탈퇴 API + 마이그레이션 027 + 문서 동기화)를 커밋하는 중 — `/기록저장` 실행 직후라 아직 git commit 전. 다음 턴에 커밋+푸시 진행 예정(사용자가 "문서까지 동기화하고 커밋해줘"로 이미 승인함)
+- 없음 — 이번 세션 작업(추천 수정+회원 탈퇴 API+마이그레이션 027+문서 동기화) 전부 커밋+푸시까지 완료된 상태
 
 ## 다음 할 일
-- **이번 세션 변경사항 커밋+푸시** (사용자 승인 완료, 바로 진행)
-- 커밋 후 가비아 서버 배포 안내 필요(`git pull && npm install && npm run build && pm2 restart`, server/server_admin 둘 다 — 특히 마이그레이션 027은 서버 재시작 전에 Supabase에 적용되어 있어야 함, 이미 적용 완료 확인됨)
+- **가비아 서버 배포 필요** — 사용자가 서버에서 `git pull && npm install && npm run build && pm2 restart`를 `server`/`server_admin` 양쪽에 실행해야 이번 세션 변경사항이 실서비스에 반영됨(마이그레이션 027은 이미 Supabase에 적용 완료된 상태라 서버 재시작만 하면 됨)
 - 위험 신호 키워드 목록(`server/src/lib/riskKeywords.ts`) 전문가 검수(이월)
 - refreshToken 만료 기간 정책 확정 미완료(이월)
 - admin-web의 이용권 자동서치 미구현은 "임시 프로토타입이라 안 고쳐도 됨"으로 사용자가 결정 — 별도 후속 조치 불필요(참고용으로만 기록)
@@ -37,8 +37,8 @@ WHS After Mate — AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 
 - `server/src/services/auth.service.ts` — **이번 세션**. `migrateEmrDataToApp()`이 이관 시 `care_records`/`memberships`의 `external_record_id`를 원본 emr 행 id로 채우도록 수정
 - `server/db/migrations/027_add_membership_external_record_id.sql` — **이번 세션 신규**. `memberships.external_record_id` 컬럼 추가(적용 완료)
 - `docs/api-spec.md`/`.html` — v0.19(회원 탈퇴 API, 이력 없이 관심목표 기반 추천). `docs/db-schema.md`/`.html` — v0.12(`memberships.external_record_id`, 마이그레이션 027)
-- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `d44d823` — 이번 세션 변경은 아직 미푸시)
-- 배포 서버: 가비아 클라우드 `1.201.116.115` — `~/Backend`에 git clone, pm2 프로세스명 `whs-server`(4000, server용)/`whs-admin`(4100, server_admin용). 이번 세션 변경은 아직 미배포(커밋+푸시 후 사용자가 서버에서 pull+재시작 필요)
+- GitHub: https://github.com/WHS-After-Mate/Backend (main, 최신 push는 `75b37c8`)
+- 배포 서버: 가비아 클라우드 `1.201.116.115` — `~/Backend`에 git clone, pm2 프로세스명 `whs-server`(4000, server용)/`whs-admin`(4100, server_admin용). 이번 세션 변경은 아직 미배포 — 사용자가 서버에서 pull+빌드+재시작 필요
 
 ## 특이사항 / 결정 사항
 - **회원 탈퇴 시 "가입 후 병원에서 쌓인 데이터"를 보존할지 삭제할지는 사용자에게 직접 물어 결정**(AskUserQuestion) — "emr_*로 되돌려 보존" 선택. 처음 구현 시도에서 가입 전/후 데이터를 구분 못 해 emr_care_records에 중복 생성되는 버그를 라이브 테스트로 직접 잡아냄 → `external_record_id` 기반 이관분/신규분 구분 설계로 재작업

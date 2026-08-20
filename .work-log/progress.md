@@ -18,7 +18,8 @@
   - `profile.service.ts`에 `withdraw()`+`rehydrateEmrData()` 구현: 이관분(`external_record_id` 있음)은 원본 emr 행을 최신 소비 상태로 갱신, 신규분(`external_record_id` null)만 새 emr 행 생성 — brand로 다중 클리닉 중 어느 emr_patients 행에 붙일지 판별
   - 재작업 후 실 DB로 재검증(가입 전 원본 1건+가입 후 이어쓴 기록 1건+완전 신규 이용권/시술기록 세트): 이관분 중복 없이 갱신됨, 신규분만 새 행 생성, 재가입(re-claim) 정상 동작까지 확인. typecheck 통과
 - "문서까지 동기화하고 커밋해줘" 요청 → `docs/api-spec.md`(v0.18→v0.19, `DELETE /profile` 절+매칭 알고리즘 이력-없음 케이스 추가)/`docs/db-schema.md`(v0.11→v0.12, `memberships.external_record_id`+마이그레이션 027 절)/`server/README.md`(v0.19 changelog 2건) 갱신, `.html` 2종 동기화(HTML 태그 밸런스 grep으로 확인) 후 WebFetch로 기존 게시본 확인 → 아티팩트 재배포(API 명세서/DB 스키마 둘 다)
-- work-log 정리 — `/기록저장`으로 저장(커밋은 이 저장 직후 이어서 진행 예정)
+- work-log 1차 정리(`/기록저장`) 후 커밋 진행 — `docs/image.png`/미추적 파일 2개 관례대로 제외하고 스테이징, 커밋(`75b37c8`, "Add member withdrawal API and fix goal-only recommendations") + `git push` 완료
+- `/기록저장` 재실행 — 커밋+푸시 완료 상태까지 반영해 work-log 최종 정리
 
 ## 2026-08-20 (8, 신규 세션 — 추천 알고리즘 tie-break 버그 수정 + 시술명 정식화)
 - 새 세션 시작, "작업현황 파악해" 요청 → git log/work-log 대조해 브리핑. work-log가 (6) 세션 시점에서 멈춰있었는데 실제 origin에는 (7) 세션 커밋(`c676a67`~`fd9fa30`, 예약 미차감/resync, PHONE_ALREADY_REGISTERED, treatment-catalog 브랜드 체크, getLatestCareRecord 미래날짜 제외, FCM 로깅, 문서 동기화)이 이미 반영돼 있는 것을 확인
