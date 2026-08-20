@@ -101,8 +101,10 @@ async function generateRecommendationCopy(ctx: RecommendationContext): Promise<R
 }
 
 export async function computeNextCareRecommendation(userId: string) {
+  // 2026-08-20 — 과거 시술 이력이 없는 고객(예약만 있거나 등록만 된 상태)도 관심목표만으로
+  // 추천을 받을 수 있어야 한다. latestCare는 있으면 "최근 관리와의 연관성" 가중치에만 쓰이고,
+  // 없어도 goalOverlap 기반 추천은 정상 동작해야 하므로 여기서 조기 반환하지 않는다.
   const latestCare = await getLatestCareRecord(userId);
-  if (!latestCare) return null;
 
   const [goals, recentCares, allProcedures] = await Promise.all([
     getInterestGoals(userId),
@@ -137,7 +139,7 @@ export async function computeNextCareRecommendation(userId: string) {
   if (top.goalOverlap.length > 0) {
     fallbackReasons.push(truncate(`관심 목표(${top.goalOverlap[0]})와 연결돼요.`, REASON_MAX_LEN));
   }
-  if (top.recentRelevance > 0) {
+  if (top.recentRelevance > 0 && latestCare) {
     fallbackReasons.push(truncate(`최근 관리(${latestCare.care_name})와 연관돼요.`, REASON_MAX_LEN));
   }
   fallbackReasons.push(truncate(`${top.procedure.name}, 다음 관리로 추천드려요.`, REASON_MAX_LEN));
@@ -152,7 +154,7 @@ export async function computeNextCareRecommendation(userId: string) {
     categoryTags: top.procedure.category_tags,
     goalOverlap: top.goalOverlap,
     interestGoals: goals,
-    latestCareName: latestCare.care_name,
+    latestCareName: latestCare?.care_name ?? null,
     recentCareNames: recentCares.map((r) => r.care_name),
   });
 
@@ -208,7 +210,7 @@ export async function getNextCareRecommendationDetail(userId: string, recommenda
     categoryTags: recommendedProcedure?.category_tags ?? [],
     goalOverlap: recommendation.basis.includes("goal") ? goals : [],
     interestGoals: goals,
-    latestCareName: latestCare?.care_name ?? recommendation.careName,
+    latestCareName: latestCare?.care_name ?? null,
     recentCareNames: recentCares.map((r) => r.care_name),
   });
   const detailDescription =

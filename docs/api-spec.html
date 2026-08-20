@@ -467,7 +467,9 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 OpenAI API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다. 2026-08-18부터 Anthropic Claude에서 전환), 다음 관리 추천 MVP(추천 사유/설명도 v0.12부터 OpenAI 기반). 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.18</span>
+      <span class="badge">v0.19</span>
+      <span class="badge outline">회원 탈퇴 API 신규(DELETE /profile, 병원 데이터 보존)</span>
+      <span class="badge outline">관리 이력 없어도 관심목표만으로 추천 가능</span>
       <span class="badge outline">추천 동률 처리를 goalRelevance 기준으로 교체(버그 수정)</span>
       <span class="badge outline">"최근 관리"가 미래 예약 제외하도록 수정(버그 수정)</span>
       <span class="badge outline">daily-guide LLM 호출 제거 — treatment_guides 직접 조회</span>
@@ -554,6 +556,7 @@
             <tr><td><span class="method get">GET</span></td><td class="mono">/profile</td><td>프로필 조회</td><td>—</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/profile</td><td>프로필 수정</td><td>—</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method post">POST</span></td><td class="mono">/profile/password</td><td>비밀번호 변경</td><td>—</td><td class="mono">profile.routes.ts <span class="done-badge" style="margin-left:4px;">v0.5</span></td></tr>
+            <tr><td><span class="method delete">DELETE</span></td><td class="mono">/profile</td><td>회원 탈퇴</td><td>—</td><td class="mono">profile.routes.ts <span class="done-badge" style="margin-left:4px;">v0.19</span></td></tr>
             <tr><td><span class="method put">PUT</span></td><td class="mono">/profile/interests</td><td>관심 목표 설정</td><td>R-QGENNK</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method get">GET</span></td><td class="mono">/profile/notifications</td><td>알림 설정 조회 <span class="done-badge">v0.16</span></td><td>—</td><td class="mono">profile.routes.ts</td></tr>
             <tr><td><span class="method patch">PATCH</span></td><td class="mono">/profile/notifications</td><td>알림 설정 변경 <span class="done-badge">v0.16</span></td><td>—</td><td class="mono">profile.routes.ts</td></tr>
@@ -868,15 +871,17 @@
               </tbody>
             </table>
           </div>
-          <p style="margin:12px 0 4px; font-size:13.5px; color:var(--text-muted);"><b>매칭 알고리즘</b> <span class="done-badge" style="margin-left:2px;">v0.8, 동률 처리는 v0.18에서 교체</span></p>
+          <p style="margin:12px 0 4px; font-size:13.5px; color:var(--text-muted);"><b>매칭 알고리즘</b> <span class="done-badge" style="margin-left:2px;">v0.8, 동률 처리는 v0.18에서 교체, 이력 없어도 동작하도록 v0.19에서 조정</span></p>
           <ol style="margin:4px 0 0; padding-left:20px; font-size:13.5px; color:var(--text-muted); line-height:1.6;">
-            <li>고객의 최근 관리 이력(<span class="mono">care_records</span>, 최근 10건)에서 관리명이 <span class="mono">procedures.name</span>과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외</li>
+            <li>고객의 최근 관리 이력(<span class="mono">care_records</span>, 최근 10건 — 없으면 빈 목록)에서 관리명이 <span class="mono">procedures.name</span>과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외</li>
             <li>남은 후보 중 고객의 <span class="mono">profiles.interest_goals</span>와 <span class="mono">procedures.category_tags</span>가 겹치는 개수(<span class="mono">goalOverlap</span>)로 1차 정렬</li>
             <li>동률이면(대부분의 시술이 태그 1~2개뿐이라 거의 항상 동률) <b>관심목표와 겹치는 태그만</b>의 최근 이력 연관도(<span class="mono">goalRelevance</span>)로 2차 정렬 — <span class="done-badge">v0.18</span> 이전엔 시술이 가진 태그 전체의 최근 이력(<span class="mono">recentRelevance</span>)으로 비교했는데, 이러면 특정 카테고리에 최근 이력이 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 시술이 항상 1등으로 뽑히는 문제가 있었다(실계정에서 재현)</li>
             <li>그래도 동률이면 <span class="mono">category_tags</span> 개수가 더 적은(더 특정 카테고리에 집중된) 시술 우선, 그래도 동률이면 시술명 가나다순</li>
             <li><span class="mono">goalOverlap</span>/<span class="mono">recentRelevance</span> 둘 다 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 204</li>
+            <li><span class="done-badge">v0.19</span> 이전엔 과거 시술 이력이 하나도 없으면 이 알고리즘 자체를 타지 않고 무조건 204였다 — 예약만 있거나 등록만 되고 앱에서 시술을 아직 안 받은 고객은 관심목표가 있어도 추천을 못 받는 문제였다. 이제 이력이 없어도 위 로직을 그대로 타며, 이력 가중치가 자연히 0이 되니 관심목표(<span class="mono">goalOverlap</span>) 기준만으로 추천이 나온다</li>
           </ol>
           <div class="status-row" style="margin-top:10px;"><span class="status-chip err">204 NO_RECOMMENDATION_AVAILABLE</span></div>
+          <p style="margin:6px 0 0; font-size:13px; color:var(--text-muted);"><span class="done-badge">v0.19</span> 관심목표와 관리 이력이 둘 다 없을 때만 204 — 둘 중 하나만 있어도 추천됨</p>
           <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 <span class="mono">GET /home/summary</span>의 <span class="mono">recommendation</span> 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.</p>
         </div>
       </div>
@@ -1325,6 +1330,33 @@
 
       <div class="endpoint-card">
         <div class="endpoint-head">
+          <span class="method delete">DELETE</span><span class="path mono">/profile</span>
+          <span class="done-badge">v0.19 · 구현 완료</span>
+          <span class="note">설정 화면의 회원 탈퇴 — 앱 계정만 삭제, 병원 환자 등록은 유지</span>
+        </div>
+        <div class="endpoint-body">
+          <p style="margin:0 0 10px; font-size:13px; color:var(--text-muted);">현재 비밀번호를 재확인한 뒤 <b>앱 계정만</b> 삭제한다 — <span class="mono">emr_patients</span>(병원 환자 등록)는 그대로 남는다.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">password</td><td class="mono">string</td><td>현재 비밀번호 확인용</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-row"><span class="status-chip err">401 INVALID_CURRENT_PASSWORD</span></div>
+          <p style="margin:12px 0 4px; font-size:13.5px; color:var(--text-muted);"><b>처리 내용</b> <span class="done-badge" style="margin-left:2px;">profile.service.ts의 withdraw()</span></p>
+          <ol style="margin:4px 0 0; padding-left:20px; font-size:13.5px; color:var(--text-muted); line-height:1.6;">
+            <li>비밀번호 재확인(<span class="mono">POST /profile/password</span>와 동일 방식)</li>
+            <li><b>가입 이후 병원에서 새로 쌓인 시술기록/이용권을 <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>로 되돌려 보존.</b> 가입(claim) 시점에 이관된 기록은 <span class="mono">external_record_id</span>(memberships는 v0.19 신규, <span class="mono">db/migrations/027_add_membership_external_record_id.sql</span>)로 원본 emr 행을 식별해 원본을 최신 소비 상태로 갱신하고, 가입 후 완전히 새로 생긴 기록만 emr 쪽에 새 행으로 추가 — 중복 생성 없음</li>
+            <li><span class="mono">emr_patients.claimed_user_id</span>/<span class="mono">claimed_at</span>을 null로 되돌려 미가입 상태로 복원(다중 클리닉 자동 연결로 여러 클리닉에 연결돼 있으면 전부 한 번에 풀림) — 같은 환자번호로 재가입하면 이 데이터가 다시 이관(claim)된다</li>
+            <li><span class="mono">auth.users</span> 계정 삭제 — <span class="mono">profiles</span>/<span class="mono">medical_profiles</span>/<span class="mono">care_records</span>/<span class="mono">memberships</span>/<span class="mono">membership_usages</span>/<span class="mono">device_tokens</span>/<span class="mono">notification_log</span>/<span class="mono">questions</span>/<span class="mono">medical_data_access_log</span>는 전부 FK CASCADE로 함께 삭제(2번에서 이미 사본을 남겼으므로 의도된 정리)</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-head">
           <span class="method put">PUT</span><span class="path mono">/profile/interests</span>
           <span class="note">관심 목표 설정 · 다음 관리 추천(basis: goal)의 입력값</span>
         </div>
@@ -1593,8 +1625,10 @@
       <p class="note" style="margin-top:10px;"><span class="done-badge">v0.16</span> daily-guide는 더 이상 LLM을 호출하지 않아(<span class="mono">treatment_guides</span> 직접 조회) "LLM 생성 실패 시 폴백 문구" 논의 자체가 더 이상 필요 없어졌다. FCM 실제 발송 트리거도 이제 구현됨 — <span class="mono">server/src/services/notificationScheduler.service.ts</span>가 매일 09:00/19:00 KST 크론으로 일차별 마일스톤·이용권 만료·당일 시술 알림을 발송한다(<span class="mono">FCM_ENABLED=true</span>일 때만 기동). <span class="mono">GET/PATCH /profile/notifications</span>로 사용자가 종류별로 켜고 끌 수 있다.</p>
       <p class="note"><span class="done-badge">v0.17</span> <b>"최근 관리 이력" 조회(<span class="mono">getLatestCareRecord</span>/<span class="mono">listRecentCareRecords</span>, <span class="mono">server/src/services/careRecords.service.ts</span>)가 이제 <span class="mono">care_date &lt;= 오늘(KST)</span>만 후보로 삼는다.</b> <span class="mono">server_admin</span>의 예약(미래 날짜) 등록 기능과 맞물려, 아직 받지도 않은 미래 예약이 daily-guide/챗봇/홈요약/추천의 "최근 관리"로 잘못 뽑히는 버그가 실사용 중 발견됐다 — <span class="mono">daysElapsed</span>가 미래 날짜를 항상 0으로 클램프하다 보니, 챗봇이 "오늘이 시술 당일"처럼 잘못 답하는 형태로 드러났다. 응답 스키마 변경 없음(내부 조회 조건 수정).</p>
       <p class="note"><span class="done-badge">v0.18</span> <b>다음 관리 추천이 관심목표를 바꿔도 항상 같은 시술로 나오던 문제를 고쳤다.</b> 실계정(오세훈)에서 재현: <span class="mono">GET /recommendations/next-care</span>의 동률 처리가 시술이 가진 태그 전체의 최근 이력(<span class="mono">recentRelevance</span>)으로 비교하고 있어서, 최근 이력이 특정 카테고리(예: 리프팅)에 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 "제너럴리스트" 시술이 항상 1등으로 뽑혔다 — 관심목표가 후보 풀 좁히기에는 영향을 줬지만, 정작 최종 1건을 고르는 동률 비교 단계에서는 사실상 무시되는 셈이었다. 이제 동률 비교는 관심목표와 겹치는 태그만의 최근 이력(<span class="mono">goalRelevance</span>)으로 하고, 그다음 태그 개수가 적은(더 특정 카테고리에 집중된) 시술을 우선한다. 응답 스키마 변경 없음(추천 후보 선정 로직만 수정). 자세한 내용은 아래 "GET /recommendations/next-care" 절의 매칭 알고리즘 참고.</p>
+      <p class="note"><span class="done-badge">v0.19</span> <b><span class="mono">DELETE /profile</span>(회원 탈퇴) 신규.</b> 현재 비밀번호 재확인 후 앱 계정만 삭제한다 — <span class="mono">emr_patients</span>(병원 환자 등록 원본)는 그대로 남고 claim만 풀려 나중에 같은 환자번호로 재가입할 수 있다. 가입 이후 병원에서 새로 쌓인 시술기록/이용권(<span class="mono">care_records</span>/<span class="mono">memberships</span>)도 삭제되기 전에 <span class="mono">emr_care_records</span>/<span class="mono">emr_memberships</span>로 되돌려 병원 데이터가 유실되지 않는다. 아래 "DELETE /profile" 절 참고.</p>
+      <p class="note"><span class="done-badge">v0.19</span> <b>다음 관리 추천이 과거 시술 이력 없이 관심목표만으로도 나온다.</b> 이전엔 <span class="mono">care_records</span>(과거 이력)가 하나도 없으면(예약만 있거나 병원 등록만 되고 시술은 아직 안 받은 고객) 추천 자체가 항상 204였는데, 관심 목표(<span class="mono">interest_goals</span>)만으로도 <span class="mono">basis: ["catalog", "goal"]</span> 추천이 나오도록 고쳤다. 관심목표조차 없으면 여전히 204.</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.18 MVP · 2026-08-20 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.19 MVP · 2026-08-20 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

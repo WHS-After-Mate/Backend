@@ -1,3 +1,25 @@
+## 2026-08-20 (9, 신규 세션 — git pull 브리핑 + 관심목표 기반 추천 + 회원 탈퇴 API)
+- 새 세션 시작, 사용자가 "깃에 최신 커밋 올라왔어 그거 적용시켜" 요청 → `git status`/`git fetch`로 origin이 로컬보다 11개 커밋 앞서 있음 확인, `docs/image.png` 등 미커밋 변경분과 충돌 없음을 diff로 사전 확인 후 `git pull`(fast-forward, `765474e`→`d44d823`)
+  - 신규 의존성(`node-cron`, `firebase-admin` 등) 반영을 위해 `server`/`server_admin` 양쪽 `npm install`, typecheck 통과 확인. 부수적으로 발생한 `package-lock.json` 무관 노이즈(optional dependency 리졸브 차이)는 `git checkout`으로 되돌려 diff 정리
+- 사용자가 "work-log도 안 올라왔어?" 질문 → `.work-log/current.md`/`progress.md`도 pull에 포함돼 이미 최신 상태임을 확인해 답변
+- 사용자가 "어떤 변경사항 있는지 확인해봐" 요청 → 11개 커밋을 5개 그룹(FCM+treatment_guides 도입/회귀 버그 2건/신원·이용권 정합성 강화 4건/기타 문서 동기화/직전 세션 추천 tie-break+시술명 통일)으로 정리해 브리핑
+- 사용자가 "예약일 이용권 회차버그도 수정했을텐데?" 확인 질문 → `c676a67`(careDate가 오늘일 때만 차감)/`165dbc8`(session_number 재동기화) 커밋을 `git show --stat`으로 다시 짚어 상세 설명
+- 사용자가 "(추천 tie-break + 시술명 통일) 이건 뭐지?" 질문 → 직전 세션(8) 작업 내용 재설명(work-log 참고 답변)
+- **홈화면 버그 신고 2건** — "과거 관리 이력 없고 예약만 있는 고객 홈화면"에서 "이전 관리 이력 없을 경우 관심목표만 가지고 추천해줄 수 있도록 수정해야 할 것 같다" + "환자 등록만 하고 시술은 등록 안 한 상태로 앱 가입하면 홈화면이 이상하게 뜬다(시술기록 없어서 결과가 안 나옴)" 두 가지 보고
+  - 코드 조사로 원인 확정: `computeNextCareRecommendation`(`recommendations.service.ts`)이 `getLatestCareRecord`가 null이면(과거 이력 없음) 무조건 조기 `return null` — 관심목표가 있어도 반영 자체가 안 되는 구조였음. `getHomeSummary`가 이 함수를 그대로 호출하므로 홈 화면까지 전파
+  - 조기 종료 제거, `latestCare` optional 처리, `recommendation.prompt.ts`의 `latestCareName` 타입을 `string | null`로 변경(추천 상세 쪽 기존 `latestCare?.care_name ?? recommendation.careName` 폴백도 `null`로 정리 — 이력 없을 때 추천 시술명 자체를 "최근 관리"로 잘못 넣던 부수 버그도 같이 해소)
+  - 실 DB 임시 테스트 계정으로 라이브 검증(관심목표만/이력만/둘 다 없음 3가지 케이스) — 관심목표만 있어도 `basis: ["catalog","goal"]` 정상 추천, 둘 다 없으면 여전히 204(정당한 케이스)
+  - 사용자가 "관심목표는 회원가입시 필수 선택이라 뭔가 있긴 할 것" 언급 → 실제로는 백엔드 validator가 `interestGoals`를 optional(`default([])`)로 두고 있어 앱 UX만 강제하고 있음을 확인해 안내 → 사용자가 "UX가 강제면 백엔드는 상관없다"로 현행 유지 결정(백엔드 검증 강화 안 함)
+- **회원 탈퇴 API(`DELETE /profile`) 신규 요청** — "커밋 전에 회원 탈퇴 로직도 만들 수 있나? 환자 등록은 그대로, 앱 회원가입 기록만 사라지는 거지" 요청
+  - 초안 구현(비밀번호 재확인 → `emr_patients` claim 해제 → `auth.users` 삭제, CASCADE로 앱 테이블 정리) 후 사용자가 "탈퇴되면 시술기록이 날아가진 않지?" 질문 → 코드 추적 결과, 가입 **후** `server_admin`이 등록한 시술기록/이용권은 `emr_care_records`가 아니라 `care_records`/`memberships`(앱 전용, `auth.users` CASCADE)에 직접 쓰인다는 걸 발견 — 탈퇴 시 이 데이터가 영구 삭제되는 리스크를 사용자에게 설명
+  - AskUserQuestion으로 "emr_*로 되돌려 보존" vs "그대로 삭제(개인정보 삭제 요청 관점)" 확인 → **"emr_*로 되돌려 보존"** 선택
+  - 1차 구현·라이브 테스트에서 **가입 전 원본까지 중복 복제되는 버그 발견**(가입 시 emr→app으로 이관된 기록을 탈퇴 시 무조건 다시 app→emr로 복사해버려 emr 쪽에 같은 기록이 2건 생김) → `care_records.external_record_id`(기존 컬럼, 그동안 안 채워지고 있었음)로 "이관분/신규분"을 구분하는 방식으로 재설계. `memberships`엔 대응 컬럼이 없어 마이그레이션 027(`add_membership_external_record_id.sql`) 신규 작성 → 사용자가 Supabase SQL Editor에 적용("적용했어" 확인)
+  - `auth.service.ts`의 `migrateEmrDataToApp()`을 수정해 이관 시 `care_records`/`memberships`의 `external_record_id`에 원본 emr 행 id를 채우도록 함
+  - `profile.service.ts`에 `withdraw()`+`rehydrateEmrData()` 구현: 이관분(`external_record_id` 있음)은 원본 emr 행을 최신 소비 상태로 갱신, 신규분(`external_record_id` null)만 새 emr 행 생성 — brand로 다중 클리닉 중 어느 emr_patients 행에 붙일지 판별
+  - 재작업 후 실 DB로 재검증(가입 전 원본 1건+가입 후 이어쓴 기록 1건+완전 신규 이용권/시술기록 세트): 이관분 중복 없이 갱신됨, 신규분만 새 행 생성, 재가입(re-claim) 정상 동작까지 확인. typecheck 통과
+- "문서까지 동기화하고 커밋해줘" 요청 → `docs/api-spec.md`(v0.18→v0.19, `DELETE /profile` 절+매칭 알고리즘 이력-없음 케이스 추가)/`docs/db-schema.md`(v0.11→v0.12, `memberships.external_record_id`+마이그레이션 027 절)/`server/README.md`(v0.19 changelog 2건) 갱신, `.html` 2종 동기화(HTML 태그 밸런스 grep으로 확인) 후 WebFetch로 기존 게시본 확인 → 아티팩트 재배포(API 명세서/DB 스키마 둘 다)
+- work-log 정리 — `/기록저장`으로 저장(커밋은 이 저장 직후 이어서 진행 예정)
+
 ## 2026-08-20 (8, 신규 세션 — 추천 알고리즘 tie-break 버그 수정 + 시술명 정식화)
 - 새 세션 시작, "작업현황 파악해" 요청 → git log/work-log 대조해 브리핑. work-log가 (6) 세션 시점에서 멈춰있었는데 실제 origin에는 (7) 세션 커밋(`c676a67`~`fd9fa30`, 예약 미차감/resync, PHONE_ALREADY_REGISTERED, treatment-catalog 브랜드 체크, getLatestCareRecord 미래날짜 제외, FCM 로깅, 문서 동기화)이 이미 반영돼 있는 것을 확인
 - 사용자가 선택한 `026_add_care_record_session_consumed.sql` 마이그레이션 내용을 보고 "시술명 오타/불일치는 무슨 말이야" 질문 → work-log 이월 항목(`튠 콩피에르®`/`레이저 제모 솔루션` vs `튠 콩피에르(Tune Confier)`/`레이저 제모`)의 출처를 실제로 추적 — `docs/care_procedure_template.xlsx`(엑셀 원본)는 이미 간략화된 이름을 쓰고 있어서, 실제 불일치 원인은 `server_admin/db/seed/seedClinicCatalog.ts`(정식 명칭 사용)와 다른 시드 스크립트들(간략화 명칭 사용) 사이의 차이였음을 코드 대조로 확인해 설명

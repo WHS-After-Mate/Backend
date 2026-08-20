@@ -64,6 +64,9 @@ async function migrateEmrDataToApp(patientId: string, userId: string) {
           last_used_at: m.last_used_at,
           available_care_names: m.available_care_names,
           brand: m.brand,
+          // 탈퇴(DELETE /profile) 시 이 이용권이 emr_memberships 이관분인지(→ 원본을 갱신) 아니면
+          // 가입 후 새로 생긴 것인지(→ 새 emr_memberships로 되돌림) 구분하는 데 쓰인다.
+          external_record_id: m.id,
         })),
       )
       .select("id");
@@ -93,6 +96,9 @@ async function migrateEmrDataToApp(patientId: string, userId: string) {
           membership_id: r.membership_id ? (membershipIdMap.get(r.membership_id) ?? null) : null,
           source_system: "aac_emr",
           synced_at: new Date().toISOString(),
+          // 탈퇴(DELETE /profile) 시 이 시술기록이 emr_care_records 이관분인지(→ 원본을 갱신) 아니면
+          // 가입 후 새로 생긴 것인지(→ 새 emr_care_records로 되돌림) 구분하는 데 쓰인다.
+          external_record_id: r.id,
         })),
       )
       .select("id, membership_id, session_number, care_date");

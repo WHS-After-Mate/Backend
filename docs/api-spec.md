@@ -1,7 +1,11 @@
-# WHS After Mate — API 명세서 (v0.18, MVP)
+# WHS After Mate — API 명세서 (v0.19, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.19 변경 (2026-08-20): 두 가지 변경.
+- **`DELETE /profile`(회원 탈퇴) 신규.** 현재 비밀번호 재확인 후 앱 계정만 삭제한다 — `emr_patients`(병원 환자 등록 원본)는 그대로 남고 claim만 풀려 나중에 같은 환자번호로 재가입할 수 있다. 가입 이후 병원에서 새로 쌓인 시술기록/이용권(`care_records`/`memberships`)도 삭제되기 전에 `emr_care_records`/`emr_memberships`로 되돌려 병원 데이터가 유실되지 않는다. 아래 "DELETE /profile" 절 참고.
+- **다음 관리 추천이 과거 시술 이력 없이 관심목표만으로도 나온다.** 이전엔 `care_records`(과거 이력)가 하나도 없으면(예약만 있거나 병원 등록만 되고 시술은 아직 안 받은 고객) 추천 자체가 항상 `204`였는데, 관심 목표(`interest_goals`)만으로도 `basis: ["catalog", "goal"]` 추천이 나오도록 고쳤다. 관심목표조차 없으면 여전히 `204`.
 
 v0.18 변경 (2026-08-20, 버그 수정): **다음 관리 추천이 관심목표를 바꿔도 항상 같은 시술로 나오던 문제를 고쳤다.** 실계정(오세훈)에서 재현: `GET /recommendations/next-care`의 동률 처리가 시술이 가진 태그 전체의 최근 이력(`recentRelevance`)으로 비교하고 있어서, 최근 이력이 특정 카테고리(예: 리프팅)에 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 "제너럴리스트" 시술(예: 여러 태그를 가진 시술)이 항상 1등으로 뽑혔다 — 관심목표가 후보 풀 좁히기에는 영향을 줬지만, 정작 최종 1건을 고르는 동률 비교 단계에서는 사실상 무시되는 셈이었다. 이제 동률 비교는 관심목표와 겹치는 태그만의 최근 이력(`goalRelevance`)으로 하고, 그다음 태그 개수가 적은(더 특정 카테고리에 집중된) 시술을 우선한다. 응답 스키마 변경 없음(추천 후보 선정 로직만 수정). 자세한 내용은 하단 "GET /recommendations/next-care" 절의 매칭 알고리즘 참고.
 
@@ -73,6 +77,7 @@ v0.9 변경: 회원가입 화면을 2페이지로 분리하는 프론트 요청�
 | GET | `/profile` | `profile.routes.ts` |
 | PATCH | `/profile` | `profile.routes.ts` |
 | POST | `/profile/password` | `profile.routes.ts` *(v0.5)* |
+| DELETE | `/profile` | `profile.routes.ts` *(v0.19, 회원 탈퇴)* |
 | PUT | `/profile/interests` | `profile.routes.ts` |
 | GET | `/profile/notifications` | `profile.routes.ts` *(v0.16)* |
 | PATCH | `/profile/notifications` | `profile.routes.ts` *(v0.16)* |
@@ -312,14 +317,15 @@ accessToken 재발급.
 | `basis` | string[] | 적용 근거: `catalog`(항상 포함) / `goal`(관심 목표와 `category_tags` 겹침) / `recentCare`(최근 받은 시술의 `category_tags`와 겹침) |
 | `disclaimer` | string | 의료 진단 아님 고지 |
 
-**매칭 알고리즘** `(v0.8, 동률 처리는 v0.18에서 교체)`:
-1. 고객의 최근 관리 이력(`care_records`, 최근 10건)에서 관리명이 `procedures.name`과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외
+**매칭 알고리즘** `(v0.8, 동률 처리는 v0.18에서 교체, 이력 없어도 동작하도록 v0.19에서 조정)`:
+1. 고객의 최근 관리 이력(`care_records`, 최근 10건 — 없으면 빈 목록)에서 관리명이 `procedures.name`과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외
 2. 남은 후보 중 고객의 `profiles.interest_goals`와 `procedures.category_tags`가 겹치는 개수(`goalOverlap`)로 1차 정렬
 3. 동률이면(대부분의 시술이 태그 1~2개뿐이라 거의 항상 동률) **관심목표와 겹치는 태그만**의 최근 이력 연관도(`goalRelevance`)로 2차 정렬 — `(v0.18)` 이전엔 시술이 가진 태그 전체의 최근 이력(`recentRelevance`)으로 비교했는데, 이러면 특정 카테고리에 최근 이력이 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 시술이 항상 1등으로 뽑히는 문제가 있었다(실계정에서 재현)
 4. 그래도 동률이면 `category_tags` 개수가 더 적은(더 특정 카테고리에 집중된) 시술 우선, 그래도 동률이면 시술명 가나다순
 5. `goalOverlap`/`recentRelevance` 둘 다 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 `204`
+6. `(v0.19)` 이전엔 과거 시술 이력(`care_records`)이 하나도 없으면 이 알고리즘 자체를 타지 않고 무조건 `204`였다 — 예약만 있거나 병원 등록만 되고 앱에서 시술을 아직 안 받은 고객은 관심목표가 있어도 추천을 못 받는 문제였다. 이제 이력이 없어도 위 로직을 그대로 타며, 이력 관련 항목(`recentRelevance`/`goalRelevance`의 이력 가중치 부분)이 자연히 0이 되니 관심목표(`goalOverlap`) 기준만으로 추천이 나온다
 
-`204 NO_RECOMMENDATION_AVAILABLE`: 추천 근거 부족(관리 이력 없음 등)
+`204 NO_RECOMMENDATION_AVAILABLE`: 추천 근거 부족 — `(v0.19)` 관심목표와 관리 이력이 둘 다 없을 때만 발생(둘 중 하나만 있어도 추천됨)
 - 참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 `GET /home/summary`의 `recommendation` 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.
 
 ### GET /recommendations/next-care/{recommendationId}
@@ -716,6 +722,22 @@ My Care는 캘린더 / 이력 / 이용권 3개 진입점을 가진다. 캘린더
 **Response 204**
 `401 INVALID_CURRENT_PASSWORD`
 
+### DELETE /profile `(v0.19)`
+설정 화면의 회원 탈퇴. 현재 비밀번호를 재확인한 뒤 **앱 계정만** 삭제한다 — 병원 환자 등록(`emr_patients`)은 그대로 남는다.
+
+**Request**
+```json
+{ "password": "string" }
+```
+**Response 204**
+`401 INVALID_CURRENT_PASSWORD`
+
+**처리 내용**(`profile.service.ts`의 `withdraw()`):
+1. 비밀번호 재확인(`POST /profile/password`와 동일 방식)
+2. **가입 이후 병원에서 새로 쌓인 시술기록/이용권을 `emr_care_records`/`emr_memberships`로 되돌려 보존.** 가입(claim) 시점에 이관된 기록은 `external_record_id`(memberships는 v0.19에서 신규 추가, `db/migrations/027_add_membership_external_record_id.sql`)로 원본 emr 행을 식별해 **원본을 최신 소비 상태로 갱신**하고, 가입 후 완전히 새로 생긴 기록만 emr 쪽에 **새 행으로 추가** — 중복 생성 없음
+3. `emr_patients.claimed_user_id`/`claimed_at`을 `null`로 되돌려 미가입 상태로 복원(다중 클리닉 자동 연결로 여러 클리닉에 연결돼 있으면 전부 한 번에 풀림) — 같은 환자번호로 재가입하면 이 데이터가 다시 이관(claim)된다
+4. `auth.users` 계정 삭제 — `profiles`/`medical_profiles`/`care_records`/`memberships`/`membership_usages`/`device_tokens`/`notification_log`/`questions`/`medical_data_access_log`는 전부 FK CASCADE로 함께 삭제(위 2번에서 이미 사본을 남겼으므로 의도된 정리)
+
 ### PUT /profile/interests
 관심 목표 설정. 다음 관리 추천(`basis: goal`)의 입력값으로 사용된다.
 
@@ -816,6 +838,7 @@ Android 클라이언트가 FCM(Firebase Cloud Messaging) 토큰을 발급받은 
 - 위 표 5절에 Android FCM 디바이스 토큰 등록/해제 엔드포인트 신규 추가 (`POST`/`DELETE /notifications/device-token`)
 - FCM 실제 발송 트리거도 이제 구현됨 — `server/src/services/notificationScheduler.service.ts`가 매일 09:00/19:00 KST 크론으로 일차별 마일스톤·이용권 만료·당일 시술 알림을 발송한다(`FCM_ENABLED=true`일 때만 기동). `GET/PATCH /profile/notifications`로 사용자가 종류별(`care`/`marketing`)로 켜고 끌 수 있다(`db-schema.md`의 "public.notification_log" 절 참고)
 - `(v0.17)` "최근 관리 이력" 조회(`getLatestCareRecord`/`listRecentCareRecords`, `server/src/services/careRecords.service.ts`)가 이제 `care_date <= 오늘(KST)`만 후보로 삼는다 — `server_admin`의 예약(미래 날짜) 등록 기능과 맞물려 미래 예약이 daily-guide/챗봇/홈요약/추천의 "최근 관리"로 잘못 뽑히던 버그 수정(위 v0.17 changelog 참고)
+- `(v0.19)` 위 표 5절에 `DELETE /profile`(회원 탈퇴) 신규 추가. 앱 가입 이후 병원에서 쌓인 시술기록/이용권을 `emr_care_records`/`emr_memberships`로 되돌려 보존하는 로직(`rehydrateEmrData`) 포함 — 자세한 내용은 "DELETE /profile" 절 참고
 
 ## v0.5에서 추가된 항목 (와이어프레임 검토 반영, 구현·마이그레이션·시드 전부 완료)
 

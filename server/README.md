@@ -2,7 +2,7 @@
 
 Android(Android Studio) 클라이언트가 호출하는 REST API 서버. Node.js + Express + TypeScript, DB/인증은 Supabase, LLM은 OpenAI, 푸시는 Firebase Cloud Messaging(FCM)을 사용한다.
 
-문서 기준: `../docs/api-spec.md` v0.17, `../docs/db-schema.md` v0.11, `../docs/llm-prompt-design.md` v0.5
+문서 기준: `../docs/api-spec.md` v0.19, `../docs/db-schema.md` v0.12, `../docs/llm-prompt-design.md` v0.5
 
 ## 준비
 
@@ -88,6 +88,8 @@ db/
 - **추천 상세 `popularWithSimilarCustomers` → `categoryTags`로 교체(v0.15)**: 아무도 쓰지 않아 제거하고, 대신 추천된 시술이 `care_procedure_template.xlsx`에서 O로 표시된 관심목표 칼럼(`procedures.category_tags`)을 그대로 노출한다. `server/src/services/recommendations.service.ts`
 - **"최근 관리 이력" 조회가 미래 예약을 제외하도록 수정(v0.17, 버그 수정)**: `careRecords.service.ts`의 `getLatestCareRecord`/`listRecentCareRecords`가 `care_date <= 오늘(KST)` 조건 없이 그냥 최신순 정렬만 하고 있어서, `server_admin`의 예약(미래 날짜) 등록 기능과 맞물려 daily-guide/챗봇/홈요약/추천이 전부 아직 안 받은 미래 예약을 "가장 최근 관리"로 오인하는 버그가 실사용 중 발견됐다. `daysElapsedSince`가 미래 날짜를 0으로 클램프하다 보니 챗봇이 "오늘이 시술 당일"처럼 잘못 답하는 형태로 나타났다. `docs/api-spec.md` v0.17 참고
 - **FCM 발송 실패를 로그로 남기도록 수정(v0.17)**: `push.service.ts`(`server`/`server_admin` 둘 다)가 `sendEachForMulticast`의 결과를 확인 안 하고 있어서, 토큰이 전부 실패해도(예: 앱이 백엔드와 다른 Firebase 프로젝트를 쓰는 `SenderId mismatch`) 아무 에러도 안 남기고 조용히 묻혔다. 이제 실패한 토큰마다 `userId`+에러코드/메시지를 `console.error`로 남긴다. 실사용 중 실제로 이 방식으로 오세훈 계정의 기기 토큰이 다른 Firebase 프로젝트(`ms-project-da87f`가 아닌 곳)에서 발급된 걸 발견함 — 앱이 백엔드와 같은 Firebase 프로젝트의 `google-services.json`을 쓰는지 프론트 쪽 확인 필요
+- **다음 관리 추천이 과거 시술 이력 없이 관심목표만으로도 나오도록 수정(v0.19)**: `recommendations.service.ts`의 `computeNextCareRecommendation`이 `getLatestCareRecord`가 null(예약만 있거나 등록만 되고 시술은 아직 안 받은 고객)이면 무조건 `null`을 반환하던 조기 종료를 제거했다. 이력 없이도 관심목표(`goalOverlap`) 기반 점수 계산은 원래 동작하던 구조라, 조기 종료만 없애면 자연히 관심목표만으로 추천이 나온다. `latestCareName`도 nullable로 바꿔 LLM 문구 생성이 이력 없이도 안전하게 동작하도록 함께 정리
+- **회원 탈퇴(`DELETE /profile`) 신규 추가(v0.19)**: 현재 비밀번호 재확인 후 앱 계정(`auth.users`)만 삭제 — `profiles`/`medical_profiles`/`care_records`/`memberships`/`membership_usages`/`device_tokens`/`notification_log`/`questions`/`medical_data_access_log`는 FK CASCADE로 함께 삭제된다. `emr_patients`(병원 환자 등록 원본)는 남기고 claim만 풀어(`claimed_user_id`/`claimed_at` null) 재가입 가능하게 한다. 가입 이후 병원에서 새로 쌓인 시술기록/이용권은 삭제 전에 `emr_care_records`/`emr_memberships`로 되돌려 보존한다(`profile.service.ts`의 `rehydrateEmrData`) — 이관분과 신규분 구분에 `memberships.external_record_id`(마이그레이션 027) 신규 추가. 자세한 내용은 `docs/api-spec.md` v0.19 "DELETE /profile" 절 참고
 
 ## TODO — 프로덕션 전 처리 필요
 

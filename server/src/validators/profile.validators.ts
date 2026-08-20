@@ -14,6 +14,10 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+export const withdrawSchema = z.object({
+  password: z.string().min(1),
+});
+
 export const registerDeviceTokenSchema = z.object({
   fcmToken: z.string().min(1),
   platform: z.literal("android").default("android"),

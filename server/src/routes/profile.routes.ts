@@ -6,6 +6,7 @@ import {
   updateInterestsSchema,
   updateNotificationSettingsSchema,
   updateProfileSchema,
+  withdrawSchema,
 } from "../validators/profile.validators";
 
 // 5. 설정 / 프로필 (api-spec.md §5)
@@ -37,6 +38,16 @@ profileRouter.post(
   asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
     await profileService.changePassword(req.userId, currentPassword, newPassword);
+    res.status(204).send();
+  }),
+);
+
+// 설정 화면의 회원 탈퇴 — 현재 비밀번호 재확인 후 앱 계정만 삭제(병원 환자 등록은 유지)
+profileRouter.delete(
+  "/",
+  asyncHandler(async (req, res) => {
+    const { password } = withdrawSchema.parse(req.body);
+    await profileService.withdraw(req.userId, password);
     res.status(204).send();
   }),
 );

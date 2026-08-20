@@ -4,7 +4,7 @@ export interface RecommendationContext {
   categoryTags: string[];
   goalOverlap: string[];
   interestGoals: string[];
-  latestCareName: string;
+  latestCareName: string | null;
   recentCareNames: string[];
 }
 

@@ -1,4 +1,4 @@
-# WHS After Mate — DB 스키마 (v0.11)
+# WHS After Mate — DB 스키마 (v0.12)
 
 기준: `api-spec.md` v0.16, `admin-api-spec.md` v0.11. **PostgreSQL (Supabase)** 사용 — 계정·비밀번호·토큰은 Supabase Auth(`auth.users`)에 위임하고, 앱 데이터는 `public` 스키마에 직접 구성한다. 전화번호 SMS 인증은 국내 SMS 업체 연동 비용 때문에 MVP 범위 밖으로 확정되어 제거됐다(`server/db/migrations/004_remove_phone_verification.sql`) — `phone`은 이제 조회·표시용 연락처 값일 뿐이다.
 
@@ -184,16 +184,22 @@ create table public.memberships (
   last_used_at date,
   available_care_names text[] not null default '{}',
   brand text,
+  external_record_id uuid,
   created_at timestamptz not null default now()
 );
 
 create index idx_memberships_user_expiry
   on public.memberships (user_id, expires_at);
+
+create unique index idx_memberships_external_id
+  on public.memberships (external_record_id)
+  where external_record_id is not null;
 ```
 
 - `remaining_count`는 GENERATED 컬럼 — 직접 갱신 불필요, `used_count`만 늘리면 자동 계산됨
 - `expires_at` *(컬럼 자체는 001부터 존재, v0.7부터 `server_admin`이 실제로 채움)*: `server_admin`이 이용권을 새로 만들 때 그 시술 날짜(`careDate`) 기준 +1년으로 계산해 넣는다(이어서 차감할 때는 재계산하지 않음). 만료 후 차감 시도는 `server_admin` 서비스 레이어에서 거부(`MEMBERSHIP_EXPIRED`) — DB 제약이 아니라 애플리케이션 레벨 검증
 - `brand` *(v0.9, 마이그레이션 016)*: 이 이용권을 처음 만든 클리닉. `care_records.brand`와 마찬가지로 순수 표시용 메타데이터일 뿐, 이용권 차감/자동 이어쓰기 매칭(`findContinuableMembership`)에는 여전히 쓰이지 않는다 — 이용권은 클리닉 간 격리되지 않는다는 기존 정책 그대로 유지. 생성 시 `server_admin`의 `addCareRecord`가 로그인 클리닉의 `brand`를 그대로 채우고, 회원가입 이관(`migrateEmrDataToApp`) 시에는 `emr_memberships.brand`를 그대로 복사한다. 마이그레이션 016 적용 이전에 만들어진 기존 행은 `membership_id`로 연결된 `care_records`/`emr_care_records` 중 가장 먼저 생성된 기록의 `brand`로 백필됨(이 프로젝트는 "이용권 추가"라는 별도 행위가 없어 모든 이용권이 시술기록과 함께 생성되므로 백필 커버리지는 항상 100%)
+- `external_record_id` *(v0.12, 마이그레이션 027)*: 회원가입(claim) 시 이관된 이용권이면 원본 `emr_memberships.id`를 그대로 담는다(`care_records.external_record_id`와 동일한 역할, `memberships`엔 이 컬럼이 없었던 것). 회원 탈퇴(`DELETE /profile`) 시 "이미 emr에 원본이 있는 이관분"과 "가입 후 새로 생긴 신규 이용권"을 구분하는 용도 — 이관분은 원본을 최신 상태로 갱신하고, 신규분만 새 `emr_memberships` 행으로 되돌린다(`profile.service.ts`의 `rehydrateEmrData`). 이 컬럼 도입 이전에 이관된 기존 행은 출처를 알 수 없어 `null`로 남고, 탈퇴 시 "가입 후 신규"로 간주돼 새 행으로 되돌아간다(데이터 유실보다는 안전한 방향)
 
 ### public.membership_usages — 이용권 회차별 사용 이력 *(v0.3, 마이그레이션 003)*
 
@@ -663,3 +669,7 @@ daily-guide/questions 두 LLM 호출 지점 모두 `care_type` 그룹 단위 검
 - **부수 효과 — `session_number` 재계산**: 같은 이용권에 걸린 미소비 예약들의 회차 번호가 등록 시점에 고정되지 않고, 이용권 상태가 바뀔 때마다(차감/차감취소/새 예약추가) 관리날짜 순으로 다시 매겨진다(`resyncUnconsumedSessionNumbers`). 이전엔 저장된 값이 그대로 굳어있어서, 미래 예약을 먼저 잡아두고 그 전에 실제 시술을 하나 더 받아도 예약의 회차 번호가 그대로 남아있는 버그가 있었다(예: 3회권 중 미래 예약을 1회차로 저장해뒀는데, 그 전에 실제 시술로 1회차를 소비해도 예약은 계속 1회차로 보임 — 2회차로 안 바뀜)
 
 자세한 API 계약은 `docs/admin-api-spec.md` v0.11 참고.
+
+## 회원 탈퇴 시 병원 데이터 보존 지원 (027)
+
+`server/db/migrations/027_add_membership_external_record_id.sql` — 신규 `DELETE /profile`(회원 탈퇴, `docs/api-spec.md` v0.19)가 가입 이후 병원에서 쌓인 시술기록/이용권을 삭제 전에 `emr_care_records`/`emr_memberships`로 되돌려 보존하려면, "이 `memberships` 행이 이미 emr에 원본이 있는 이관분인지, 가입 후 새로 생긴 신규분인지" 구분할 수 있어야 한다. `care_records`는 001부터 `external_record_id` 컬럼이 있어 그대로 재사용할 수 있었지만 `memberships`엔 대응하는 컬럼이 없어 이번에 추가했다(위 "public.memberships" 절 참고). 기존 행은 출처를 알 수 없어 `null`로 남는다 — 탈퇴 로직은 이 경우 "가입 후 신규"로 취급해 새 `emr_memberships` 행을 만든다(데이터 유실보다 안전한 방향).
