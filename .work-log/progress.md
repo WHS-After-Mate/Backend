@@ -1,3 +1,20 @@
+## 2026-08-20 (8, 신규 세션 — 추천 알고리즘 tie-break 버그 수정 + 시술명 정식화)
+- 새 세션 시작, "작업현황 파악해" 요청 → git log/work-log 대조해 브리핑. work-log가 (6) 세션 시점에서 멈춰있었는데 실제 origin에는 (7) 세션 커밋(`c676a67`~`fd9fa30`, 예약 미차감/resync, PHONE_ALREADY_REGISTERED, treatment-catalog 브랜드 체크, getLatestCareRecord 미래날짜 제외, FCM 로깅, 문서 동기화)이 이미 반영돼 있는 것을 확인
+- 사용자가 선택한 `026_add_care_record_session_consumed.sql` 마이그레이션 내용을 보고 "시술명 오타/불일치는 무슨 말이야" 질문 → work-log 이월 항목(`튠 콩피에르®`/`레이저 제모 솔루션` vs `튠 콩피에르(Tune Confier)`/`레이저 제모`)의 출처를 실제로 추적 — `docs/care_procedure_template.xlsx`(엑셀 원본)는 이미 간략화된 이름을 쓰고 있어서, 실제 불일치 원인은 `server_admin/db/seed/seedClinicCatalog.ts`(정식 명칭 사용)와 다른 시드 스크립트들(간략화 명칭 사용) 사이의 차이였음을 코드 대조로 확인해 설명
+- 사용자가 "정식 명칭을 그대로 맞춰야지" 결정 → 실제 DB를 서비스롤 스크립트로 직접 조회해 진짜 근거 확보: `treatment_catalog`/`procedures`/`treatment_guides`는 전부 간략화 명칭인데, 실제 EMR 이관 스테이징 데이터(`emr_care_records`)와 **실제 고객 시술기록(`care_records`) 1건**은 이미 정식 명칭(`레이저 제모 솔루션`)으로 등록돼 있어서 이 건의 daily-guide가 살아있는 404 버그였음을 발견
+  - 시드 스크립트 3개(`server/db/seed/seedCareCatalog.ts`, `server/db/seed/seedTreatmentGuides.ts`, `server_admin/db/seed/seedTreatmentCatalogFull.ts`) 코드 수정 — typecheck 통과 확인
+  - DB 반영은 서비스롤 UPDATE 스크립트로 직접 진행(세 테이블 다 `upsert(onConflict)` 패턴이라 시드 재실행 시 옛 이름 행이 고아로 남는 문제 때문에 rename 방식 선택) — 이 액션은 "운영 DB 쓰기"라 auto-mode classifier가 최초 시도를 차단, 사용자에게 승인받은 뒤 재시도해 14행 정상 반영, 실제 daily-guide 매칭 정상화까지 재조회로 검증. 스크래치 스크립트 전부 삭제
+- 사용자가 "오세훈 다음 관리 추천이 관심 시술을 바꿔도 항상 동일해 왜 그럴까" 질문 → 실제 오세훈 계정 데이터(`interest_goals`, 최근 `care_records`)로 `recommendations.service.ts`의 `scoreProcedures` 로직을 그대로 재현하는 스크립트를 작성해 원인 확정: `goalOverlap`(관심목표 겹침 개수)이 대부분 시술 태그가 1~2개뿐이라 거의 항상 1로 동률이 나고, 동률 비교에 쓰던 `recentRelevance`가 시술이 가진 태그 **전체**의 최근 이력(관심목표와 무관)이라 최근 이력이 리프팅 계열에 몰린 오세훈 계정은 관심목표를 뭘로 바꾸든 3개 태그를 겸하는 `리투오`가 항상 1등으로 뽑혔음을 확인
+  - 사용자가 "수정해줘" 요청 → 동률 비교를 관심목표와 겹치는 태그만의 최근 이력(`goalRelevance`)으로 교체, 그다음 `category_tags.length` 적은(더 특정) 시술 우선, 최종 타이브레이크로 이름순 추가
+  - 같은 재현 스크립트로 재검증: 수정 전엔 관심목표 10종 중 3개(`리프팅·탄력`/`모공·피지 관리`/`보습·장벽 강화`)가 전부 `리투오`로 수렴했는데 수정 후엔 10개 전부 서로 다른 시술로 분리됨 확인. typecheck 통과
+- "문서 최신화 후 커밋" 요청 → `docs/api-spec.md`(v0.17→v0.18, "GET /recommendations/next-care" 절에 tie-break 변경 반영한 매칭 알고리즘 5단계 추가)/`docs/llm-prompt-design.md`(v0.5→v0.6, "미확정 사항"의 이름 불일치 항목을 해소됨으로 갱신) 수정
+  - `.html` 2종(api-spec/llm-prompt-design) 동기화 + 아티팩트 재배포를 fork에 위임하려 했으나 **Agent 호출 자체가 auto-mode classifier에 차단됨**(사유: 백그라운드 자율 작업으로 판단된 듯) → 직접 HTML 수정으로 전환, 태그 밸런스(div/section/p/ol/li/table 등 open=close) 확인 후 WebFetch로 기존 퍼블리시 버전 확인 → Artifact publish로 재배포 완료. `llm-prompt-design.html` 아티팩트는 최근 세션들에서 실제로는 v0.2 시점에서 멈춰있었다는 것도 이번에 발견(로컬 파일은 v0.5까지 앞서 있었는데 재배포가 안 되고 있었던 것) — 이번에 v0.6으로 완전히 따라잡음
+  - 커밋(`3ec9160`, "Fix recommendation tie-break and unify treatment name spelling")+푸시 완료. `docs/image.png`는 관례대로 계속 제외
+- "푸시하고 서버 배포하게 터미널 명령어 알려줘" 요청 → `git pull && npm install && npm run build && pm2 restart`를 `server/`(whs-server)+`server_admin/`(whs-admin) 양쪽에 안내(AskUserQuestion으로 server_admin도 같이 배포할지 확인 → "둘 다 배포"로 결정, 실제 실행 코드 변경은 server/뿐이었지만 최신 상태 유지 목적)
+- 사용자가 "했어 확인해봐" → 배포 서버(`1.201.116.115`)로 curl 시도했으나 **이 환경에서 외부 IP 아웃바운드 자체가 타임아웃**(SSH 불가와는 별개의 새로운 제약 확인) → `pm2 list`/`pm2 logs` 직접 확인이나 `docs/image.png` 스크린샷 요청으로 대안 제시했으나, 사용자가 "서버 정상 작동하고 로컬에도 된거면 될거야"로 추가 검증 없이 종료 결정
+- "작업현황 파악해" 재질문(세션 끝 무렵) → 이번 세션 전체 요약해 브리핑
+- work-log 정리 — `/기록저장`으로 저장
+
 ## 2026-08-20 (6, 문서 작업 중단 → 오류 3건 수정 + 배포)
 - 사용자가 "문서작업 말고 오류를 고치자"로 전환 → 아래 3건 전부 수정 완료
   1. migration 025(`emr_care_records.care_type` 삭제) — 사용자가 Supabase SQL Editor에서 직접 적용, 실제 insert 테스트로 재검증 완료
