@@ -467,7 +467,8 @@
     <h1>API 명세서</h1>
     <p class="subtitle">AAC 웰니스 고객용 관리 이력·이용권 조회, LLM 기반 일차별 사후관리 안내·질문(실제 OpenAI API를 호출해 응답을 생성하며, 하드코딩된 템플릿이 아니다. 2026-08-18부터 Anthropic Claude에서 전환), 다음 관리 추천 MVP(추천 사유/설명도 v0.12부터 OpenAI 기반). 로그인은 실제 계정 기반이며, 관리 이력·이용권 데이터는 MVP 특성상 시드 데이터로 제공한다. 녹색 배지(<span class="done-badge" style="padding:1px 6px;">v0.5</span>)는 최종 와이어프레임 검토로 추가된 항목 — 서버 코드·DB 마이그레이션·데모 시드까지 전부 완료됐다.</p>
     <div class="badges">
-      <span class="badge">v0.17</span>
+      <span class="badge">v0.18</span>
+      <span class="badge outline">추천 동률 처리를 goalRelevance 기준으로 교체(버그 수정)</span>
       <span class="badge outline">"최근 관리"가 미래 예약 제외하도록 수정(버그 수정)</span>
       <span class="badge outline">daily-guide LLM 호출 제거 — treatment_guides 직접 조회</span>
       <span class="badge outline">알림 설정 재도입(GET/PATCH /profile/notifications)</span>
@@ -867,7 +868,15 @@
               </tbody>
             </table>
           </div>
-          <div class="status-row"><span class="status-chip err">204 NO_RECOMMENDATION_AVAILABLE</span></div>
+          <p style="margin:12px 0 4px; font-size:13.5px; color:var(--text-muted);"><b>매칭 알고리즘</b> <span class="done-badge" style="margin-left:2px;">v0.8, 동률 처리는 v0.18에서 교체</span></p>
+          <ol style="margin:4px 0 0; padding-left:20px; font-size:13.5px; color:var(--text-muted); line-height:1.6;">
+            <li>고객의 최근 관리 이력(<span class="mono">care_records</span>, 최근 10건)에서 관리명이 <span class="mono">procedures.name</span>과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외</li>
+            <li>남은 후보 중 고객의 <span class="mono">profiles.interest_goals</span>와 <span class="mono">procedures.category_tags</span>가 겹치는 개수(<span class="mono">goalOverlap</span>)로 1차 정렬</li>
+            <li>동률이면(대부분의 시술이 태그 1~2개뿐이라 거의 항상 동률) <b>관심목표와 겹치는 태그만</b>의 최근 이력 연관도(<span class="mono">goalRelevance</span>)로 2차 정렬 — <span class="done-badge">v0.18</span> 이전엔 시술이 가진 태그 전체의 최근 이력(<span class="mono">recentRelevance</span>)으로 비교했는데, 이러면 특정 카테고리에 최근 이력이 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 시술이 항상 1등으로 뽑히는 문제가 있었다(실계정에서 재현)</li>
+            <li>그래도 동률이면 <span class="mono">category_tags</span> 개수가 더 적은(더 특정 카테고리에 집중된) 시술 우선, 그래도 동률이면 시술명 가나다순</li>
+            <li><span class="mono">goalOverlap</span>/<span class="mono">recentRelevance</span> 둘 다 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 204</li>
+          </ol>
+          <div class="status-row" style="margin-top:10px;"><span class="status-chip err">204 NO_RECOMMENDATION_AVAILABLE</span></div>
           <p style="margin:0; font-size:13px; color:var(--text-muted);">참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 <span class="mono">GET /home/summary</span>의 <span class="mono">recommendation</span> 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.</p>
         </div>
       </div>
@@ -1583,8 +1592,9 @@
       </ul>
       <p class="note" style="margin-top:10px;"><span class="done-badge">v0.16</span> daily-guide는 더 이상 LLM을 호출하지 않아(<span class="mono">treatment_guides</span> 직접 조회) "LLM 생성 실패 시 폴백 문구" 논의 자체가 더 이상 필요 없어졌다. FCM 실제 발송 트리거도 이제 구현됨 — <span class="mono">server/src/services/notificationScheduler.service.ts</span>가 매일 09:00/19:00 KST 크론으로 일차별 마일스톤·이용권 만료·당일 시술 알림을 발송한다(<span class="mono">FCM_ENABLED=true</span>일 때만 기동). <span class="mono">GET/PATCH /profile/notifications</span>로 사용자가 종류별로 켜고 끌 수 있다.</p>
       <p class="note"><span class="done-badge">v0.17</span> <b>"최근 관리 이력" 조회(<span class="mono">getLatestCareRecord</span>/<span class="mono">listRecentCareRecords</span>, <span class="mono">server/src/services/careRecords.service.ts</span>)가 이제 <span class="mono">care_date &lt;= 오늘(KST)</span>만 후보로 삼는다.</b> <span class="mono">server_admin</span>의 예약(미래 날짜) 등록 기능과 맞물려, 아직 받지도 않은 미래 예약이 daily-guide/챗봇/홈요약/추천의 "최근 관리"로 잘못 뽑히는 버그가 실사용 중 발견됐다 — <span class="mono">daysElapsed</span>가 미래 날짜를 항상 0으로 클램프하다 보니, 챗봇이 "오늘이 시술 당일"처럼 잘못 답하는 형태로 드러났다. 응답 스키마 변경 없음(내부 조회 조건 수정).</p>
+      <p class="note"><span class="done-badge">v0.18</span> <b>다음 관리 추천이 관심목표를 바꿔도 항상 같은 시술로 나오던 문제를 고쳤다.</b> 실계정(오세훈)에서 재현: <span class="mono">GET /recommendations/next-care</span>의 동률 처리가 시술이 가진 태그 전체의 최근 이력(<span class="mono">recentRelevance</span>)으로 비교하고 있어서, 최근 이력이 특정 카테고리(예: 리프팅)에 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 "제너럴리스트" 시술이 항상 1등으로 뽑혔다 — 관심목표가 후보 풀 좁히기에는 영향을 줬지만, 정작 최종 1건을 고르는 동률 비교 단계에서는 사실상 무시되는 셈이었다. 이제 동률 비교는 관심목표와 겹치는 태그만의 최근 이력(<span class="mono">goalRelevance</span>)으로 하고, 그다음 태그 개수가 적은(더 특정 카테고리에 집중된) 시술을 우선한다. 응답 스키마 변경 없음(추천 후보 선정 로직만 수정). 자세한 내용은 아래 "GET /recommendations/next-care" 절의 매칭 알고리즘 참고.</p>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.17 MVP · 2026-08-20 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · v0.18 MVP · 2026-08-20 · api-user-flow.html 다이어그램과 섹션 순서 일치</footer>
   </main>
 </div>

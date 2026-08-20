@@ -1,7 +1,9 @@
-# WHS After Mate — API 명세서 (v0.17, MVP)
+# WHS After Mate — API 명세서 (v0.18, MVP)
 
 기준 프로젝트: Manyfast "WHS After Mate" (관리 이력·이용권 조회 / LLM 기반 사후관리 안내·질문 / 다음 관리 추천)
 흐름 기준: `api-user-flow.html` 다이어그램과 섹션 순서를 동일하게 맞춤 — 인증/온보딩 → 홈(추천 포함) → 사후관리 Q&A → My Care(캘린더/이력/이용권) → 설정/프로필
+
+v0.18 변경 (2026-08-20, 버그 수정): **다음 관리 추천이 관심목표를 바꿔도 항상 같은 시술로 나오던 문제를 고쳤다.** 실계정(오세훈)에서 재현: `GET /recommendations/next-care`의 동률 처리가 시술이 가진 태그 전체의 최근 이력(`recentRelevance`)으로 비교하고 있어서, 최근 이력이 특정 카테고리(예: 리프팅)에 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 "제너럴리스트" 시술(예: 여러 태그를 가진 시술)이 항상 1등으로 뽑혔다 — 관심목표가 후보 풀 좁히기에는 영향을 줬지만, 정작 최종 1건을 고르는 동률 비교 단계에서는 사실상 무시되는 셈이었다. 이제 동률 비교는 관심목표와 겹치는 태그만의 최근 이력(`goalRelevance`)으로 하고, 그다음 태그 개수가 적은(더 특정 카테고리에 집중된) 시술을 우선한다. 응답 스키마 변경 없음(추천 후보 선정 로직만 수정). 자세한 내용은 하단 "GET /recommendations/next-care" 절의 매칭 알고리즘 참고.
 
 v0.17 변경 (2026-08-20, 버그 수정): **"가장 최근 관리"가 더 이상 미래 예약을 포함하지 않는다.** `server_admin`이 예약(미래 `careDate`) 등록을 지원하면서(이용권 미차감, `admin-api-spec.md` v0.11 참고) `GET /aftercare/daily-guide`(careRecordId 미지정)·`POST /aftercare/questions`(careRecordId 미지정)·`GET /home/summary`·`GET /recommendations/next-care`(마지막 관리 후 경과일 판단)가 전부 공유하는 "최근 관리 이력" 조회가 `care_date` 내림차순 정렬만 하고 있어서, 아직 받지도 않은 미래 예약이 "가장 최근 관리"로 뽑히는 버그가 있었다. 그 결과 `daysElapsed`가 0으로 계산돼(음수는 항상 0으로 클램프됨) 챗봇이 "오늘이 시술 당일"처럼 잘못 답하는 사례가 실사용 중 발견됐다. 이제 오늘(KST) 이전 날짜의 관리만 "최근 관리" 후보가 된다. 응답 스키마 변경 없음(내부 조회 조건 수정). 자세한 내용은 하단 "구현 시 확정된 사항" 절 참고.
 
@@ -310,11 +312,12 @@ accessToken 재발급.
 | `basis` | string[] | 적용 근거: `catalog`(항상 포함) / `goal`(관심 목표와 `category_tags` 겹침) / `recentCare`(최근 받은 시술의 `category_tags`와 겹침) |
 | `disclaimer` | string | 의료 진단 아님 고지 |
 
-**매칭 알고리즘** `(v0.8)`:
+**매칭 알고리즘** `(v0.8, 동률 처리는 v0.18에서 교체)`:
 1. 고객의 최근 관리 이력(`care_records`, 최근 10건)에서 관리명이 `procedures.name`과 일치하는 것을 찾아 이미 받아본 시술로 후보에서 제외
 2. 남은 후보 중 고객의 `profiles.interest_goals`와 `procedures.category_tags`가 겹치는 개수(`goalOverlap`)로 1차 정렬
-3. 동률이면 최근 받은 시술들의 `category_tags`와 겹치는 정도(`recentRelevance`)로 2차 정렬
-4. 두 기준 모두 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 `204`
+3. 동률이면(대부분의 시술이 태그 1~2개뿐이라 거의 항상 동률) **관심목표와 겹치는 태그만**의 최근 이력 연관도(`goalRelevance`)로 2차 정렬 — `(v0.18)` 이전엔 시술이 가진 태그 전체의 최근 이력(`recentRelevance`)으로 비교했는데, 이러면 특정 카테고리에 최근 이력이 몰린 고객은 관심목표를 뭘로 바꾸든 그 카테고리를 겸하는 시술이 항상 1등으로 뽑히는 문제가 있었다(실계정에서 재현)
+4. 그래도 동률이면 `category_tags` 개수가 더 적은(더 특정 카테고리에 집중된) 시술 우선, 그래도 동률이면 시술명 가나다순
+5. `goalOverlap`/`recentRelevance` 둘 다 0(연관성 없음)인 후보는 추천하지 않음 — 전부 0이면 `204`
 
 `204 NO_RECOMMENDATION_AVAILABLE`: 추천 근거 부족(관리 이력 없음 등)
 - 참고: 홈 화면은 이 엔드포인트를 직접 호출하지 않고 `GET /home/summary`의 `recommendation` 필드를 재사용한다. 단독 조회가 필요한 경우(새로고침, 홈 API 실패 시 폴백)를 위해 별도로 제공한다.

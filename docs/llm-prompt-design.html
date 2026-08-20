@@ -205,7 +205,7 @@
     <h1>LLM 프롬프트 설계</h1>
     <p class="subtitle">LLM은 <code>POST /aftercare/questions</code>, <code>GET /recommendations/next-care</code> 두 곳에서 호출된다. <b><code>GET /aftercare/daily-guide</code>는 v0.5부터 LLM을 호출하지 않는다</b>(<code>treatment_guides</code> 직접 조회, 아래 1절 참고). 카테고리 검증과 위험 신호 감지는 LLM 호출 전 규칙 기반으로 처리해, LLM은 "이미 안전하다고 확인된 요청"만 받는다. 추천의 "어떤 시술을 고를지" 자체도 여전히 규칙 기반 — LLM은 문구 생성만 담당한다.</p>
     <div class="badges">
-      <span class="badge">v0.5</span>
+      <span class="badge">v0.6</span>
       <span class="badge outline">daily-guide LLM 호출 제거 — treatment_guides 직접 조회</span>
       <span class="badge outline">questions consultationLevel</span>
       <span class="badge outline">gpt-4.1-mini 채택</span>
@@ -460,11 +460,11 @@ consultationLevel 기준:
         <li>실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요</li>
         <li style="text-decoration:line-through; opacity:0.6;"><b><span class="mono">reference_guides</span>의 care_type 7종 중 5종이 미검수 스텁</b></li>
         <li><span class="tag" style="background:var(--accent-soft); color:var(--accent-text);">v0.5에서 해소됨</span> 위 미검수 스텁 문제와 아래 <span class="mono">botox</span> 그룹핑 문제 둘 다 — <span class="mono">reference_guides</span> 테이블 자체가 삭제되고 <span class="mono">treatment_guides</span>(시술명 단위, 팀이 직접 작성)로 대체되며 "검수 여부 구분 안 됨"의 전제(검수 워크플로가 있는데 코드가 검사 안 함)와 "그룹 공유로 시술 특성을 못 담는" 구조 둘 다 사라졌다. <span class="mono">초음파™ 보톡스</span>/<span class="mono">스킨 보톡스</span>는 이제 각자 독립된 <span class="mono">treatment_guides</span> 콘텐츠를 갖는다.</li>
-        <li>이름 불일치: <span class="mono">treatment_catalog</span>의 <span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>이 엑셀 원본(<span class="mono">튠 콩피에르(Tune Confier)</span>/<span class="mono">레이저 제모</span>)과 다름 — <span class="mono">treatment_guides</span>는 <span class="mono">care_name</span> 완전 일치로 daily-guide를 매칭하므로, v0.5부터는 이 불일치가 daily-guide 404로 직접 이어질 수 있음(v0.4까지는 care_type 그룹 매칭이라 완충됐음)</li>
+        <li><span class="tag" style="background:var(--accent-soft); color:var(--accent-text);">v0.6에서 해소됨</span> 이름 불일치: <span class="mono">treatment_catalog</span>의 <span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>이 엑셀 원본(<span class="mono">튠 콩피에르(Tune Confier)</span>/<span class="mono">레이저 제모</span>)과 다르게 등록돼 있던 문제 — 정식 명칭(<span class="mono">튠 콩피에르®</span>/<span class="mono">레이저 제모 솔루션</span>, 실제 EMR 이관 데이터가 쓰던 표기)으로 <span class="mono">treatment_catalog</span>/<span class="mono">procedures</span>/<span class="mono">treatment_guides</span> 세 테이블의 시드 스크립트와 실제 DB 데이터를 전부 통일해 해결. 실제로 이 불일치 때문에 daily-guide가 404로 실패하던 실사용 사례(<span class="mono">care_records</span>에 <span class="mono">레이저 제모 솔루션</span>으로 등록된 시술기록)를 확인·해결했다</li>
       </ul>
     </section>
 
-    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.16 · db-schema v0.10 기준 · 2026-08-20 daily-guide LLM 호출 제거(v0.5)</footer>
+    <footer>WHS After Mate · Manyfast project 130a998c-b6dc-4869-b94d-792f91e79500 · api-spec v0.18 · db-schema v0.10 기준 · 2026-08-20 시술명 표기 정식화(v0.6)</footer>
   </main>
 </div>
 

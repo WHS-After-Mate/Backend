@@ -1,4 +1,6 @@
-# WHS After Mate — LLM 프롬프트 설계 (v0.5)
+# WHS After Mate — LLM 프롬프트 설계 (v0.6)
+
+v0.6 변경 (2026-08-20, 버그 수정): "미확정 사항"에 있던 시술명 표기 불일치(`튠 콩피에르®`/`레이저 제모 솔루션`)를 정식 명칭으로 통일해 해소. 아래 "미확정 사항" 절 참고.
 
 v0.5 변경 (2026-08-19~20): **daily-guide가 LLM 호출 지점에서 완전히 빠졌다.** v0.4에서 "근거는 시술·환자 정보"로 원칙을 바꿨던 것이 과도기였다는 게 드러났다 — `care_type` 그룹 단위로는 같은 그룹 안에서도(예: `botox`의 근육형/피부형) 시술마다 실제 사후관리가 다르다는 문제의 근본 원인이 "LLM이 얼마나 잘 종합하느냐"가 아니라 "그룹 단위 근거 자체가 시술 단위 사실과 안 맞는다"는 데 있었다. 그래서 아예 시술명(`care_name`)+경과일 단위로 팀이 직접 콘텐츠를 작성해 DB(`treatment_guides`)에 저장하고, `GET /aftercare/daily-guide`는 그걸 그대로 조회만 하는 구조로 바뀌었다 — **LLM 호출도, "생성 실패 시 폴백"도 없다.** `reference_guides`/`aftercare_guides` 테이블은 삭제됐다. questions는 여전히 LLM을 호출하지만 근거 소스가 `reference_guides`→`treatment_guides`로 바뀌었다. 이제 LLM 호출 지점은 **questions**와 **recommendation** 두 곳뿐이다. 아래 "1. daily-guide" 절, "미확정 사항" 절 참고.
 
@@ -244,4 +246,4 @@ daily-guide/questions는 "무엇을 답할지" 자체를 LLM이 정하지만, �
 - 실제 프롬프트 품질(정확성·톤)은 데모 데이터로만 검증됨 — 실 사용자 대상 테스트 필요
 - ~~`reference_guides`의 care_type 7종 중 5종이 미검수 스텁인 문제~~ — **v0.5에서 해소됨.** `reference_guides` 테이블 자체가 삭제되고 `treatment_guides`(시술명 단위, 팀이 직접 작성)로 대체되며 "검수 여부가 구분 안 되는" 문제의 전제(검수 워크플로가 있는데 코드가 검사 안 함)가 사라졌다 — 애초에 전부 팀 작성 콘텐츠라 검수 대기 상태 자체가 없음
 - ~~`treatment_catalog`의 `botox` care_type이 서로 다른 시술을 묶는 문제~~ — **v0.5에서 해소됨.** `care_type` 그룹 단위 매칭 자체가 없어지고 시술명(`care_name`) 단위 직접 매칭으로 바뀌면서, `초음파™ 보톡스`(근육 주입형)와 `스킨 보톡스`(피부층 주입형)가 각각 자기 시술명으로 독립된 `treatment_guides` 콘텐츠를 갖는다 — 애초에 이 문제의 원인이었던 "그룹 공유" 구조 자체가 없어짐
-- 이름 불일치: `treatment_catalog`의 `튠 콩피에르®`/`레이저 제모 솔루션`이 실제 엑셀 원본(`튠 콩피에르(Tune Confier)`/`레이저 제모`)과 다르게 등록돼 있음 — `treatment_guides`는 `care_name` 완전 일치로 daily-guide를 매칭하므로, 이 불일치가 남아있으면 해당 시술기록의 daily-guide가 `404 GUIDE_NOT_AVAILABLE`로 실패할 수 있음(v0.4까지는 `care_type` 그룹 매칭이라 완충됐지만 v0.5부터는 직접 영향)
+- ~~이름 불일치: `treatment_catalog`의 `튠 콩피에르®`/`레이저 제모 솔루션`이 실제 엑셀 원본(`튠 콩피에르(Tune Confier)`/`레이저 제모`)과 다르게 등록돼 있음~~ — **v0.6에서 해소됨.** 정식 명칭(`튠 콩피에르®`/`레이저 제모 솔루션`, 실제 EMR 이관 데이터가 쓰던 표기)으로 통일하는 쪽으로 결정 — `treatment_catalog`/`procedures`/`treatment_guides` 세 테이블의 시드 스크립트와 실제 DB 데이터를 전부 이 표기로 맞췄다. 실제로 이미 이 이름 불일치 때문에 daily-guide가 `404`로 실패하던 실사용 사례(`care_records`에 `레이저 제모 솔루션`으로 등록된 시술기록)가 있었음을 확인·해결

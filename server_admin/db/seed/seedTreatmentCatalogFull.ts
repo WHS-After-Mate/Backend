@@ -29,7 +29,7 @@ const TREATMENTS: TreatmentRow[] = [
   // ── 엠레드 클리닉 (19) ──
   {
     brand: AMRED,
-    careName: "튠 콩피에르(Tune Confier)",
+    careName: "튠 콩피에르®",
     careType: null,
     bodyParts: ["얼굴 전체", "턱선", "이중턱"],
     description:
@@ -94,7 +94,7 @@ const TREATMENTS: TreatmentRow[] = [
     description:
       "리쥬란 힐러에 즉각적인 수분감을 채우는 물광주사(HA)와 잔주름·모공을 개선하는 더모톡신의 핵심 성분을 더나만의 최적 비율로 배합한 시그니처 스킨부스터입니다.",
   },
-  { brand: DERNA, careName: "레이저 제모", careType: null, bodyParts: ["팔", "허벅지", "종아리"] },
+  { brand: DERNA, careName: "레이저 제모 솔루션", careType: null, bodyParts: ["팔", "허벅지", "종아리"] },
   { brand: DERNA, careName: "인모드 리프팅", careType: null, bodyParts: ["얼굴 전체", "턱선"] },
   { brand: DERNA, careName: "소프웨이브", careType: null, bodyParts: ["얼굴 전체"] },
   { brand: DERNA, careName: "볼뉴머", careType: null, bodyParts: ["볼"] },

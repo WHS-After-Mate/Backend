@@ -50,7 +50,7 @@ interface ProcedureSeed {
 
 const PROCEDURES: ProcedureSeed[] = [
   // 엠레드 클리닉 (19)
-  { businessId: "amred", name: "튠 콩피에르(Tune Confier)", tags: ["리프팅·탄력"], description: "피부층에 콜라겐을 생성하여 탄력 증가와 리프팅 효과를 주는 강력한 고주파 시술입니다. 이상적인 주파수와 아이스 컨택쿨링 방식으로 통증없이 편안하게 시술이 가능하며, 프락셔널 방식으로 짧은 시술 시간에도 보다 강력한 효과를 볼 수 있는 리프팅 시술 중 하나입니다." },
+  { businessId: "amred", name: "튠 콩피에르®", tags: ["리프팅·탄력"], description: "피부층에 콜라겐을 생성하여 탄력 증가와 리프팅 효과를 주는 강력한 고주파 시술입니다. 이상적인 주파수와 아이스 컨택쿨링 방식으로 통증없이 편안하게 시술이 가능하며, 프락셔널 방식으로 짧은 시술 시간에도 보다 강력한 효과를 볼 수 있는 리프팅 시술 중 하나입니다." },
   { businessId: "amred", name: "울쎄라피 프라임", tags: ["리프팅·탄력"], description: "고강도 집속형 초음파(HIFU, High-Intensity Focused Ultrasound) 기술을 활용하여 피부 깊은 층까지 정밀하게 에너지를 전달하는 비수술적 리프팅 시술입니다. 피부 속 진피층과 SMAS층을 타겟으로 65~70°C의 열 에너지를 조사하여 콜라겐 생성을 촉진하고 시간이 지나면서 피부 탄력 개선 및 리프팅 효과를 제공합니다. 기존 울쎄라보다 정밀한 초음파 진단 기술이 적용되어 더욱 세밀한 맞춤 시술이 가능합니다." },
   { businessId: "amred", name: "티타늄 리프팅", tags: ["리프팅·탄력", "모공·피지 관리", "색소침착 개선"], description: "티타늄 리프팅은 기존 리프팅 장비와 달리 빠른 속도, 낮은 통증, 강력한 효과를 갖춘 프리미엄 올인원 리프팅 솔루션입니다. 단 한 번의 시술로 리프팅, 타이트닝, 모공 개선, 피부 톤 및 색소 개선까지 동시에 기대할 수 있습니다. 세계 최초로 3가지 파장(755nm + 810nm + 1064nm)을 동시에 조사하는 다이오드 레이저 방식을 적용하여, 피부 전 층에 에너지를 균일하게 전달해 탄력 개선과 윤곽 정리, 피부 톤 및 모공 개선 효과를 제공합니다." },
   { businessId: "amred", name: "써마지 FLX", tags: ["리프팅·탄력"], description: "써마지 FLX(써마지 4세대 장비)는 고주파 에너지(RF: Radio Frequency)를 활용하여 피부 깊숙한 층까지 열에너지를 전달하는 비수술적 리프팅 시술입니다. 피부 진피층과 피하 지방층을 집중적으로 자극해 콜라겐 재생을 활성화하고 피부 탄력을 강화하며, 특히 잔주름 개선과 피부결 정돈에 탁월한 효과를 제공합니다. 기존보다 향상된 기술력과 넓어진 시술 면적으로 보다 빠르고 효과적인 리프팅이 가능합니다." },
@@ -75,7 +75,7 @@ const PROCEDURES: ProcedureSeed[] = [
   { businessId: "derna", name: "스킨 보톡스", tags: ["모공·피지 관리"], description: null },
   { businessId: "derna", name: "쥬비덤 필러", tags: ["리프팅·탄력"], description: null },
   { businessId: "derna", name: "더나부스터", tags: ["보습·장벽 강화"], description: "피부 재생 효과로 잘 알려진 리쥬란 힐러에, 즉각적인 수분감을 채우는 물광주사(HA)와 잔주름 및 모공을 개선하는 더모톡신의 핵심 성분을 더나만의 최적의 비율로 배합한 시그니처 스킨부스터예요. 리쥬란의 강력한 재생 효과는 그대로 누리면서, 특유의 통증은 줄이고 즉각적인 물광 효과는 더한, 가장 진보된 형태의 올인원 피부 솔루션이에요." },
-  { businessId: "derna", name: "레이저 제모", tags: ["제모"], description: null },
+  { businessId: "derna", name: "레이저 제모 솔루션", tags: ["제모"], description: null },
   { businessId: "derna", name: "인모드 리프팅", tags: ["리프팅·탄력", "바디라인·체형 관리"], description: null },
   { businessId: "derna", name: "소프웨이브", tags: ["리프팅·탄력"], description: null },
   { businessId: "derna", name: "볼뉴머", tags: ["보습·장벽 강화"], description: null },

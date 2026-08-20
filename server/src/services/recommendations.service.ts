@@ -50,10 +50,21 @@ function scoreProcedures(
     .map((procedure) => {
       const goalOverlap = procedure.category_tags.filter((tag) => goalSet.has(tag));
       const recentRelevance = procedure.category_tags.reduce((sum, tag) => sum + (recentTagCounts.get(tag) ?? 0), 0);
-      return { procedure, goalOverlap, recentRelevance };
+      // goalOverlap 개수는 시술 대부분이 태그 1~2개뿐이라 거의 항상 동점이 난다 — 동점일 때 전체
+      // recentRelevance로 비교하면 최근 이력이 특정 카테고리에 몰린 고객은 관심목표를 뭘로 바꿔도
+      // 그 카테고리를 겸하는 "제너럴리스트" 시술이 계속 1등을 차지하는 문제가 생긴다(오세훈 계정에서
+      // 재현: 관심목표를 바꿔도 추천이 항상 동일). 동점 비교는 관심목표와 겹치는 태그만으로 한정한다.
+      const goalRelevance = goalOverlap.reduce((sum, tag) => sum + (recentTagCounts.get(tag) ?? 0), 0);
+      return { procedure, goalOverlap, recentRelevance, goalRelevance };
     })
     .filter((s) => s.goalOverlap.length > 0 || s.recentRelevance > 0)
-    .sort((a, b) => b.goalOverlap.length - a.goalOverlap.length || b.recentRelevance - a.recentRelevance);
+    .sort(
+      (a, b) =>
+        b.goalOverlap.length - a.goalOverlap.length ||
+        b.goalRelevance - a.goalRelevance ||
+        a.procedure.category_tags.length - b.procedure.category_tags.length ||
+        a.procedure.name.localeCompare(b.procedure.name),
+    );
 }
 
 // 2026-08-18 — dd.txt 요청: 추천 사유/설명이 시술 종류와 무관하게 획일적인 문구 조합이었던 것을
